@@ -1,0 +1,48 @@
+.stageColumn {
+  flex: 0 0 214px;
+  min-height: calc(100dvh - var(--app-shell-header-height) - 130px);
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+}
+
+.stageHeader {
+  min-height: 34px;
+  margin-bottom: 8px;
+  padding: 5px 10px 5px 12px;
+  border-radius: 4px;
+  background: var(--stage-color);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%);
+  color: rgba(0, 21, 54, 0.84);
+}
+
+.stageTitle {
+  max-width: 142px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stageMeta {
+  color: rgba(0, 21, 54, 0.58);
+}
+
+.stageCount {
+  background: rgba(0, 0, 0, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+@media (max-width: 48em) {
+  .stageColumn {
+    flex-basis: auto;
+    min-height: auto;
+  }
+
+  .stageHeader {
+    clip-path: none;
+  }
+
+  .stageTitle {
+    max-width: none;
+  }
+}

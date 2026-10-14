@@ -1,0 +1,74 @@
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sortButton:hover {
+  color: var(--mantine-primary-color-filled);
+}
+
+.sortIndicator {
+  min-width: 10px;
+  color: var(--mantine-color-gray-5);
+  font-size: 11px;
+}
+
+.table {
+  table-layout: fixed;
+  min-width: 1040px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.resizableTh {
+  position: relative;
+  padding-right: 18px !important;
+  user-select: none;
+}
+
+.table th:not(:last-child),
+.table td:not(:last-child) {
+  border-right: 1px solid var(--mantine-color-gray-1);
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  bottom: 0;
+  width: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizeHandle::after {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 50%;
+  width: 1px;
+  content: "";
+  background: var(--mantine-color-gray-3);
+  border-radius: 999px;
+  transform: translateX(-50%);
+  transition:
+    background 120ms ease,
+    width 120ms ease;
+}
+
+.resizeHandle:hover::after,
+.resizeHandle:active::after {
+  width: 2px;
+  background: var(--mantine-primary-color-filled);
+}

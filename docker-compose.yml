@@ -1,0 +1,23 @@
+name: email-review-tool
+
+services:
+  db:
+    image: postgres:16
+    container_name: email-review-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: email_review_tool
+      POSTGRES_USER: email_review
+      POSTGRES_PASSWORD: email_review
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U email_review -d email_review_tool"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

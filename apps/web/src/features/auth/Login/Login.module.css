@@ -1,0 +1,11 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--mantine-spacing-xl);
+  background: #1e1968 url("/images/bg-vibe.jpg") center / cover no-repeat;
+}
+
+.panel {
+  width: min(100%, 420px);
+}

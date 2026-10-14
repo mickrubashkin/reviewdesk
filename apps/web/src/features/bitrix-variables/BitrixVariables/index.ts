@@ -1,0 +1,1 @@
+export { BitrixVariables } from "./BitrixVariables";

@@ -1,0 +1,38 @@
+@baseUrl = http://localhost:8080
+@emailId = 4b94413a-52a5-4dcf-b89b-a71078225531
+@commentId = c6756b12-a013-4f50-a35a-28a2822d5102
+@session = your_session_cookie_token_here
+
+### Health
+GET {{baseUrl}}/health
+
+### List emails
+GET {{baseUrl}}/api/emails
+Cookie: email_review_session={{session}}
+
+### Get email
+GET {{baseUrl}}/api/emails/{{emailId}}
+Cookie: email_review_session={{session}}
+
+### List comments
+GET {{baseUrl}}/api/emails/{{emailId}}/comments
+Cookie: email_review_session={{session}}
+
+### Create comment
+POST {{baseUrl}}/api/emails/{{emailId}}/comments
+Content-Type: application/json
+Origin: {{baseUrl}}
+Cookie: email_review_session={{session}}
+
+{
+  "review_block": "body-001",
+  "selected_text": "test selected text",
+  "start_offset": 0,
+  "end_offset": 18,
+  "body": "Test comment from requests.http"
+}
+
+### Resolve comment
+PATCH {{baseUrl}}/api/comments/{{commentId}}/resolve
+Origin: {{baseUrl}}
+Cookie: email_review_session={{session}}

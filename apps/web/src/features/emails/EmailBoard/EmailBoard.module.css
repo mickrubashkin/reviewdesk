@@ -1,0 +1,49 @@
+.boardScroll {
+  height: 100%;
+}
+
+.boardTitle {
+  position: relative;
+  z-index: 1;
+  min-width: max-content;
+  padding: var(--mantine-spacing-lg) var(--mantine-spacing-md) var(--mantine-spacing-sm);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.62);
+}
+
+.boardTitle h2 {
+  color: var(--mantine-color-white);
+  font-size: 24px;
+}
+
+.boardTitle p {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sequenceBadge {
+  height: 32px;
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--mantine-color-white);
+}
+
+.board {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: calc(100% - 88px);
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md) var(--mantine-spacing-lg);
+}
+
+@media (max-width: 48em) {
+  .boardScroll {
+    overflow-x: hidden;
+  }
+
+  .board {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: var(--mantine-spacing-sm);
+    gap: var(--mantine-spacing-sm);
+  }
+}

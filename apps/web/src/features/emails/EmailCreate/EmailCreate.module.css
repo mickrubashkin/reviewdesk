@@ -1,0 +1,233 @@
+.page {
+  min-height: 100dvh;
+  background: var(--mantine-color-gray-0);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-md);
+  min-height: 64px;
+  padding: 10px 18px;
+}
+
+.headerMain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.headerActions {
+  flex: 0 0 auto;
+}
+
+.titleBlock {
+  min-width: 0;
+}
+
+.title {
+  max-width: 320px;
+  line-height: 1.15;
+}
+
+.breadcrumbs {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.breadcrumbText {
+  flex: 0 0 auto;
+}
+
+.actionDivider {
+  align-self: stretch;
+  width: 1px;
+  background: var(--mantine-color-gray-2);
+}
+
+.versionControls {
+  flex: 0 0 auto;
+}
+
+.languageSelect {
+  width: 92px;
+}
+
+.adaptationSelect {
+  width: 132px;
+}
+
+.versionButton {
+  height: 36px;
+}
+
+.segmentedControl {
+  height: 36px;
+  padding: 3px;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-white);
+}
+
+.segmentedButton {
+  min-width: 64px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  color: var(--mantine-color-gray-6);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.segmentedButton:hover,
+.segmentedButton[data-active] {
+  color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+}
+
+.content {
+  display: grid;
+  grid-template-columns: minmax(360px, 460px) minmax(0, 1fr);
+  gap: var(--mantine-spacing-md);
+  height: calc(100dvh - 65px);
+  padding: var(--mantine-spacing-md);
+}
+
+.editorPanel,
+.previewPanel {
+  min-height: 0;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-white);
+}
+
+.editorPanel {
+  overflow: auto;
+}
+
+.editorContent {
+  padding: var(--mantine-spacing-md);
+}
+
+.fieldGroup {
+  padding: var(--mantine-spacing-sm);
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-gray-0);
+}
+
+.historyLayout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.historyList {
+  min-height: 0;
+  padding: var(--mantine-spacing-sm);
+  overflow: auto;
+  border-right: 1px solid var(--mantine-color-gray-2);
+}
+
+.historyItem {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-sm);
+  color: inherit;
+  text-align: left;
+  background: var(--mantine-color-white);
+  cursor: pointer;
+}
+
+.historyItem:hover,
+.historyItem[data-active] {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+}
+
+.historyActor {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historyPreview {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.htmlTextarea {
+  min-height: calc(100dvh - 230px);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.previewPanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.previewHeader {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+
+.previewFrameWrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: #eef2f7;
+}
+
+.previewFrame {
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  border: 0;
+  background: white;
+}
+
+.mobileTabs {
+  padding: var(--mantine-spacing-md);
+}
+
+@media (max-width: 62em) {
+  .content {
+    display: none;
+  }
+
+  .historyLayout {
+    grid-template-columns: 1fr;
+    min-height: 70dvh;
+  }
+
+  .historyList {
+    max-height: 260px;
+    border-right: 0;
+    border-bottom: 1px solid var(--mantine-color-gray-2);
+  }
+}
+
+@media (min-width: 62.001em) {
+  .mobileTabs {
+    display: none;
+  }
+}

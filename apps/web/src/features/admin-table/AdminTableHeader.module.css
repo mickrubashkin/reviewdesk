@@ -1,0 +1,38 @@
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-md);
+  max-width: 1320px;
+  margin: 0 auto 18px;
+}
+
+.homeButton {
+  flex: 0 0 auto;
+}
+
+.titleBlock {
+  flex: 1 1 auto;
+  min-width: 220px;
+}
+
+.screenSelect {
+  flex: 0 1 280px;
+  min-width: 220px;
+}
+
+@media (max-width: 720px) {
+  .header {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .titleBlock {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .screenSelect {
+    flex: 1 1 220px;
+  }
+}

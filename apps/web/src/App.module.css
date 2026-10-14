@@ -1,0 +1,185 @@
+.appHeader {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(42, 48, 142, 0.9);
+  backdrop-filter: blur(14px);
+  color: var(--mantine-color-white);
+}
+
+.headerInner {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.headerBrand {
+  flex: 0 0 auto;
+  min-width: 168px;
+}
+
+.headerTitle {
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.headerSubtitle {
+  max-width: 210px;
+  color: rgba(255, 255, 255, 0.66);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boardControls {
+  flex: 1 1 auto;
+  min-width: 360px;
+  justify-content: center;
+}
+
+.boardSelect {
+  flex: 0 1 260px;
+  min-width: 150px;
+}
+
+.boardFilter {
+  flex: 0 0 auto;
+}
+
+.myEmailsToggle {
+  flex: 0 0 auto;
+}
+
+.boardViewToggle {
+  flex: 0 0 auto;
+}
+
+.boardFilterButtonWrap {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.boardFilterButton {
+  overflow: visible;
+}
+
+.boardFilterBadge {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  pointer-events: none;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.boardSearch {
+  flex: 1 1 220px;
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.headerActions {
+  flex: 0 0 auto;
+}
+
+.headerMenuButton {
+  min-width: 112px;
+}
+
+.accountButton {
+  max-width: 248px;
+}
+
+.accountEmail {
+  display: block;
+  max-width: 156px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headerCount {
+  color: rgba(255, 255, 255, 0.72) !important;
+  white-space: nowrap;
+}
+
+.headerUser {
+  max-width: 220px;
+  color: rgba(255, 255, 255, 0.82) !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userMenuEmail {
+  max-width: 200px;
+  color: var(--mantine-color-gray-8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boardFilterMenuControl {
+  padding: 0 var(--mantine-spacing-xs) var(--mantine-spacing-xs);
+}
+
+.compactHeaderDropdown {
+  overflow: hidden;
+}
+
+.boardPage {
+  height: calc(100dvh - var(--app-shell-header-height));
+  background: #1e1968 url("/images/bg-vibe.jpg") center / cover no-repeat;
+  color: var(--mantine-color-white);
+  position: relative;
+  overflow: hidden;
+}
+
+.boardPage::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.55) 0 1px, transparent 1.5px),
+    linear-gradient(120deg, transparent 0 42%, rgba(0, 255, 255, 0.16) 43%, transparent 46%);
+  background-position:
+    0 0,
+    0 0;
+  background-size:
+    86px 86px,
+    100% 100%;
+  opacity: 0.4;
+}
+
+.stageManagerRow {
+  padding: 6px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: 6px;
+}
+
+.stageManagerName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 64em) {
+  .headerInner {
+    gap: 12px;
+  }
+
+  .headerBrand {
+    min-width: 0;
+  }
+
+  .headerSubtitle {
+    max-width: 52vw;
+  }
+}
+
+.appVersionInfo {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}

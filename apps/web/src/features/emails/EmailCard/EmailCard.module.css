@@ -1,0 +1,286 @@
+.emailCardButton {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.emailCard {
+  position: relative;
+  height: 188px;
+  padding: 12px 12px 0 !important;
+  overflow: visible;
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 2px 6px rgba(0, 18, 72, 0.14);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.emailCardButton:hover {
+  border-color: rgba(82, 199, 255, 0.9);
+  box-shadow: 0 8px 20px rgba(0, 18, 72, 0.24);
+  transform: translateY(-1px);
+}
+
+.emailCardButton:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+  border-radius: var(--mantine-radius-md);
+}
+
+.emailCardTitle {
+  flex: 1;
+  min-width: 0;
+  color: var(--mantine-color-gray-9);
+}
+
+.cardMenuButton {
+  flex: 0 0 auto;
+  color: var(--mantine-color-gray-6);
+}
+
+.openCommentCornerBadge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 2;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(255, 228, 230, 0.96);
+  box-shadow: 0 3px 8px rgba(185, 28, 28, 0.12);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  pointer-events: none;
+}
+
+.cardMenuButton:hover {
+  color: var(--mantine-color-blue-7);
+  background: rgba(76, 110, 245, 0.08);
+}
+
+.cardMenuDropdown {
+  max-height: min(260px, calc(100dvh - 96px));
+  overflow: visible;
+  padding: 6px;
+}
+
+.cardMenuLabel {
+  padding: 5px 8px 3px;
+  color: var(--mantine-color-gray-6);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.cardMenuItem {
+  min-height: 28px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.cardMenuItemLabel {
+  line-height: 1.25;
+}
+
+.cardMenuValue {
+  max-width: 112px;
+  color: var(--mantine-color-gray-5);
+  font-size: 11px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.cardMenuValue[data-tone="soon"] {
+  color: var(--mantine-color-yellow-8);
+}
+
+.cardMenuValue[data-tone="overdue"] {
+  color: var(--mantine-color-red-7);
+}
+
+.cardMenuSubDropdown,
+.cardMenuCommentsDropdown {
+  max-height: min(260px, calc(100dvh - 96px));
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.cardMenuCommentsDropdown {
+  width: 230px;
+}
+
+.cardMenuDivider {
+  margin: 5px 0;
+}
+
+.commentVersionRow {
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.commentVersionRow:hover {
+  background: var(--mantine-color-gray-0);
+}
+
+.commentVersionRow:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+
+.commentVersionText {
+  min-width: 0;
+  flex: 1;
+}
+
+.commentVersionSubject {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.commentVersionBadge {
+  flex: 0 0 auto;
+}
+
+.languageSwitch {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cardMenuControl {
+  padding: 0 var(--mantine-spacing-xs) var(--mantine-spacing-xs);
+}
+
+.languageButton {
+  min-width: 30px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: 5px;
+  color: var(--mantine-color-gray-6);
+  background: var(--mantine-color-white);
+  font-size: 12px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.languageButton:hover {
+  border-color: rgba(76, 110, 245, 0.36);
+  color: var(--mantine-color-blue-7);
+}
+
+.languageButton[data-active] {
+  border-color: rgba(76, 110, 245, 0.88);
+  color: var(--mantine-color-white);
+  background: rgba(76, 110, 245, 0.88);
+}
+
+.selectorGroup {
+  flex: 0 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.variantSelectWrap,
+.adaptationSelectWrap {
+  display: inline-flex;
+  min-width: 0;
+  width: fit-content;
+}
+
+.variantSelect,
+.adaptationSelect {
+  width: 100%;
+  height: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 5px;
+  color: var(--mantine-color-gray-7);
+  background: var(--mantine-color-white);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 26px;
+  cursor: pointer;
+}
+
+.variantSelect {
+  min-width: 88px;
+  padding: 0 22px 0 8px;
+}
+
+.singleVariantLabel {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 4px 8px 0;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  border-radius: 5px;
+  color: var(--mantine-color-gray-6);
+  background: rgba(255, 255, 255, 0.54);
+  font-weight: 650;
+  line-height: 18px;
+}
+
+.adaptationSelect {
+  min-width: 160px;
+  padding: 0 22px 0 8px;
+}
+
+.variantSelect:hover,
+.adaptationSelect:hover {
+  border-color: rgba(76, 110, 245, 0.36);
+  color: var(--mantine-color-blue-7);
+}
+
+.adaptationSelect[data-custom] {
+  border-color: rgba(34, 197, 94, 0.35);
+  color: var(--mantine-color-green-8);
+  background: rgba(240, 253, 244, 0.78);
+}
+
+.emailCardContent {
+  height: 100%;
+}
+
+.emailCardBody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.emailCardCopy {
+  padding-top: 4px;
+}
+
+.emailCardFooter {
+  margin: 8px -12px 0;
+  padding: 8px 12px;
+  background: rgba(222, 248, 255, 0.82);
+  color: var(--mantine-color-gray-5);
+}
+
+.reviewLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--mantine-color-blue-7);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.reviewLink:hover {
+  color: var(--mantine-color-blue-9);
+  text-decoration: underline;
+}

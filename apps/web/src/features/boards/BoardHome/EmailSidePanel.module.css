@@ -1,0 +1,32 @@
+.panel {
+  position: fixed;
+  top: var(--app-shell-header-height, 64px);
+  right: 0;
+  bottom: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100vw);
+  border-left: 1px solid var(--mantine-color-gray-3);
+  background: var(--mantine-color-white);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
+}
+
+.header {
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+
+.switchers {
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+}
+
+.translation:not(:empty) {
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md) 0;
+}
