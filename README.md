@@ -4,6 +4,15 @@ A collaborative review and approval workspace for HTML email sequences and lifec
 
 ReviewDesk is a focused review and approval layer for HTML email sequences before they are implemented in CRM, ESP, messaging, or other publishing systems. It keeps comments attached to reviewed content, makes approvals auditable, and helps teams hand off final approved assets without turning the product into a full email builder.
 
+## Live Demo
+
+**[demo.reviewdesk.rubashkin.xyz](https://demo.reviewdesk.rubashkin.xyz/)** — click **Enter demo** to sign in as a reviewer. No email or password needed.
+
+- Synthetic data only: a generic SaaS onboarding sequence (8 stages, 3 languages, 60 emails) with comments, approval states and handoff examples.
+- The data resets on every deploy, so feel free to comment and resolve.
+
+ReviewDesk started as an internal tool for a partner onboarding team. This repository is a cleaned-up copy without company content.
+
 ## Highlights
 
 - Review board for staged HTML email sequences, language versions, and adaptations.
