@@ -11,6 +11,10 @@ ReviewDesk is a focused review and approval layer for HTML email sequences befor
 - Synthetic data only: a generic SaaS onboarding sequence (8 stages, 3 languages, 60 emails) with comments, approval states and handoff examples.
 - Every visitor gets their own copy of the board that resets in 24 hours, so feel free to comment, edit and resolve.
 
+![Review board: an onboarding sequence laid out as a timeline of stages, with per-email status, upload and open-comment badges](docs/screenshots/board.png)
+
+![A blocking comment anchored to a paragraph of the email under review](docs/screenshots/comments.png)
+
 ## Why It Exists
 
 ReviewDesk started as an internal tool for a partner onboarding team at a B2B SaaS company: an onboarding email chain in 5 languages, owned by several regional managers and implemented as CRM automation robots.
