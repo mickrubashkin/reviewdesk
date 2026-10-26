@@ -45,4 +45,6 @@ The intended demo story is:
 
 ## Result
 
+In production, ReviewDesk is used by a 10-person partner onboarding team for a 5-language email chain implemented as CRM automation robots. Changing one email used to take about a week across chats, screenshots and manual CRM checks; with ReviewDesk the team rebuilt the entire chain (100+ localized emails) in one working week. It was rolled out gradually (one pilot colleague, then two, then the whole team) and is now part of onboarding for new hires.
+
 ReviewDesk demonstrates a complete product-engineering slice: authenticated workflow software, PostgreSQL-backed domain state, review anchoring, approval gates, version-aware editing, AI-assisted analysis, and production handoff. The public demo uses disposable synthetic data so the workflow can be shown without exposing production content.

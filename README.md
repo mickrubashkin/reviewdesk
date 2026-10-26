@@ -11,7 +11,15 @@ ReviewDesk is a focused review and approval layer for HTML email sequences befor
 - Synthetic data only: a generic SaaS onboarding sequence (8 stages, 3 languages, 60 emails) with comments, approval states and handoff examples.
 - Every visitor gets their own copy of the board that resets in 24 hours, so feel free to comment, edit and resolve.
 
-ReviewDesk started as an internal tool for a partner onboarding team. This repository is a cleaned-up copy without company content.
+## Why It Exists
+
+ReviewDesk started as an internal tool for a partner onboarding team at a B2B SaaS company: an onboarding email chain in 5 languages, owned by several regional managers and implemented as CRM automation robots.
+
+- **Before:** feedback lived in chats and screenshots, and changing a single email took about a week end to end.
+- **After:** the whole 10-person team reviews, comments and edits in one place; the team rebuilt the entire chain (100+ localized emails) in one working week.
+- **Rollout:** one pilot colleague → two → the whole team, with feature requests gathered from daily use. It runs in production and is part of onboarding for new hires.
+
+This repository is a cleaned-up public copy without company content; its git history was squashed when it was extracted from the internal repo.
 
 ## Highlights
 
@@ -19,17 +27,10 @@ ReviewDesk started as an internal tool for a partner onboarding team. This repos
 - Anchored comments on `data-review-block` content with severity and resolution state.
 - Template-backed editing through `data-edit-*` fields while preserving original HTML.
 - Required approval areas, stale approval behavior after edits, and production handoff state.
+- CRM send reconciliation: a read-only sync pulls the emails CRM automation robots actually send, matches them to board emails by similarity, and suggests which approved version is live per robot.
+- @mentions with notifications, and shared text blocks reused across emails.
 - AI-assisted journey review for clarity, conversion friction, compliance risk, and handoff readiness.
 - Go API, PostgreSQL, React, Mantine, TanStack Query, OTP/session auth, and SSE AI streaming.
-
-## Demo Flow
-
-1. Start the local stack with `make setup-dev` and `make dev`.
-2. Sign in with the local dev login and open the `Demo Onboarding Review` board.
-3. Add or resolve anchored comments in the review preview.
-4. Edit template-backed copy or planning metadata as an admin.
-5. Show approvals becoming stale after content changes, then re-approve required areas.
-6. Inspect the production handoff package.
 
 ## Stack
 
@@ -56,6 +57,14 @@ make setup-dev
 make dev
 ```
 
+Local walkthrough:
+
+1. Sign in with the local dev login and open the `Demo Onboarding Review` board.
+2. Add or resolve anchored comments in the review preview.
+3. Edit template-backed copy or planning metadata as an admin.
+4. Watch approvals go stale after content changes, then re-approve required areas.
+5. Inspect the production handoff package.
+
 Useful checks:
 
 ```sh
@@ -71,8 +80,7 @@ make test-web
 - `apps/api/cmd/demoseed` - synthetic demo dataset (`db/seeds/demo-emails` plus generated emails).
 - `apps/web/src` - React application.
 - `db/migrations` - PostgreSQL migrations.
-- `docs/case-study.md` - concise product/engineering case study.
-- `docs/demo-plan.md` - public demo environment strategy.
+- `docs/` - [case study](docs/case-study.md), [backend](docs/Backend%20Architecture.md) and [frontend](docs/Frontend%20Architecture.md) architecture, [demo plan](docs/demo-plan.md), [roadmap](docs/roadmap.md).
 
 ## Demo Data
 
