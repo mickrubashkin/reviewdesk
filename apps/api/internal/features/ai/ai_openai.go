@@ -79,6 +79,10 @@ func readOpenAIStreamOutputText(body io.Reader, metrics *AIAnalysisMetrics, onDe
 			if len(event.Response) > 0 {
 				finalResponseBytes = event.Response
 			}
+		case "response.incomplete", "response.failed":
+			// A reasoning model can spend all of max_output_tokens before it
+			// writes any text; say why instead of "no output text".
+			return "", openAIStreamStopError(event.Type, event.Response)
 		case "error":
 			if event.Error != nil && strings.TrimSpace(event.Error.Message) != "" {
 				return "", fmt.Errorf("openai stream error: %s", event.Error.Message)
@@ -104,6 +108,26 @@ func readOpenAIStreamOutputText(body io.Reader, metrics *AIAnalysisMetrics, onDe
 	}
 
 	return stripMarkdownCodeFence(text), nil
+}
+
+func openAIStreamStopError(eventType string, responseBytes []byte) error {
+	var response struct {
+		Status            string `json:"status"`
+		IncompleteDetails *struct {
+			Reason string `json:"reason"`
+		} `json:"incomplete_details"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(responseBytes, &response)
+	switch {
+	case response.IncompleteDetails != nil && response.IncompleteDetails.Reason != "":
+		return fmt.Errorf("openai response incomplete: %s", response.IncompleteDetails.Reason)
+	case response.Error != nil && strings.TrimSpace(response.Error.Message) != "":
+		return fmt.Errorf("openai response failed: %s", response.Error.Message)
+	}
+	return fmt.Errorf("openai stream ended with %s", eventType)
 }
 
 func applyOpenAIUsage(metrics *AIAnalysisMetrics, responseBytes []byte) {

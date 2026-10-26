@@ -17,7 +17,8 @@ const stepText: Record<GuideStepKey, ReactNode> = {
   ),
   edit: (
     <>
-      Fix the paragraph the comment is about: click it in the email, then the pencil.
+      Fix the paragraph the comment is about, the one starting <b>Lorem ipsum</b>: tap or
+      click it in the email, then the pencil.
     </>
   ),
   resolve: <>Resolve the blocking comment in the Comments tab.</>,

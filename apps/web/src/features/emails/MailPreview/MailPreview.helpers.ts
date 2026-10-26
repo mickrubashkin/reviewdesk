@@ -3,10 +3,17 @@ import type { EditableField, EditableFields, EmailDetail } from "../types";
 
 import type { InlineEditInput, InlineEditableTarget, SelectionMenuState } from "./MailPreview";
 
+// Sent on the parent window when the input layer scrolls the frame: WebKit
+// does not run the frame's own scroll listeners either.
+export const FRAME_SCROLL_EVENT = "reviewframescroll";
+
+const frameHeights = new WeakMap<HTMLIFrameElement, number>();
+
 export function installReviewSelectionMenu(
   frame: HTMLIFrameElement,
   email: EmailDetail,
-  setSelectionMenu: (selection: SelectionMenuState | null) => void
+  setSelectionMenu: (selection: SelectionMenuState | null) => void,
+  inputLayer: HTMLElement | null
 ) {
   const frameDocument = frame.contentDocument;
   const frameWindow = frame.contentWindow;
@@ -14,9 +21,18 @@ export function installReviewSelectionMenu(
     return;
   }
 
+  // On a phone a long press selects text without a mouseup, so the menu
+  // follows the selection once it settles, and opens below it to keep clear
+  // of the system Copy/Look Up callout.
+  const isTouch = frameWindow.matchMedia("(pointer: coarse)").matches;
+
   // A block click leaves a collapsed selection behind, and the selectionchange
   // that follows it must not close the composer the click just opened.
   let blockComposerOpen = false;
+  // A tap on the menu, outside the frame, can drop the frame's selection; only
+  // a touch in the frame closes the menu on a phone.
+  let lastFrameTouch = 0;
+  let settleTimer: number | undefined;
   const updateSelectionMenu = () => {
     blockComposerOpen = false;
     const selection = frameWindow.getSelection();
@@ -41,29 +57,29 @@ export function installReviewSelectionMenu(
         email.editable_fields
       ),
       mode: "actions",
+      placement: isTouch ? "bottom" : "top",
       x: frameRect.left + rangeRect.left + rangeRect.width / 2,
-      y: frameRect.top + rangeRect.top,
+      y: frameRect.top + (isTouch ? rangeRect.bottom : rangeRect.top),
     });
   };
-  const openBlockSelectionComposer = (event: MouseEvent) => {
+  const openBlockSelectionComposer = (target: EventTarget | null) => {
     const selection = frameWindow.getSelection();
     if (selection && !selection.isCollapsed) {
-      return;
+      return false;
     }
 
-    const target = event.target;
     if (!isElementLike(target)) {
-      return;
+      return false;
     }
 
     const block = getCommentableReviewBlockFromClick(target);
     if (!block) {
-      return;
+      return false;
     }
 
     const reviewSelection = getWholeBlockSelection(block);
     if (!reviewSelection) {
-      return;
+      return false;
     }
 
     const frameRect = frame.getBoundingClientRect();
@@ -78,18 +94,189 @@ export function installReviewSelectionMenu(
       x: frameRect.left + blockRect.left + blockRect.width / 2,
       y: frameRect.top + blockRect.top,
     });
+    return true;
   };
 
+  // WebKit (every browser on iOS, Safari on a Mac) does not call the page's
+  // listeners inside a frame sandboxed without allow-scripts, so there the
+  // layer over the frame takes the input instead.
+  if (inputLayer) {
+    const useLayer = !frameRunsParentListeners(frameDocument);
+    inputLayer.hidden = !useLayer;
+    if (useLayer) {
+      installInputLayer(inputLayer, frame, {
+        isTouch,
+        onBlockTap: (target) => {
+          frameWindow.getSelection()?.removeAllRanges();
+          if (!openBlockSelectionComposer(target)) {
+            setSelectionMenu(null);
+          }
+        },
+        onSelect: updateSelectionMenu,
+        onScroll: () => setSelectionMenu(null),
+      });
+      return;
+    }
+  }
+
   frameDocument.addEventListener("mouseup", updateSelectionMenu);
-  frameDocument.addEventListener("click", openBlockSelectionComposer);
+  frameDocument.addEventListener("click", (event) => {
+    openBlockSelectionComposer(event.target);
+  });
   frameDocument.addEventListener("keyup", updateSelectionMenu);
+  frameDocument.addEventListener(
+    "touchstart",
+    () => {
+      lastFrameTouch = Date.now();
+    },
+    { passive: true }
+  );
   frameDocument.addEventListener("selectionchange", () => {
+    window.clearTimeout(settleTimer);
     const selection = frameWindow.getSelection();
-    if ((!selection || selection.isCollapsed) && !blockComposerOpen) {
-      setSelectionMenu(null);
+    if (!selection || selection.isCollapsed) {
+      const touchedFrame = Date.now() - lastFrameTouch < 1000;
+      if (!blockComposerOpen && (!isTouch || touchedFrame)) {
+        setSelectionMenu(null);
+      }
+      return;
+    }
+    if (isTouch) {
+      settleTimer = window.setTimeout(updateSelectionMenu, 400);
     }
   });
   frameWindow.addEventListener("scroll", () => setSelectionMenu(null), true);
+}
+
+function frameRunsParentListeners(frameDocument: Document) {
+  let ran = false;
+  const probe = () => {
+    ran = true;
+  };
+  frameDocument.addEventListener("reviewprobe", probe);
+  frameDocument.dispatchEvent(new Event("reviewprobe"));
+  frameDocument.removeEventListener("reviewprobe", probe);
+  return ran;
+}
+
+function installInputLayer(
+  layer: HTMLElement,
+  frame: HTMLIFrameElement,
+  handlers: {
+    isTouch: boolean;
+    onBlockTap: (target: Element | null) => void;
+    onSelect: () => void;
+    onScroll: () => void;
+  }
+) {
+  const frameDocument = frame.contentDocument;
+  const frameWindow = frame.contentWindow;
+  if (!frameDocument || !frameWindow) {
+    return;
+  }
+
+  // A finger cannot scroll the frame through the layer, so on a touch screen
+  // the frame grows to the email and the page scrolls instead.
+  if (handlers.isTouch) {
+    window.clearInterval(frameHeights.get(frame));
+    const fitHeight = () => {
+      if (!frame.isConnected || frame.contentDocument !== frameDocument) {
+        window.clearInterval(frameHeights.get(frame));
+        return;
+      }
+      const height = frameDocument.documentElement.scrollHeight;
+      if (height > 0 && frame.style.height !== `${height}px`) {
+        frame.style.height = `${height}px`;
+      }
+    };
+    fitHeight();
+    frameHeights.set(frame, window.setInterval(fitHeight, 1000));
+  }
+
+  const pointInFrame = (event: PointerEvent) => {
+    const rect = frame.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+  let press: { x: number; y: number; start: Range | null; dragging: boolean } | null = null;
+
+  // Properties, not listeners: the layer outlives the frame document, and a
+  // reload installs the handlers again.
+  layer.onpointerdown = (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+    const point = pointInFrame(event);
+    press = {
+      x: event.clientX,
+      y: event.clientY,
+      start: caretRangeAt(frameDocument, point.x, point.y),
+      dragging: false,
+    };
+    if (event.pointerType === "mouse") {
+      event.preventDefault();
+      layer.setPointerCapture(event.pointerId);
+      frameWindow.getSelection()?.removeAllRanges();
+    }
+  };
+  layer.onpointermove = (event) => {
+    if (!press || event.pointerType !== "mouse") {
+      return;
+    }
+    if (!press.dragging && Math.hypot(event.clientX - press.x, event.clientY - press.y) < 4) {
+      return;
+    }
+    press.dragging = true;
+    const point = pointInFrame(event);
+    const end = caretRangeAt(frameDocument, point.x, point.y);
+    if (press.start && end) {
+      frameWindow
+        .getSelection()
+        ?.setBaseAndExtent(
+          press.start.startContainer,
+          press.start.startOffset,
+          end.startContainer,
+          end.startOffset
+        );
+    }
+  };
+  layer.onpointerup = (event) => {
+    const current = press;
+    press = null;
+    if (!current) {
+      return;
+    }
+    if (current.dragging) {
+      handlers.onSelect();
+      return;
+    }
+    if (Math.hypot(event.clientX - current.x, event.clientY - current.y) > 10) {
+      return;
+    }
+    const point = pointInFrame(event);
+    handlers.onBlockTap(frameDocument.elementFromPoint(point.x, point.y));
+  };
+  layer.onpointercancel = () => {
+    press = null;
+  };
+  layer.onwheel = (event) => {
+    event.preventDefault();
+    frameWindow.scrollBy(event.deltaX, event.deltaY);
+    handlers.onScroll();
+    window.dispatchEvent(new Event(FRAME_SCROLL_EVENT));
+  };
+}
+
+function caretRangeAt(frameDocument: Document, x: number, y: number): Range | null {
+  if (typeof frameDocument.caretRangeFromPoint === "function") {
+    return frameDocument.caretRangeFromPoint(x, y);
+  }
+  const position = frameDocument.caretPositionFromPoint?.(x, y);
+  if (!position) {
+    return null;
+  }
+  const range = frameDocument.createRange();
+  range.setStart(position.offsetNode, position.offset);
+  return range;
 }
 
 function getReviewSelection(
