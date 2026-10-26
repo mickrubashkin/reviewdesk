@@ -19,6 +19,7 @@ Subdomain is preferred over `/demo` because it keeps routes, cookies, API proxyi
 - Each visitor gets a sandbox: their own board-scoped user (`visitor-…@visitors.demo.invalid`, a reviewer who manages one board) and their own copy of the demo board (`demo-visit-…`), seeded on entry. A board-scoped user sees only the boards they manage, so visitors never see each other's boards, comments, or edits.
 - The session ends with the sandbox, 24 hours after the visit. The API deletes expired sandboxes every hour, and the oldest ones when there are more than 500. A visitor who comes back later gets a fresh copy.
 - Entries are rate-limited to 20 per hour per address.
+- A visitor's writes are capped per visitor: 240 a minute and 2,000 an hour in all, 60 an hour that add something (comments, replies, emails, slots, stages; previews and edits do not count), and request bodies up to 2 MB. Over a limit the API answers 429 with `Retry-After`. Counters are in memory and reset on restart. See `internal/demo/write_limit.go`.
 - The shared `demo-onboarding` board is still seeded by `cmd/demoseed`. Visitors do not see it.
 
 ## Allowed Demo Actions
@@ -53,7 +54,7 @@ Interactive demo option:
 - Demo AI is live but limited: each visitor gets 5 OpenAI calls (analysis and translations; cached results are free) and the whole demo 200 per 24 hours, counted in `demo_ai_calls`.
 - Demo notification emails (@mentions) are only logged, even if `RESEND_API_KEY` is set.
 - Every demo entry is recorded in `demo_visits` (source, device, and what the visitor did), which outlives the sandbox and demo resets. See Visit Stats.
-- Remaining demo work: edge rate limits for the other endpoints, screenshots, and short demo video.
+- Remaining demo work: screenshots and short demo video.
 
 ## Seed Commands
 
