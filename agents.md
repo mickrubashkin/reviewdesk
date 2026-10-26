@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Context
-ReviewDesk is an internal tool for reviewing HTML email sequences. Go backend (Chi + pgx, direct SQL) + React frontend (Mantine v9, TanStack Query, React Router).
+ReviewDesk is a review and approval tool for HTML email sequences. Go backend (Chi + pgx, direct SQL) + React frontend (Mantine v9, TanStack Query, React Router).
 
 ## Repo layout
 - `apps/api/cmd/server` — HTTP API entrypoint; `main.go` loads `../../.env`.
@@ -47,16 +47,6 @@ ReviewDesk is an internal tool for reviewing HTML email sequences. Go backend (C
 - Keep changes focused.
 - Dependencies: prefer a good, well-maintained existing library over a hand-written solution. Priority is maximum functionality with minimum pain, not a minimal dependency list. Still prefer what the stack already uses (Mantine, TanStack, Chi, pgx) when it covers the need.
 - Approval gates: an email cannot be approved while there are open blocking comments or pending required area approvals.
-
-## Domain model (redesign in progress)
-- Slot = stage + position + timing. Each slot has an EN master (EN is always the source of truth for content).
-- Translations (DE, ES, PL, BR) link to the master revision they came from; when the master changes they become stale (outdated).
-- Market differences are a small fixed set of per-region variables (currency, contract/rules links), not copies of the email.
-- Manager adaptations are overrides of a few fields on top of the master, not full duplicates. Branches are for meaningfully different content only.
-- `old` variants may still be live. Decide per email from portal sync data, don't assume they are dead.
-- Sending is manual: HTML is pasted into a Bitrix24 CRM robot. Bitrix24 access is read-only (inbound webhook). "Live" means confirmed uploaded/sent via the portal sync or a manual mark by a super admin.
-- Target status flow is simplified to draft → ready → live (the old approval gates still exist in code).
-- `apps/api/cmd/slotplan` is the migration dry-run; re-run it on real data before any real migration.
 
 ## Board views
 - Views: `cards`, `matrix`, `timeline`, `archive`; `timeline` is the default. The view is in the URL (`?view=…`) and wins over the last one kept in `sessionStorage`. `?stage=<stage>` is a one-shot reveal: BoardHome scrolls to `[data-stage]` and drops the param; the timeline also unfolds that stage. Each timeline stage has a "Copy link" for it.
