@@ -1,47 +1,58 @@
+import { useState } from "react";
 import {
   ActionIcon,
   Badge,
   Button,
-  Menu,
-  SegmentedControl,
+  Chip,
+  Collapse,
+  Group,
+  Popover,
   Select,
+  Stack,
+  Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import {
+  CaretDownIcon,
+  CaretRightIcon,
   MagnifyingGlassIcon,
   SlidersHorizontalIcon,
   UserIcon,
   XIcon,
 } from "@phosphor-icons/react";
 
-import { emailReviewStatusOptions } from "../../emails/reviewStatus";
-import { productionStatusOptions } from "../../emails/productionStatus";
+import { useUserName } from "../../../shared/userNames";
 import type { AuthUser } from "../../emails/types";
 
-import type { BoardFilterOptions, BoardFilters } from "./BoardHome.types";
-import { FilteredExportItems } from "./FilteredExportItems";
-import type { FilteredExport } from "./useFilteredExport";
+import type {
+  BoardEmailState,
+  BoardFilterChange,
+  BoardFilterCounts,
+  BoardFilterOptions,
+  BoardFilters,
+} from "./BoardHome.types";
 import styles from "../../../App.module.css";
+
+const stateOptions: Array<{ label: string; value: BoardEmailState }> = [
+  { label: "Draft", value: "draft" },
+  { label: "Ready", value: "ready" },
+  { label: "Live", value: "live" },
+];
 
 export function BoardFilterMenu({
   activeBoardFilterCount,
+  boardFilterCounts,
   boardFilterOptions,
   boardFilters,
-  filteredExport,
-  hasBoardFilters,
-  isAdmin,
-  openCommentEmailCount,
   onBoardFilterChange,
   onResetBoardFilters,
 }: {
   activeBoardFilterCount: number;
+  boardFilterCounts: BoardFilterCounts;
   boardFilterOptions: BoardFilterOptions;
   boardFilters: BoardFilters;
-  filteredExport: FilteredExport;
-  hasBoardFilters: boolean;
-  isAdmin: boolean;
-  openCommentEmailCount: number;
-  onBoardFilterChange: (key: keyof BoardFilters, value: string | null) => void;
+  onBoardFilterChange: BoardFilterChange;
   onResetBoardFilters: () => void;
 }) {
   const filterButtonLabel =
@@ -50,8 +61,8 @@ export function BoardFilterMenu({
       : "Filters";
 
   return (
-    <Menu position="bottom-end" width={270} shadow="md" withinPortal>
-      <Menu.Target>
+    <Popover position="bottom-end" width={300} shadow="md" withinPortal>
+      <Popover.Target>
         <div className={styles.boardFilterButtonWrap}>
           <ActionIcon
             aria-label={filterButtonLabel}
@@ -73,213 +84,277 @@ export function BoardFilterMenu({
             </Badge>
           ) : null}
         </div>
-      </Menu.Target>
-      <Menu.Dropdown>
-        <Menu.Label>Comments</Menu.Label>
+      </Popover.Target>
+      <Popover.Dropdown p="sm">
+        <Group justify="space-between" mb="xs">
+          <Text fw={650} size="sm">
+            Filters
+          </Text>
+          {activeBoardFilterCount > 0 ? (
+            <Button
+              color="red"
+              size="compact-xs"
+              variant="subtle"
+              onClick={onResetBoardFilters}
+            >
+              Clear all
+            </Button>
+          ) : null}
+        </Group>
         <BoardFilterControls
+          boardFilterCounts={boardFilterCounts}
           boardFilterOptions={boardFilterOptions}
           boardFilters={boardFilters}
-          commentLabel={`Open ${openCommentEmailCount}`}
-          showLabels
           onBoardFilterChange={onBoardFilterChange}
         />
-
-        {hasBoardFilters ? (
-          <>
-            <Menu.Divider />
-            <Menu.Item color="red" onClick={onResetBoardFilters}>
-              Clear filters
-            </Menu.Item>
-          </>
-        ) : null}
-
-        {isAdmin ? (
-          <>
-            <Menu.Divider />
-            <FilteredExportItems filteredExport={filteredExport} />
-          </>
-        ) : null}
-      </Menu.Dropdown>
-    </Menu>
-  );
-}
-
-function myEmailsFilterKey(currentUser: AuthUser) {
-  return currentUser.role === "reviewer" ? "reviewer" : "owner";
-}
-
-function findMyFilterValue(
-  currentUser: AuthUser,
-  boardFilterOptions: BoardFilterOptions
-) {
-  const options =
-    myEmailsFilterKey(currentUser) === "reviewer"
-      ? boardFilterOptions.reviewers
-      : boardFilterOptions.owners;
-  const myEmail = currentUser.email.trim().toLowerCase();
-
-  return (
-    options.find((option) => option.value.toLowerCase() === myEmail)?.value ??
-    currentUser.email
+      </Popover.Dropdown>
+    </Popover>
   );
 }
 
 export function MyEmailsToggle({
-  boardFilterOptions,
   boardFilters,
   currentUser,
   fullWidth = false,
   onBoardFilterChange,
 }: {
-  boardFilterOptions: BoardFilterOptions;
   boardFilters: BoardFilters;
   currentUser: AuthUser;
   fullWidth?: boolean;
-  onBoardFilterChange: (key: keyof BoardFilters, value: string | null) => void;
+  onBoardFilterChange: BoardFilterChange;
 }) {
-  const key = myEmailsFilterKey(currentUser);
-  const myValue = findMyFilterValue(currentUser, boardFilterOptions);
-  const active = boardFilters[key].toLowerCase() === myValue.toLowerCase();
+  const active = Boolean(boardFilters.mine);
 
   return (
-    <Button
-      aria-pressed={active}
-      className={fullWidth ? undefined : styles.myEmailsToggle}
-      fullWidth={fullWidth}
-      leftSection={<UserIcon aria-hidden="true" size={16} />}
-      size={fullWidth ? "xs" : "sm"}
-      variant={active ? "filled" : "white"}
-      onClick={() => onBoardFilterChange(key, active ? null : myValue)}
-    >
-      My emails
-    </Button>
+    <Tooltip disabled={fullWidth} label="My emails">
+      <Button
+        aria-label="My emails"
+        aria-pressed={active}
+        className={fullWidth ? undefined : `${styles.myEmailsToggle} ${styles.collapsibleButton}`}
+        fullWidth={fullWidth}
+        leftSection={<UserIcon aria-hidden="true" size={16} />}
+        size={fullWidth ? "xs" : "sm"}
+        variant={active ? "filled" : "white"}
+        onClick={() =>
+          onBoardFilterChange("mine", active ? "" : currentUser.email.trim())
+        }
+      >
+        <span className={fullWidth ? undefined : styles.collapsibleLabel}>My emails</span>
+      </Button>
+    </Tooltip>
   );
 }
 
 export function BoardFilterControls({
+  boardFilterCounts,
   boardFilterOptions,
   boardFilters,
-  commentLabel,
-  showLabels = false,
   onBoardFilterChange,
 }: {
+  boardFilterCounts: BoardFilterCounts;
   boardFilterOptions: BoardFilterOptions;
   boardFilters: BoardFilters;
-  commentLabel: string;
-  showLabels?: boolean;
-  onBoardFilterChange: (key: keyof BoardFilters, value: string | null) => void;
+  onBoardFilterChange: BoardFilterChange;
 }) {
+  const userName = useUserName();
+  const hasRegions = boardFilterOptions.regions.length > 0;
+  const hasMoreOptions =
+    boardFilterOptions.variants.length > 1 ||
+    boardFilterOptions.adaptations.length > 1 ||
+    hasRegions;
+  const [moreOpened, setMoreOpened] = useState(
+    Boolean(boardFilters.variant || boardFilters.adaptation || boardFilters.region)
+  );
+
   return (
-    <>
-      <div className={styles.boardFilterMenuControl}>
-        <SegmentedControl
-          data={[
-            { label: "All", value: "all" },
-            { label: commentLabel, value: "open" },
-          ]}
-          fullWidth
+    <Stack className={styles.boardFilterControls} gap="sm">
+      <FilterSection label="Needs attention">
+        <Group gap={6}>
+          <QuickFilterChip
+            checked={boardFilters.openComments}
+            count={boardFilterCounts.openComments}
+            label="Open comments"
+            onChange={(checked) => onBoardFilterChange("openComments", checked)}
+          />
+          <QuickFilterChip
+            checked={boardFilters.staleTranslation}
+            count={boardFilterCounts.staleTranslation}
+            label="Stale translation"
+            onChange={(checked) =>
+              onBoardFilterChange("staleTranslation", checked)
+            }
+          />
+          <QuickFilterChip
+            checked={boardFilters.needsUpload}
+            count={boardFilterCounts.needsUpload}
+            label="To upload"
+            onChange={(checked) => onBoardFilterChange("needsUpload", checked)}
+          />
+        </Group>
+      </FilterSection>
+
+      {boardFilterOptions.languages.length > 1 ? (
+        <FilterSection label="Language">
+          <Chip.Group
+            multiple
+            value={boardFilters.languages}
+            onChange={(value) => onBoardFilterChange("languages", value)}
+          >
+            <Group gap={6}>
+              {boardFilterOptions.languages.map((option) => (
+                <Chip key={option.value} size="xs" value={option.value}>
+                  {option.label}
+                </Chip>
+              ))}
+            </Group>
+          </Chip.Group>
+        </FilterSection>
+      ) : null}
+
+      <FilterSection label="State">
+        <Chip.Group
+          multiple
+          value={boardFilters.states}
+          onChange={(value) =>
+            onBoardFilterChange("states", value as BoardEmailState[])
+          }
+        >
+          <Group gap={6}>
+            {stateOptions.map((option) => (
+              <Chip key={option.value} size="xs" value={option.value}>
+                {option.label}
+              </Chip>
+            ))}
+          </Group>
+        </Chip.Group>
+      </FilterSection>
+
+      <FilterSection label="Owner">
+        <Select
+          clearable
+          comboboxProps={{ withinPortal: false }}
+          data={boardFilterOptions.owners.map((option) => ({
+            label:
+              option.value === "__unassigned__"
+                ? option.label
+                : userName(option.value),
+            value: option.value,
+          }))}
+          placeholder="Any owner"
+          searchable
           size="xs"
-          value={boardFilters.comments}
-          onChange={(value) => onBoardFilterChange("comments", value)}
+          value={boardFilters.owner || null}
+          onChange={(value) => onBoardFilterChange("owner", value ?? "")}
         />
-      </div>
-      <BoardFilterSelect
-        data={boardFilterOptions.languages}
-        label="Language"
-        placeholder="All languages"
-        showLabel={showLabels}
-        value={boardFilters.language}
-        onChange={(value) => onBoardFilterChange("language", value)}
-      />
-      <BoardFilterSelect
-        data={boardFilterOptions.adaptations}
-        label="Adaptation"
-        placeholder="All adaptations"
-        showLabel={showLabels}
-        value={boardFilters.adaptation}
-        onChange={(value) => onBoardFilterChange("adaptation", value)}
-      />
-      <BoardFilterSelect
-        data={boardFilterOptions.variants}
-        label="Version"
-        placeholder="All versions"
-        showLabel={showLabels}
-        value={boardFilters.variant}
-        onChange={(value) => onBoardFilterChange("variant", value)}
-      />
-      <BoardFilterSelect
-        data={boardFilterOptions.owners}
-        label="Owner"
-        placeholder="All owners"
-        showLabel={showLabels}
-        value={boardFilters.owner}
-        onChange={(value) => onBoardFilterChange("owner", value)}
-      />
-      <BoardFilterSelect
-        data={boardFilterOptions.reviewers}
-        label="Reviewer"
-        placeholder="All reviewers"
-        showLabel={showLabels}
-        value={boardFilters.reviewer}
-        onChange={(value) => onBoardFilterChange("reviewer", value)}
-      />
-      <BoardFilterSelect
-        data={productionStatusOptions}
-        label="Production"
-        placeholder="Live or not: all"
-        showLabel={showLabels}
-        value={boardFilters.production}
-        onChange={(value) => onBoardFilterChange("production", value)}
-      />
-      <BoardFilterSelect
-        data={[{ label: "Outdated (EN changed since)", value: "stale" }]}
-        label="Translation"
-        placeholder="All translations"
-        showLabel={showLabels}
-        value={boardFilters.translation}
-        onChange={(value) => onBoardFilterChange("translation", value)}
-      />
-      <BoardFilterSelect
-        data={emailReviewStatusOptions}
-        label="Status"
-        placeholder="All statuses"
-        showLabel={showLabels}
-        value={boardFilters.status}
-        onChange={(value) => onBoardFilterChange("status", value)}
-      />
-    </>
+      </FilterSection>
+
+      {hasMoreOptions ? (
+        <div>
+          <Button
+            color="gray"
+            leftSection={
+              moreOpened ? (
+                <CaretDownIcon aria-hidden="true" size={12} />
+              ) : (
+                <CaretRightIcon aria-hidden="true" size={12} />
+              )
+            }
+            px={4}
+            size="compact-xs"
+            variant="subtle"
+            onClick={() => setMoreOpened((opened) => !opened)}
+          >
+            {hasRegions ? "Version and region" : "Version and adaptation"}
+          </Button>
+          <Collapse expanded={moreOpened}>
+            <Stack gap="xs" pt="xs">
+              {boardFilterOptions.variants.length > 1 ? (
+                <Select
+                  clearable
+                  comboboxProps={{ withinPortal: false }}
+                  data={boardFilterOptions.variants}
+                  label="Version"
+                  placeholder="Any version"
+                  size="xs"
+                  value={boardFilters.variant || null}
+                  onChange={(value) =>
+                    onBoardFilterChange("variant", value ?? "")
+                  }
+                />
+              ) : null}
+              {hasRegions ? (
+                <Select
+                  clearable
+                  comboboxProps={{ withinPortal: false }}
+                  data={boardFilterOptions.regions}
+                  label="Region"
+                  placeholder="Any region"
+                  size="xs"
+                  value={boardFilters.region || null}
+                  onChange={(value) =>
+                    onBoardFilterChange("region", value ?? "")
+                  }
+                />
+              ) : null}
+              {boardFilterOptions.adaptations.length > 1 ? (
+                <Select
+                  clearable
+                  comboboxProps={{ withinPortal: false }}
+                  data={boardFilterOptions.adaptations}
+                  label="Adaptation"
+                  placeholder="Any adaptation"
+                  size="xs"
+                  value={boardFilters.adaptation || null}
+                  onChange={(value) =>
+                    onBoardFilterChange("adaptation", value ?? "")
+                  }
+                />
+              ) : null}
+            </Stack>
+          </Collapse>
+        </div>
+      ) : null}
+    </Stack>
   );
 }
 
-function BoardFilterSelect({
-  data,
+function FilterSection({
+  children,
   label,
-  placeholder,
-  showLabel,
-  value,
-  onChange,
 }: {
-  data: Array<{ label: string; value: string }>;
+  children: React.ReactNode;
   label: string;
-  placeholder: string;
-  showLabel: boolean;
-  value: string;
-  onChange: (value: string | null) => void;
 }) {
   return (
-    <>
-      {showLabel ? <Menu.Label>{label}</Menu.Label> : null}
-      <div className={styles.boardFilterMenuControl}>
-        <Select
-          clearable
-          data={data}
-          placeholder={placeholder}
-          size="xs"
-          value={value || null}
-          onChange={onChange}
-        />
-      </div>
-    </>
+    <div>
+      <Text c="dimmed" fw={600} mb={6} size="xs">
+        {label}
+      </Text>
+      {children}
+    </div>
+  );
+}
+
+function QuickFilterChip({
+  checked,
+  count,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  count: number;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <Chip
+      checked={checked}
+      disabled={count === 0 && !checked}
+      size="xs"
+      onChange={onChange}
+    >
+      {label} {count}
+    </Chip>
   );
 }
 
@@ -296,7 +371,7 @@ export function BoardSearchInput({
     <TextInput
       className={size === "sm" ? styles.boardSearch : undefined}
       leftSection={<MagnifyingGlassIcon aria-hidden="true" size={16} />}
-      placeholder="Search emails"
+      placeholder="Search"
       size={size}
       value={boardSearchQuery}
       rightSection={

@@ -583,19 +583,36 @@ func loadBoardEvent(t *testing.T, dbpool *pgxpool.Pool, boardKey string, action 
 	return event
 }
 
-func testListBoardApprovalAreas(ctx context.Context, dbpool *pgxpool.Pool, boardKey string, includeArchived bool) ([]struct{Key string; Name string}, error) {
-    rows, err := dbpool.Query(ctx, "SELECT key, name FROM board_approval_areas WHERE board_key = $1 AND (archived_at IS NULL OR $2)", boardKey, includeArchived)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
-    var areas []struct{Key string; Name string}
-    for rows.Next() {
-        var a struct{Key string; Name string}
-        if err := rows.Scan(&a.Key, &a.Name); err != nil {
-            return nil, err
-        }
-        areas = append(areas, a)
-    }
-    return areas, nil
+func testListBoardApprovalAreas(ctx context.Context, dbpool *pgxpool.Pool, boardKey string, includeArchived bool) ([]struct {
+	Key  string
+	Name string
+}, error) {
+	rows, err := dbpool.Query(ctx, `
+		SELECT approval_areas.key, board_approval_areas.name
+		FROM board_approval_areas
+		JOIN boards ON boards.id = board_approval_areas.board_id
+		JOIN approval_areas ON approval_areas.id = board_approval_areas.approval_area_id
+		WHERE boards.key = $1
+			AND (board_approval_areas.archived_at IS NULL OR $2)
+		ORDER BY board_approval_areas.sort_order;
+	`, boardKey, includeArchived)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var areas []struct {
+		Key  string
+		Name string
+	}
+	for rows.Next() {
+		var a struct {
+			Key  string
+			Name string
+		}
+		if err := rows.Scan(&a.Key, &a.Name); err != nil {
+			return nil, err
+		}
+		areas = append(areas, a)
+	}
+	return areas, rows.Err()
 }

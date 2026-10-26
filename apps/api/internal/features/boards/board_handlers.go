@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -20,6 +21,8 @@ type createBoardRequest struct {
 	Name           string  `json:"name"`
 	Key            *string `json:"key"`
 	SourceBoardKey *string `json:"source_board_key"`
+	// CopyEmails also copies the source board's EN emails as drafts.
+	CopyEmails bool `json:"copy_emails"`
 }
 
 type createBoardStageRequest struct {
@@ -46,6 +49,8 @@ var (
 func RegisterBoardRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Get("/api/boards", listBoardsHandler(dbpool))
 	r.Post("/api/boards", createBoardHandler(dbpool))
+	r.Get("/api/boards/{boardKey}/regions", listRegionsHandler(dbpool))
+	r.Put("/api/boards/{boardKey}/regions", replaceRegionsHandler(dbpool))
 	r.Get("/api/boards/{boardKey}/approval-areas", listBoardApprovalAreasHandler(dbpool))
 	r.Post("/api/boards/{boardKey}/approval-areas", createBoardApprovalAreaHandler(dbpool))
 	r.Patch("/api/boards/{boardKey}/approval-areas", reorderBoardApprovalAreasHandler(dbpool))
@@ -65,6 +70,16 @@ func listBoardsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "failed to load boards", http.StatusInternalServerError)
 			return
 		}
+		if user, ok := auth.FromRequest(r); ok {
+			visible, scoped, err := auth.ScopedBoards(r.Context(), dbpool, user)
+			if err != nil {
+				http.Error(w, "failed to load boards", http.StatusInternalServerError)
+				return
+			}
+			if scoped {
+				boards = slices.DeleteFunc(boards, func(board BoardItem) bool { return !slices.Contains(visible, board.Key) })
+			}
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(boards)
@@ -73,7 +88,7 @@ func listBoardsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func createBoardStageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireAdminUser(w, r)
+		user, ok := requireBoardManager(w, r, dbpool)
 		if !ok {
 			return
 		}
@@ -102,7 +117,7 @@ func createBoardStageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func updateBoardStageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireAdminUser(w, r)
+		user, ok := requireBoardManager(w, r, dbpool)
 		if !ok {
 			return
 		}
@@ -126,7 +141,7 @@ func updateBoardStageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func deleteBoardStageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireAdminUser(w, r)
+		user, ok := requireBoardManager(w, r, dbpool)
 		if !ok {
 			return
 		}
@@ -138,7 +153,7 @@ func deleteBoardStageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func reorderBoardStagesHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireAdminUser(w, r)
+		user, ok := requireBoardManager(w, r, dbpool)
 		if !ok {
 			return
 		}
@@ -176,6 +191,27 @@ func requireAdminUser(w http.ResponseWriter, r *http.Request) (AuthUser, bool) {
 		return AuthUser{}, false
 	}
 	if !auth.IsAdmin(user) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return AuthUser{}, false
+	}
+	return user, true
+}
+
+// requireBoardManager lets through admins and the managers of the board in
+// the URL (Users → Manages).
+func requireBoardManager(w http.ResponseWriter, r *http.Request, dbpool *pgxpool.Pool) (AuthUser, bool) {
+	user, ok := auth.FromRequest(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return AuthUser{}, false
+	}
+	allowed, err := auth.CanManageBoard(r.Context(), dbpool, user, chi.URLParam(r, "boardKey"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to check board access: %v\n", err)
+		http.Error(w, "failed to check access", http.StatusInternalServerError)
+		return AuthUser{}, false
+	}
+	if !allowed {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return AuthUser{}, false
 	}
@@ -240,7 +276,7 @@ func createBoardHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			sourceBoardKey = "onboarding"
 		}
 
-		board, err := createBoardFromSource(r.Context(), dbpool, name, key, sourceBoardKey, user)
+		board, err := createBoardFromSource(r.Context(), dbpool, name, key, sourceBoardKey, request.CopyEmails, user)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Error(w, "source board not found", http.StatusBadRequest)
@@ -261,7 +297,7 @@ func createBoardHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func createBoardFromSource(ctx context.Context, dbpool *pgxpool.Pool, name string, key string, sourceBoardKey string, actor AuthUser) (BoardItem, error) {
+func createBoardFromSource(ctx context.Context, dbpool *pgxpool.Pool, name string, key string, sourceBoardKey string, copyEmails bool, actor AuthUser) (BoardItem, error) {
 	tx, err := dbpool.Begin(ctx)
 	if err != nil {
 		return BoardItem{}, err
@@ -298,10 +334,22 @@ func createBoardFromSource(ctx context.Context, dbpool *pgxpool.Pool, name strin
 	if err := json.Unmarshal(createdStages, &board.Stages); err != nil {
 		return BoardItem{}, err
 	}
+	copiedEmailCount := 0
+	if copyEmails {
+		if CopyEmails == nil {
+			return BoardItem{}, errors.New("copying emails is not configured")
+		}
+		copiedEmailCount, err = CopyEmails(ctx, tx, actor, sourceBoardKey, board.Key)
+		if err != nil {
+			return BoardItem{}, err
+		}
+		board.CopiedEmailCount = &copiedEmailCount
+	}
 	if err := insertBoardEvent(ctx, tx, actor, boardEventCreated, board, map[string]any{
-		"board_key":        board.Key,
-		"board_name":       board.Name,
-		"source_board_key": sourceBoardKey,
+		"board_key":          board.Key,
+		"board_name":         board.Name,
+		"source_board_key":   sourceBoardKey,
+		"copied_email_count": copiedEmailCount,
 	}, map[string]any{
 		"board": map[string]any{
 			"before": nil,

@@ -1,9 +1,10 @@
-import { Button, Group, SegmentedControl, Select, Stack, Text, Textarea } from "@mantine/core";
+import { Button, Group, SegmentedControl, Select, Stack, Text } from "@mantine/core";
 import type { FormEvent } from "react";
 
 import type { EmailCommentSeverity } from "../../../emails/types";
 import type { CommentBlockOption } from "../EmailReview.types";
 import styles from "../EmailReview.module.css";
+import { MentionTextarea } from "../../../comments/MentionTextarea";
 
 export function CommentComposer({
   blockOptions,
@@ -55,13 +56,13 @@ export function CommentComposer({
             No review blocks found. Select text in the preview instead.
           </Text>
         )}
-        <Textarea
+        <MentionTextarea
           autosize
           disabled={isCreatingComment || !selectedBlock}
           minRows={3}
-          placeholder="Add a comment"
+          placeholder="Add a comment, @ to mention"
           value={draftComment}
-          onChange={(event) => onChangeDraftComment(event.currentTarget.value)}
+          onChange={onChangeDraftComment}
         />
         <SegmentedControl
           data={[

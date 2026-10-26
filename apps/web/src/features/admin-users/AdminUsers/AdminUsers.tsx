@@ -5,6 +5,7 @@ import {
   Button,
   Group,
   Loader,
+  MultiSelect,
   ScrollArea,
   Select,
   Stack,
@@ -23,13 +24,29 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 
+import { fetchBoards } from "../../boards/api";
 import { AdminTableHeader } from "../../admin-table/AdminTableHeader";
 import { usePersistedColumnSizing } from "../../admin-table/usePersistedColumnSizing";
 import { usePersistedSort } from "../../admin-table/usePersistedSort";
-import { createAdminUser, fetchAdminUsers, updateAdminUserRole } from "../api";
+import {
+  createAdminUser,
+  fetchAdminUsers,
+  updateAdminUserBoards,
+  updateAdminUserLanguages,
+  updateAdminUserRole,
+} from "../api";
 import type { UserAdminItem, UserRole } from "../../emails/types";
+import { userLabel } from "../userLabel";
+import { UserAccountActions, UserAliases } from "./UserAccountActions";
 import styles from "../../auth-events/AuthEvents/AuthEvents.module.css";
 
+const languageOptions = [
+  { label: "EN", value: "en" },
+  { label: "DE", value: "de" },
+  { label: "ES", value: "es" },
+  { label: "PL", value: "pl" },
+  { label: "BR", value: "br" },
+];
 const roleOptions: { label: string; value: UserRole }[] = [
   { label: "Super admin", value: "super_admin" },
   { label: "Admin", value: "admin" },
@@ -75,6 +92,7 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
     queryKey: ["admin", "users"],
     queryFn: fetchAdminUsers,
   });
+  const boardsQuery = useQuery({ queryKey: ["boards"], queryFn: fetchBoards });
   const createUserMutation = useMutation({
     mutationFn: ({ email, role }: { email: string; role: UserRole }) =>
       createAdminUser({ email, role }),
@@ -113,7 +131,7 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
       void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       notifications.show({
         color: "green",
-        message: `${updatedUser.email} is now ${formatRole(updatedUser.role)}`,
+        message: `${userLabel(updatedUser)} is now ${formatRole(updatedUser.role)}`,
         title: "Role updated",
       });
     },
@@ -122,6 +140,50 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
         color: "red",
         message: "Only super admins can update roles. You also cannot demote yourself.",
         title: "Role update failed",
+      });
+    },
+  });
+
+  const updateLanguagesMutation = useMutation({
+    mutationFn: ({ languages, userId }: { languages: string[]; userId: string }) =>
+      updateAdminUserLanguages(userId, languages),
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData<UserAdminItem[]>(
+        ["admin", "users"],
+        (currentUsers) =>
+          currentUsers?.map((user) =>
+            user.id === updatedUser.id ? updatedUser : user
+          ) ?? [updatedUser]
+      );
+      void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+    onError: () => {
+      notifications.show({
+        color: "red",
+        message: "The languages were not saved.",
+        title: "Update failed",
+      });
+    },
+  });
+
+  const updateBoardsMutation = useMutation({
+    mutationFn: ({ boards, userId }: { boards: string[]; userId: string }) =>
+      updateAdminUserBoards(userId, boards),
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData<UserAdminItem[]>(
+        ["admin", "users"],
+        (currentUsers) =>
+          currentUsers?.map((user) =>
+            user.id === updatedUser.id ? updatedUser : user
+          ) ?? [updatedUser]
+      );
+      void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+    onError: () => {
+      notifications.show({
+        color: "red",
+        message: "The boards were not saved.",
+        title: "Update failed",
       });
     },
   });
@@ -136,14 +198,26 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
     () =>
       buildColumns({
         canUpdateRoles,
+        boardOptions: (boardsQuery.data ?? []).map((board) => ({ label: board.name, value: board.key })),
         isUpdatingRole: updateRoleMutation.isPending,
+        onBoardsChange: (userId, boards) => updateBoardsMutation.mutate({ boards, userId }),
+        onLanguagesChange: (userId, languages) =>
+          updateLanguagesMutation.mutate({ languages, userId }),
         onRoleChange: (userId, role) =>
           updateRoleMutation.mutate({
             role,
             userId,
           }),
+        users: usersQuery.data ?? emptyAdminUsers,
       }),
-    [canUpdateRoles, updateRoleMutation]
+    [
+      boardsQuery.data,
+      canUpdateRoles,
+      updateBoardsMutation,
+      updateLanguagesMutation,
+      updateRoleMutation,
+      usersQuery.data,
+    ]
   );
   const sorting = useMemo<SortingState>(
     () => [{ desc: sort.direction === "desc", id: sort.key }],
@@ -177,6 +251,15 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
     },
   });
   const rows = table.getRowModel().rows;
+
+  // Board managers can read the user list (owner pickers) but not change it.
+  if (currentUserRole === "reviewer") {
+    return (
+      <div className={styles.page}>
+        <Alert color="red" title="Admin access is required" />
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>
@@ -321,23 +404,47 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
 export default AdminUsers;
 
 function buildColumns({
+  boardOptions,
   canUpdateRoles,
   isUpdatingRole,
+  onBoardsChange,
+  onLanguagesChange,
   onRoleChange,
+  users,
 }: {
+  boardOptions: { label: string; value: string }[];
   canUpdateRoles: boolean;
   isUpdatingRole: boolean;
+  onBoardsChange: (userId: string, boards: string[]) => void;
+  onLanguagesChange: (userId: string, languages: string[]) => void;
   onRoleChange: (userId: string, role: UserRole) => void;
+  users: UserAdminItem[];
 }): ColumnDef<UserAdminItem>[] {
   return [
     {
-      accessorKey: "email",
-      cell: ({ row }) => row.original.email,
-      header: "Email",
+      // Keeps the "email" id so saved sort and column widths still apply.
+      accessorFn: (user) => userLabel(user).toLowerCase(),
+      cell: ({ row }) => (
+        <Group align="flex-start" gap="xs" justify="space-between" wrap="nowrap">
+          <Stack gap={0}>
+            <Text fw={row.original.name ? 600 : undefined} size="sm">
+              {userLabel(row.original)}
+            </Text>
+            {row.original.name ? (
+              <Text c="dimmed" size="xs">
+                {row.original.email}
+              </Text>
+            ) : null}
+            <UserAliases canManage={canUpdateRoles} user={row.original} />
+          </Stack>
+          {canUpdateRoles ? <UserAccountActions user={row.original} users={users} /> : null}
+        </Group>
+      ),
+      header: "User",
       id: "email",
       maxSize: 420,
       minSize: 220,
-      size: 280,
+      size: 300,
     },
     {
       accessorKey: "role",
@@ -351,6 +458,49 @@ function buildColumns({
       maxSize: 180,
       minSize: 110,
       size: 140,
+    },
+    {
+      cell: ({ row }) => (
+        <MultiSelect
+          aria-label={`Languages ${userLabel(row.original)} translates`}
+          data={languageOptions}
+          placeholder={(row.original.languages ?? []).length === 0 ? "None" : undefined}
+          size="xs"
+          value={row.original.languages ?? []}
+          onChange={(languages) => onLanguagesChange(row.original.id, languages)}
+        />
+      ),
+      enableSorting: false,
+      header: "Translates",
+      id: "languages",
+      maxSize: 320,
+      minSize: 150,
+      size: 200,
+    },
+    {
+      // Admins manage every board; others manage the boards picked here and
+      // only read the rest.
+      cell: ({ row }) =>
+        row.original.role === "reviewer" ? (
+          <MultiSelect
+            aria-label={`Boards ${userLabel(row.original)} manages`}
+            data={boardOptions}
+            placeholder={(row.original.managed_boards ?? []).length === 0 ? "None" : undefined}
+            size="xs"
+            value={row.original.managed_boards ?? []}
+            onChange={(boards) => onBoardsChange(row.original.id, boards)}
+          />
+        ) : (
+          <Text c="dimmed" size="xs">
+            All boards
+          </Text>
+        ),
+      enableSorting: false,
+      header: "Manages",
+      id: "managed_boards",
+      maxSize: 360,
+      minSize: 150,
+      size: 220,
     },
     {
       accessorKey: "last_seen_at",

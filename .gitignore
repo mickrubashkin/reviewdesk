@@ -60,3 +60,6 @@ personal-notes/
 
 # Local material for analysis (real emails, exports) — never commit
 inbox/
+
+# Local direnv settings (may hold secrets) — never commit
+.envrc

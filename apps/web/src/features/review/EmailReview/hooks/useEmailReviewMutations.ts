@@ -5,13 +5,12 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../../../shared/api";
 import {
   archiveEmail,
-  createCommentMessage,
-  createEmailComment,
   duplicateEmail,
-  resolveComment,
+  restoreEmail,
   restoreEmailVersion,
   updateEmailAreaApproval,
   updateEmailEditableFields,
+  updateEmailLayout,
   updateEmailPlanningFields,
   updateEmailReviewStatus,
 } from "../../../emails/api";
@@ -20,16 +19,17 @@ import {
 } from "../../../emails/reviewStatus";
 import type {
   DuplicateEmailPayload,
-  EmailCommentSeverity,
   EmailReviewStatus,
+  LayoutItem,
   UpdateEditableFieldsPayload,
   UpdateEmailPlanningFieldsPayload,
 } from "../../../emails/types";
-import type { ReviewTextSelection } from "../../../emails/MailPreview.types";
 import {
   applyPlanningFieldsToCaches,
   applyReviewStatusToCaches,
 } from "../EmailReview.helpers";
+import { useCommentMutations } from "../../../comments/useCommentMutations";
+import { sharedTextsQueryKey } from "../../../shared-texts/api";
 
 export function useEmailReviewMutations({
   approvalBlockedMessage,
@@ -66,7 +66,7 @@ export function useEmailReviewMutations({
       void queryClient.invalidateQueries({ queryKey: ["email-activity", emailId] });
       notifications.show({
         color: "green",
-        message: "Email was removed from the active board.",
+        message: "It moved to the board's Archive, where it can be restored.",
         title: "Email archived",
       });
       navigate("/");
@@ -77,6 +77,18 @@ export function useEmailReviewMutations({
         message: "Try again or check that you have admin access.",
         title: "Archive failed",
       });
+    },
+  });
+
+  const restoreEmailMutation = useMutation({
+    mutationFn: restoreEmail,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["emails"] });
+      void queryClient.invalidateQueries({ queryKey: ["email-activity", emailId] });
+      notifications.show({ color: "green", message: "It is back in its place on the board.", title: "Email restored" });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", message: error.message, title: "Restore failed" });
     },
   });
 
@@ -103,7 +115,7 @@ export function useEmailReviewMutations({
       });
       notifications.show({
         color: "green",
-        message: `Review status changed to ${formatEmailReviewStatus(response.review_status)}.`,
+        message: `Status changed to ${formatEmailReviewStatus(response.review_status)}.`,
         title: "Status updated",
       });
     },
@@ -189,63 +201,8 @@ export function useEmailReviewMutations({
     },
   });
 
-  const createCommentMutation = useMutation({
-    mutationFn: ({
-      body,
-      severity,
-      selection,
-    }: {
-      body: string;
-      severity: EmailCommentSeverity;
-      selection: ReviewTextSelection;
-    }) =>
-      createEmailComment(emailId, {
-        review_block: selection.reviewBlock,
-        selected_text: selection.selectedText,
-        start_offset: selection.startOffset,
-        end_offset: selection.endOffset,
-        body,
-        severity,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["email-comments", emailId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["email-activity", emailId],
-      });
-    },
-  });
-
-  const resolveCommentMutation = useMutation({
-    mutationFn: (commentId: string) => resolveComment(commentId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["email-comments", emailId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["email-activity", emailId],
-      });
-    },
-  });
-
-  const createReplyMutation = useMutation({
-    mutationFn: ({
-      body,
-      commentId,
-    }: {
-      body: string;
-      commentId: string;
-    }) => createCommentMessage(commentId, { body }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["email-comments", emailId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["email-activity", emailId],
-      });
-    },
-  });
+  const { createCommentMutation, createReplyMutation, resolveCommentMutation } =
+    useCommentMutations(emailId);
 
   const restoreVersionMutation = useMutation({
     mutationFn: (versionId: string) => restoreEmailVersion(emailId, versionId),
@@ -269,30 +226,48 @@ export function useEmailReviewMutations({
     },
   });
 
+  const invalidateEmailContent = () => {
+    void queryClient.invalidateQueries({ queryKey: ["emails", emailId, "review"] });
+    void queryClient.invalidateQueries({
+      queryKey: ["emails", emailId, "rendered"],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["emails", emailId, "versions"],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["email-area-approvals", emailId],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["email-activity", emailId],
+    });
+    void queryClient.invalidateQueries({ queryKey: ["emails"] });
+    void queryClient.invalidateQueries({ queryKey: sharedTextsQueryKey });
+  };
+
   const saveEditableFieldsMutation = useMutation({
     mutationFn: (payload: UpdateEditableFieldsPayload) =>
       updateEmailEditableFields(emailId, payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["emails", emailId, "review"] });
-      void queryClient.invalidateQueries({
-        queryKey: ["emails", emailId, "rendered"],
+    onSuccess: invalidateEmailContent,
+  });
+
+  // A new block arrives in the translations with the EN text, so they need
+  // a refetch as well; ["emails"] covers them.
+  const saveLayoutMutation = useMutation({
+    mutationFn: (layout: LayoutItem[]) => updateEmailLayout(emailId, layout),
+    onSuccess: invalidateEmailContent,
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        message: error instanceof ApiError ? error.message : "Failed to save the blocks.",
+        title: "Blocks not saved",
       });
-      void queryClient.invalidateQueries({
-        queryKey: ["emails", emailId, "versions"],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["email-area-approvals", emailId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["email-activity", emailId],
-      });
-      void queryClient.invalidateQueries({ queryKey: ["emails"] });
     },
   });
 
   return {
     duplicateEmailMutation,
     archiveEmailMutation,
+    restoreEmailMutation,
     reviewStatusMutation,
     planningFieldsMutation,
     areaApprovalMutation,
@@ -301,5 +276,6 @@ export function useEmailReviewMutations({
     createReplyMutation,
     restoreVersionMutation,
     saveEditableFieldsMutation,
+    saveLayoutMutation,
   };
 }

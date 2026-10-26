@@ -13,7 +13,7 @@ const reconstructTemplate = `<!doctype html><html lang="en"><head><title>Templat
 <tr><td data-review-block="intro_body" data-edit-text="intro_body">Hello,<br><br>Template text.</td></tr>
 <tr><td><!--[if mso]><v:roundrect href="{{ primary_cta_url }}">{{ primary_cta_text }}</v:roundrect><![endif]--><!--[if !mso]><!-- --><a href="https://x/cta" data-review-block="primary_cta" data-edit-text="primary_cta_text" data-edit-attr-href="primary_cta_url">Click</a><!--<![endif]--></td></tr>
 <tr><td data-review-block="signature"><strong data-edit-text="signature_sender">Team</strong></td></tr>
-<tr><td data-edit-text="footer_copyright">© {{=date('Y')}} Example.</td></tr></table></body></html>`
+<tr><td data-edit-text="footer_copyright">© {{=date('Y')}} Acme.</td></tr></table></body></html>`
 
 // What the deal timeline keeps: no head, no data-* attributes, values of the
 // real email, and the broken non-Outlook comment around the button.
@@ -21,8 +21,8 @@ const reconstructSent = `<div style="display:none">&zwnj;&nbsp;</div>
 <table><tr><td><img src="https://x/banner-br.jpg" alt="Faixa"></td></tr>
 <tr><td>Olá,<br><br>Texto <strong>real</strong>.</td></tr>
 <tr><td><!--[if mso]> Agendar <![endif]--> <!--[if !mso]> <a href="https://calendly.com/m">Agendar reunião</a> &lt;!--<![endif]--></td></tr>
-<tr><td><strong>Gustavo</strong></td></tr>
-<tr><td>© 2026 Example.</td></tr></table>`
+<tr><td><strong>Diego</strong></td></tr>
+<tr><td>© 2026 Acme.</td></tr></table>`
 
 func TestReconstructRebuildsEditableEmail(t *testing.T) {
 	result, err := Reconstruct(reconstructSent, reconstructTemplate, "Assunto", "br")
@@ -42,8 +42,8 @@ func TestReconstructRebuildsEditableEmail(t *testing.T) {
 		"hero_banner_alt":  "Faixa",
 		"primary_cta_text": "Agendar reunião",
 		"primary_cta_url":  "https://calendly.com/m",
-		"signature_sender": "Gustavo",
-		"footer_copyright": "© {{=date('Y')}} Example.",
+		"signature_sender": "Diego",
+		"footer_copyright": "© {{=date('Y')}} Acme.",
 	}
 	// Manual formatting inside a text field is flattened to text.
 	if intro := fields["intro_body"].Value.(string); !strings.HasPrefix(intro, "Olá,\n\nTexto real") {

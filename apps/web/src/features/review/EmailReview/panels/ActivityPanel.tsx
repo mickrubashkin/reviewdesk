@@ -9,6 +9,7 @@ import {
   formatCommentDate,
 } from "../EmailReview.helpers";
 import styles from "../EmailReview.module.css";
+import { useUserName } from "../../../../shared/userNames";
 
 export function ActivityPanel({
   activities,
@@ -19,6 +20,7 @@ export function ActivityPanel({
   isError: boolean;
   isLoading: boolean;
 }) {
+  const userName = useUserName();
   if (isLoading) {
     return (
       <Stack className={styles.emptyState} align="center" justify="center">
@@ -59,7 +61,7 @@ export function ActivityPanel({
             <Group justify="space-between" gap="xs" wrap="nowrap">
               <Stack gap={2}>
                 <Text fw={700} size="xs">
-                  {activity.actor_email ?? "System"}
+                  {userName(activity.actor_email, "System")}
                 </Text>
                 <Text c="dimmed" size="xs">
                   {formatCommentDate(activity.created_at)}

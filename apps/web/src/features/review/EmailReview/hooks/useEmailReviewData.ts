@@ -2,7 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 
 import { fetchAdminUsers } from "../../../admin-users/api";
-import { fetchBoards } from "../../../boards/api";
+import { fetchBoards, useBoardRegions } from "../../../boards/api";
+import { versionName } from "../../../boards/regions";
 import {
   fetchEmailActivity,
   fetchEmailComments,
@@ -22,11 +23,15 @@ import {
   getVersionsForVariantAndAdaptation,
 } from "../../../emails/stages";
 import type {
+  AuthUser,
   EmailDetail,
   EmailListItem,
   EmailVariant,
 } from "../../../emails/types";
 import type { CommentStatusFilter } from "../EmailReview.types";
+import { canManageBoard } from "../../../emails/permissions";
+import { getProductionStatus } from "../../../emails/productionStatus";
+import { withFirstSendEstimates } from "../../../emails/firstSend";
 import {
   buildApprovalBlockedMessage,
   buildChangedBlockTargets,
@@ -37,12 +42,12 @@ import {
 } from "../EmailReview.helpers";
 
 export function useEmailReviewData({
-  canManageEmail,
   commentStatusFilter,
+  currentUser,
   duplicateModalOpened,
   emailId,
 }: {
-  canManageEmail: boolean;
+  currentUser: AuthUser;
   commentStatusFilter: CommentStatusFilter;
   duplicateModalOpened: boolean;
   emailId: string;
@@ -55,6 +60,8 @@ export function useEmailReviewData({
     enabled: emailId.trim() !== "",
   });
   const email = emailQuery.data;
+  // Admin rights on this email's board (admins: every board).
+  const canManageEmail = canManageBoard(currentUser, email?.sequence);
 
   const commentsQuery = useQuery({
     queryKey: ["email-comments", emailId],
@@ -109,7 +116,6 @@ export function useEmailReviewData({
   const boardsQuery = useQuery({
     queryKey: ["boards"],
     queryFn: fetchBoards,
-    enabled: duplicateModalOpened && canManageEmail,
   });
 
   const duplicateEmailsQuery = useQuery({
@@ -118,9 +124,23 @@ export function useEmailReviewData({
     enabled: duplicateModalOpened && canManageEmail,
   });
 
+  // Live state comes from the board's last portal sync, as on the board.
+  const portalSyncedAt = boardsQuery.data?.find(
+    (board) => board.key === email?.sequence
+  )?.portal_synced_at;
+  const boardEmails = useMemo(
+    () =>
+      withFirstSendEstimates(
+        (emailsQuery.data ?? []).map((listEmail) => ({
+          ...listEmail,
+          production_status: getProductionStatus(listEmail, portalSyncedAt),
+        }))
+      ),
+    [emailsQuery.data, portalSyncedAt]
+  );
   const stageColumns = useMemo(
-    () => buildStageColumns(emailsQuery.data ?? []),
-    [emailsQuery.data]
+    () => buildStageColumns(boardEmails),
+    [boardEmails]
   );
 
   const emailGroup = useMemo(() => {
@@ -171,11 +191,18 @@ export function useEmailReviewData({
     : email
       ? [email.variant as EmailVariant]
       : [];
-  const availableAdaptations = emailGroup
-    ? getAvailableAdaptations(emailGroup.versions, selectedVariant)
-    : email
-      ? [email]
-      : [];
+  // On a board with regions the versions are named after them.
+  const regions = useBoardRegions(email?.sequence).data ?? [];
+  const availableAdaptations = (
+    emailGroup
+      ? getAvailableAdaptations(emailGroup.versions, selectedVariant)
+      : email
+        ? [email]
+        : []
+  ).map((adaptation) => ({
+    adaptation_key: adaptation.adaptation_key,
+    adaptation_label: versionName(adaptation, email?.language ?? "", regions),
+  }));
 
   const boardEmailGroups = useMemo(
     () => stageColumns.flatMap((column) => column.emailGroups),
@@ -197,6 +224,9 @@ export function useEmailReviewData({
     email?.language,
     selectedAdaptation
   );
+  const currentListEmail = emailGroup?.versions.find(
+    (version) => version.id === emailId
+  );
   const currentStage = stageColumns.find((column) =>
     column.emailGroups.some((group) => group.key === emailGroup?.key)
   );
@@ -215,14 +245,11 @@ export function useEmailReviewData({
     openBlockingCommentCount,
     email?.open_blocking_comment_count ?? 0
   );
-  const incompleteRequiredApprovalCount = (areaApprovalsQuery.data ?? []).filter(
-    (approval) => approval.required && approval.status !== "approved"
-  ).length;
-  const approvalBlockedCount =
-    effectiveOpenBlockingCommentCount + incompleteRequiredApprovalCount;
+  const checks = email?.checks ?? [];
+  const approvalBlockedCount = effectiveOpenBlockingCommentCount + checks.length;
   const approvalBlockedMessage = buildApprovalBlockedMessage(
     effectiveOpenBlockingCommentCount,
-    incompleteRequiredApprovalCount
+    checks
   );
 
   const filteredComments = useMemo(
@@ -320,6 +347,7 @@ export function useEmailReviewData({
   ]);
 
   return {
+    canManageEmail,
     emailQuery,
     email,
     commentsQuery,
@@ -337,6 +365,7 @@ export function useEmailReviewData({
     adminUsersQuery,
     boardsQuery,
     duplicateEmailsQuery,
+    boardEmails,
     stageColumns,
     emailGroup,
     nextEmailWithOpenComments,
@@ -345,11 +374,15 @@ export function useEmailReviewData({
     languageVersions,
     availableVariants,
     availableAdaptations,
-    hasLanguageOptions: languageVersions.length > 1,
+    hasRegions: regions.length > 0,
     hasVariantOptions: availableVariants.length > 1,
     hasAdaptationOptions: availableAdaptations.length > 1,
     previousBoardEmail,
     nextBoardEmail,
+    boardGroupCount: boardEmailGroups.length,
+    boardGroupPosition:
+      currentBoardGroupIndex >= 0 ? currentBoardGroupIndex + 1 : null,
+    currentListEmail,
     currentStage,
     commentTargets,
     changedBlockTargets,

@@ -9,6 +9,7 @@ import type {
   UserRole,
 } from "../../../emails/types";
 import styles from "../EmailReview.module.css";
+import { useUserName } from "../../../../shared/userNames";
 
 export function VersionHistoryPanel({
   canManage,
@@ -27,6 +28,7 @@ export function VersionHistoryPanel({
   restoreError: boolean;
   versions: EmailVersionListItem[];
 }) {
+  const userName = useUserName();
   const [restoreVersion, setRestoreVersion] =
     useState<EmailVersionListItem | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export function VersionHistoryPanel({
                 </Group>
                 <Text c="dimmed" size="xs">
                   {formatVersionDate(version.created_at)} by{" "}
-                  {version.created_by_email}
+                  {userName(version.created_by_email)}
                 </Text>
                 <Text size="sm">{formatVersionSummary(version)}</Text>
                 {requiresSuperAdmin ? (
@@ -209,6 +211,10 @@ function formatVersionSource(version: EmailVersionListItem) {
       return "Initial";
     case "restore":
       return "Restore";
+    case "shared_text":
+      return "Shared text";
+    case "block":
+      return "Block";
     default:
       return "Manual";
   }
@@ -355,6 +361,12 @@ function buildVersionChanges(
 
   appendChange(
     changes,
+    "Blocks",
+    formatLayout(previous.layout),
+    formatLayout(current.layout)
+  );
+  appendChange(
+    changes,
     "Original HTML",
     previous.original_html,
     current.original_html,
@@ -371,6 +383,15 @@ function buildVersionChanges(
   );
 
   return changes;
+}
+
+function formatLayout(layout: EmailVersionDetail["layout"]) {
+  if (!layout) {
+    return "Own template";
+  }
+  return layout
+    .map((item) => (item.suffix ? `${item.block}_${item.suffix}` : item.block))
+    .join(" · ");
 }
 
 function appendChange(

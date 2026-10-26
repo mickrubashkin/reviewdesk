@@ -4,11 +4,14 @@ import { useNavigate } from "react-router-dom";
 
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Alert, Button, Loader, Stack, Text } from "@mantine/core";
-import { SparkleIcon } from "@phosphor-icons/react";
+import { Alert, Button, Group, Loader, Stack, Text } from "@mantine/core";
+import { ArrowsClockwiseIcon, SparkleIcon } from "@phosphor-icons/react";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
+import { ApiError } from "../../../shared/api";
+import { useBlockCatalog } from "../../blocks/api";
+import { fieldLimits, layoutItemId } from "../../blocks/layout";
 import { AnalysisPanel } from "../../emails/AnalysisPanel";
 
 import {
@@ -27,6 +30,7 @@ import {
 } from "../../emails/reviewStatus";
 
 import {
+  formatStageName,
   getVersionForVariant,
 } from "../../emails/stages";
 
@@ -49,49 +53,47 @@ import {
   useEmailReviewData,
   useEmailReviewLayout,
   useEmailReviewMutations,
+  useLinkedComment,
 } from "./hooks";
 
 import {
   ActivityPanel,
-  AreaApprovalsPanel,
+  BlocksPanel,
+  ChecksPanel,
   HandoffPanel,
+  RegionField,
   PlanningPanel,
   ReviewPreviewSkeleton,
   VersionHistoryPanel,
 } from "./panels";
 
+import { canEditEmailContent } from "../../emails/permissions";
 import { ReviewHeader } from "./ReviewHeader";
+import { ArchivedEmailNotice } from "./header/ArchivedEmailNotice";
+import { ViewportSwitch } from "./header/ViewportSwitch";
 import { ReviewLayout } from "./ReviewLayout";
+import { ReferenceSection } from "../../boards/BoardHome/ReferenceSection";
 import {
   ArchiveEmailModal,
   DuplicateEmailModal,
   SourceHTMLModal,
 } from "./ReviewModals";
-import type {
-  EmailReviewProps,
-  ReviewUtilityPanel,
-} from "./EmailReview.types";
+import type { EmailReviewProps } from "./EmailReview.types";
 import {
+  aiBlockTargets,
   buildCommentBlockOptions,
   buildEditableFieldsPayload,
+  formatReviewBlockLabel,
 } from "./EmailReview.helpers";
 
-export function EmailReview({
-  currentUserEmail,
-  currentUserRole,
-  emailId,
-}: EmailReviewProps) {
+export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
+  const currentUserEmail = currentUser.email;
+  const currentUserRole = currentUser.role;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const activeCommentTimeoutRef = useRef<number | null>(null);
   const inlineEditPreviewNeedsFrameRef = useRef(false);
   const isCompactReview = useMediaQuery("(max-width: 64em)");
-  const canManageEmail =
-    currentUserRole === "admin" || currentUserRole === "super_admin";
-  // Mirrors the API rule: only the author or an admin can resolve a comment.
-  const canResolveComment = (comment: EmailComment) =>
-    canManageEmail ||
-    comment.author_email?.toLowerCase() === currentUserEmail.toLowerCase();
 
   const layout = useEmailReviewLayout();
   const {
@@ -99,7 +101,6 @@ export function EmailReview({
     activeCommentId,
     activeContentTab,
     activePanelTab,
-    activeUtilityPanel,
     archiveModalOpened,
     commentStatusFilter,
     contentRef,
@@ -112,7 +113,6 @@ export function EmailReview({
     setActiveCommentId,
     setActiveContentTab,
     setActivePanelTab,
-    setActiveUtilityPanel,
     setArchiveModalOpened,
     setCommentStatusFilter,
     setDuplicateModalOpened,
@@ -127,26 +127,31 @@ export function EmailReview({
   } = layout;
 
   const data = useEmailReviewData({
-    canManageEmail,
     commentStatusFilter,
+    currentUser,
     duplicateModalOpened,
     emailId,
   });
 
   const {
+    canManageEmail,
     activityQuery,
     adminUsersQuery,
     approvalActivity,
     approvalBlockedCount,
     approvalBlockedMessage,
-    areaApprovalsQuery,
     availableAdaptations,
+    hasRegions,
     availableVariants,
+    boardEmails,
+    boardGroupCount,
+    boardGroupPosition,
     boardsQuery,
     changedBlockTargets,
     comments,
     commentsQuery,
     commentTargets,
+    currentListEmail,
     currentStage,
     duplicateEmailsQuery,
     email,
@@ -154,7 +159,6 @@ export function EmailReview({
     emailQuery,
     filteredComments,
     hasAdaptationOptions,
-    hasLanguageOptions,
     hasVariantOptions,
     languageVersions,
     nextBoardEmail,
@@ -169,6 +173,10 @@ export function EmailReview({
     sharedAnalysisQuery,
     versionsQuery,
   } = data;
+  // Mirrors the API rule: the author or a manager of the board can resolve a comment.
+  const canResolveComment = (comment: EmailComment) =>
+    canManageEmail ||
+    comment.author_email?.toLowerCase() === currentUserEmail.toLowerCase();
 
   const mutations = useEmailReviewMutations({
     approvalBlockedMessage,
@@ -178,7 +186,7 @@ export function EmailReview({
 
   const {
     archiveEmailMutation,
-    areaApprovalMutation,
+    restoreEmailMutation,
     createCommentMutation,
     createReplyMutation,
     duplicateEmailMutation,
@@ -187,7 +195,9 @@ export function EmailReview({
     restoreVersionMutation,
     reviewStatusMutation,
     saveEditableFieldsMutation,
+    saveLayoutMutation,
   } = mutations;
+  const blockCatalogQuery = useBlockCatalog(Boolean(email?.layout));
 
   const {
     analyze,
@@ -214,6 +224,17 @@ export function EmailReview({
       ? streamAnalysis
       : sharedAnalysisQuery.data ?? null;
   const streamPreview = buildStreamPreview(streamText);
+  // While the AI tab of the side panel is open, the blocks its
+  // recommendations are about are outlined with their numbers (the preview
+  // draws outlines only next to the side panel, not in the compact layout).
+  const isAITabOpen = activePanelTab === "ai";
+  const previewBlockTargets = useMemo(
+    () => [
+      ...changedBlockTargets,
+      ...(isAITabOpen && displayedAnalysis ? aiBlockTargets(displayedAnalysis) : []),
+    ],
+    [changedBlockTargets, displayedAnalysis, isAITabOpen]
+  );
   const shouldShowAnalysisPanel =
     (isCurrentStream && streamStatus !== "idle") || Boolean(displayedAnalysis);
   const isAnalyzingCurrentEmail = streamStatus === "streaming" && isCurrentStream;
@@ -244,6 +265,24 @@ export function EmailReview({
     }
   }, [nextBoardEmail, previousBoardEmail, queryClient]);
 
+  const handleSelectComment = (comment: EmailComment) => {
+    setActivePanelTab("comments");
+    setActiveContentTab("comments");
+    setActiveCommentId(comment.id);
+
+    if (activeCommentTimeoutRef.current !== null) {
+      window.clearTimeout(activeCommentTimeoutRef.current);
+    }
+    activeCommentTimeoutRef.current = window.setTimeout(() => {
+      setActiveCommentId(null);
+      activeCommentTimeoutRef.current = null;
+    }, 2400);
+  };
+
+  useLinkedComment(commentsQuery.data, handleSelectComment, () =>
+    setCommentStatusFilter("all")
+  );
+
   if (emailQuery.isError) {
     return (
       <Stack className={styles.centerState} align="center" justify="center" p="md">
@@ -253,10 +292,6 @@ export function EmailReview({
       </Stack>
     );
   }
-
-  const handleBackToBoard = () => {
-    navigate(email?.sequence ? `/boards/${encodeURIComponent(email.sequence)}` : "/");
-  };
 
   const navigateToReview = (nextEmailId: string) => {
     if (nextEmailId !== email?.id) {
@@ -317,7 +352,7 @@ export function EmailReview({
       notifications.show({
         color: "red",
         message: approvalBlockedMessage,
-        title: "Approval blocked",
+        title: "Not ready yet",
       });
       return;
     }
@@ -387,20 +422,6 @@ export function EmailReview({
     setHoveredCommentId(commentIds?.[0] ?? null);
   };
 
-  const handleSelectComment = (comment: EmailComment) => {
-    setActivePanelTab("comments");
-    setActiveContentTab("comments");
-    setActiveCommentId(comment.id);
-
-    if (activeCommentTimeoutRef.current !== null) {
-      window.clearTimeout(activeCommentTimeoutRef.current);
-    }
-    activeCommentTimeoutRef.current = window.setTimeout(() => {
-      setActiveCommentId(null);
-      activeCommentTimeoutRef.current = null;
-    }, 2400);
-  };
-
   const handleSelectCommentIds = (commentIds: string[]) => {
     const comment = (commentsQuery.data ?? []).find(
       (commentItem) => commentItem.id === commentIds[0]
@@ -410,6 +431,13 @@ export function EmailReview({
     }
   };
 
+  // An archived email is history: read-only until an admin restores it.
+  const isArchived = Boolean(email?.archived_at);
+  const canEditContent = email && !isArchived
+    ? canEditEmailContent(currentUser, email)
+    : false;
+  const canManageCurrent = canManageEmail && !isArchived;
+
   const isApplyingInlineEdit =
     saveEditableFieldsMutation.isPending || isInlineEditPreviewRefreshing;
 
@@ -417,13 +445,17 @@ export function EmailReview({
     email ? (
       <MailPreview
         activeCommentId={activeCommentId}
-        canEditContent={canManageEmail}
-        canEditHTML={currentUserRole === "super_admin"}
-        changedBlockTargets={changedBlockTargets}
+        canEditContent={canEditContent}
+        canEditHTML={currentUserRole === "super_admin" && !email.layout}
+        changedBlockTargets={previewBlockTargets}
         commentTargets={commentTargets}
         createCommentError={createCommentMutation.isError}
         email={email}
-        enableReviewSelectionComposer
+        enableReviewSelectionComposer={!isArchived}
+        fieldLimits={fieldLimits(email.layout, blockCatalogQuery.data)}
+        inlineEditErrorMessage={saveEditableFieldsMutation.error instanceof ApiError
+          ? saveEditableFieldsMutation.error.message
+          : undefined}
         hoveredCommentId={hoveredCommentId}
         inlineEditError={saveEditableFieldsMutation.isError}
         isApplyingInlineEdit={isApplyingInlineEdit}
@@ -448,13 +480,27 @@ export function EmailReview({
   );
 
   const analysisContent = shouldShowAnalysisPanel ? (
-    <AnalysisPanel
-      analysis={displayedAnalysis}
-      error={streamError}
-      isStreaming={streamStatus === "streaming"}
-      preview={streamPreview}
-      showError={streamStatus === "error"}
-    />
+    <Stack gap="sm">
+      <Group justify="flex-end">
+        <Button
+          disabled={!email || isAnalyzingCurrentEmail}
+          leftSection={<ArrowsClockwiseIcon aria-hidden="true" size={14} />}
+          size="compact-xs"
+          variant="subtle"
+          onClick={handleReanalyze}
+        >
+          Generate new analysis
+        </Button>
+      </Group>
+      <AnalysisPanel
+        analysis={displayedAnalysis}
+        blockLabel={formatReviewBlockLabel}
+        error={streamError}
+        isStreaming={streamStatus === "streaming"}
+        preview={streamPreview}
+        showError={streamStatus === "error"}
+      />
+    </Stack>
   ) : (
     <Stack
       className={styles.emptyState}
@@ -522,6 +568,7 @@ export function EmailReview({
         resolveCommentMutation.mutate(commentId)
       }
       onSelectComment={handleSelectComment}
+      readOnly={isArchived}
       replyingCommentId={
         createReplyMutation.isPending
           ? createReplyMutation.variables?.commentId
@@ -533,7 +580,7 @@ export function EmailReview({
   const planningContent = (
     <PlanningPanel
       adminUsers={adminUsersQuery.data ?? []}
-      canManage={canManageEmail}
+      canManage={canManageCurrent}
       email={email}
       isLoadingUsers={adminUsersQuery.isLoading}
       isSaving={planningFieldsMutation.isPending}
@@ -542,28 +589,10 @@ export function EmailReview({
     />
   );
 
-  const approvalsContent = (
-    <AreaApprovalsPanel
-      approvals={areaApprovalsQuery.data ?? []}
-      canManage={canManageEmail}
-      isError={areaApprovalsQuery.isError}
-      isLoading={areaApprovalsQuery.isLoading}
-      pendingArea={
-        areaApprovalMutation.isPending
-          ? areaApprovalMutation.variables?.area ?? null
-          : null
-      }
-      onSubmit={(area, status, decisionNote) =>
-        areaApprovalMutation.mutate({ area, decisionNote, status })
-      }
-    />
-  );
-
   const handoffContent = (
     <HandoffPanel
       approvalActivity={approvalActivity}
-      areaApprovals={areaApprovalsQuery.data ?? []}
-      canMarkLive={currentUserRole === "super_admin"}
+      canMarkLive={currentUserRole === "super_admin" && !isArchived}
       onLiveChanged={() => void queryClient.invalidateQueries({ queryKey: ["emails", emailId] })}
       email={email}
       isLoadingRenderedHTML={renderedEmailQuery.isLoading}
@@ -576,7 +605,7 @@ export function EmailReview({
 
   const historyContent = (
     <VersionHistoryPanel
-      canManage={canManageEmail}
+      canManage={canManageCurrent}
       currentUserRole={currentUserRole}
       isLoading={versionsQuery.isLoading}
       isRestoring={restoreVersionMutation.isPending}
@@ -594,71 +623,102 @@ export function EmailReview({
     />
   );
 
-  const selectedUtilityPanel = activeUtilityPanel ?? "planning";
-  const utilityContentByPanel: Record<ReviewUtilityPanel, React.ReactNode> = {
-    activity: activityContent,
-    approvals: approvalsContent,
-    handoff: handoffContent,
-    history: historyContent,
-    planning: planningContent,
-  };
-  const utilityPanelContent = utilityContentByPanel[selectedUtilityPanel];
+  // An email built from blocks has no HTML of its own to edit: it comes
+  // from the block library. Its blocks are changed on the EN email.
+  const blocksContent = email?.layout ? (
+    <BlocksPanel
+      canEdit={canManageCurrent && !email.translation_of && blockCatalogQuery.isSuccess}
+      catalog={blockCatalogQuery.data ?? []}
+      isSaving={saveLayoutMutation.isPending}
+      isTranslation={Boolean(email.translation_of)}
+      key={`${email.id}:${email.layout.map(layoutItemId).join(",")}`}
+      layout={email.layout}
+      onSave={(layout) => saveLayoutMutation.mutate(layout)}
+    />
+  ) : null;
 
-  const handleUtilityPanelSelect = (panel: ReviewUtilityPanel) => {
-    setActiveUtilityPanel(panel);
-    if (isCompactReview) {
-      setActiveContentTab("more");
-    }
-  };
+  const detailsContent = (
+    <Stack gap="lg">
+      <ChecksPanel checks={email?.checks ?? []} />
+      {email ? <RegionField canEdit={canManageCurrent} email={email} key={`region:${email.id}`} /> : null}
+      {email ? (
+        <ReferenceSection
+          candidates={boardEmails}
+          canEdit={canEditContent}
+          canManage={canManageCurrent}
+          email={email}
+          key={`reference:${email.id}`}
+        />
+      ) : null}
+      {planningContent}
+      {blocksContent}
+      {handoffContent}
+    </Stack>
+  );
 
-  const handleEmailPanelSelect = () => {
-    setActiveUtilityPanel(null);
-    setActiveContentTab("email");
-  };
+  const historyPanelContent = (
+    <Stack gap="lg">
+      {historyContent}
+      {activityContent}
+    </Stack>
+  );
 
   return (
     <div className={styles.page}>
       <ReviewHeader
         actionMenuOpened={actionMenuOpened}
-        activeUtilityPanel={activeUtilityPanel}
         approvalBlockedCount={approvalBlockedCount}
         approvalBlockedMessage={approvalBlockedMessage}
         archiveEmailIsPending={archiveEmailMutation.isPending}
         availableAdaptations={availableAdaptations}
+        hasRegions={hasRegions}
         availableVariants={availableVariants}
-        canManageEmail={canManageEmail}
-        currentStageTitle={currentStage?.title}
+        canManageEmail={canManageCurrent}
+        boardGroupCount={boardGroupCount}
+        boardGroupPosition={boardGroupPosition}
+        boardName={
+          boardsQuery.data?.find((board) => board.key === email?.sequence)?.name
+        }
+        currentListEmail={currentListEmail}
+        currentStageKey={currentStage?.stage ?? (isArchived ? email?.stage ?? undefined : undefined)}
+        // The board list holds active emails only, so an archived one names
+        // its stage itself.
+        currentStageTitle={currentStage?.title ?? (isArchived ? formatStageName(email?.stage ?? "") : undefined)}
+        groupVersions={emailGroup?.versions ?? []}
         email={email}
         hasAdaptationOptions={hasAdaptationOptions}
-        hasLanguageOptions={hasLanguageOptions}
         hasVariantOptions={hasVariantOptions}
-        isAnalyzingCurrentEmail={isAnalyzingCurrentEmail}
         isCompactReview={isCompactReview}
+        isSuperAdmin={currentUserRole === "super_admin"}
         languageVersions={languageVersions}
         nextBoardEmail={nextBoardEmail}
         nextEmailWithOpenComments={nextEmailWithOpenComments}
         previousBoardEmail={previousBoardEmail}
+        renderedHTML={renderedEmailQuery.data?.html ?? ""}
         reviewStatusIsPending={reviewStatusMutation.isPending}
         selectedAdaptation={selectedAdaptation}
         selectedVariant={selectedVariant}
-        viewport={viewport}
         onActionMenuChange={setActionMenuOpened}
         onAdaptationSelect={handleAdaptationSelect}
-        onAnalyze={handleAnalyze}
         onArchiveClick={() => setArchiveModalOpened(true)}
-        onBackToBoard={handleBackToBoard}
         onDuplicateClick={() => {
           duplicateEmailMutation.reset();
           setDuplicateModalOpened(true);
         }}
-        onEmailPanelSelect={handleEmailPanelSelect}
         onNavigateToReview={navigateToReview}
-        onReanalyze={handleReanalyze}
         onReviewStatusChange={handleReviewStatusChange}
-        onUtilityPanelSelect={handleUtilityPanelSelect}
         onVariantSelect={handleVariantClick}
-        onViewportChange={setViewport}
       />
+
+      {email?.archived_at ? (
+        <ArchivedEmailNotice
+          archivedAt={email.archived_at}
+          archivedBy={email.archived_by_email ?? null}
+          canRestore={canManageEmail}
+          isRestoring={restoreEmailMutation.isPending}
+          onRestore={() => restoreEmailMutation.mutate(email.id)}
+        />
+      ) : null}
 
       {duplicateModalOpened && email ? (
         <DuplicateEmailModal
@@ -708,25 +768,22 @@ export function EmailReview({
       <ReviewLayout
         activeContentTab={activeContentTab}
         activePanelTab={activePanelTab}
-        activeUtilityPanel={activeUtilityPanel}
         analysisContent={analysisContent}
         commentsContent={commentsContent}
         contentRef={contentRef}
+        detailsContent={detailsContent}
+        historyContent={historyPanelContent}
         isCompactReview={isCompactReview}
         isResizing={isResizing}
         openCommentCount={openCommentCount}
         previewContent={previewContent}
+        previewToolbar={<ViewportSwitch viewport={viewport} onChange={setViewport} />}
         rightPanelPercent={rightPanelPercent}
-        selectedUtilityPanel={selectedUtilityPanel}
-        utilityContentByPanel={utilityContentByPanel}
-        utilityPanelContent={utilityPanelContent}
         onActiveContentTabChange={setActiveContentTab}
         onActivePanelTabChange={setActivePanelTab}
         onResizeEnd={layout.handleResizeStart}
         onResizeMove={layout.handleResizeStart}
         onResizeStart={layout.handleResizeStart}
-        onUtilityPanelChange={setActiveUtilityPanel}
-        onUtilityPanelSelect={handleUtilityPanelSelect}
       />
     </div>
   );

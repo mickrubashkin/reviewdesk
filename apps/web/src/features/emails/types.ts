@@ -1,3 +1,5 @@
+import type { FirstSendEstimate } from "./firstSend";
+
 export type EmailListItem = {
   id: string;
   sequence: string;
@@ -12,6 +14,8 @@ export type EmailListItem = {
   variant: EmailVariant;
   adaptation_key: string;
   adaptation_label: string;
+  // The board region the email belongs to (see BoardRegion).
+  region_key?: string | null;
   review_status: EmailReviewStatus;
   owner_email: string | null;
   reviewer_email: string | null;
@@ -24,9 +28,27 @@ export type EmailListItem = {
   // The EN master this email translates, and whether its text changed since.
   translation_of: string | null;
   translation_stale: boolean;
+  // The reference email a region's email adapts, and whether its text
+  // changed since the email last matched it.
+  based_on?: string | null;
+  based_on_stale?: boolean;
   live_marked_at?: string | null;
+  // The current content version and the oldest one a robot in Bitrix24
+  // has, if any.
+  latest_version?: number | null;
+  uploaded_version?: number | null;
+  // When the first robot was marked as pasted.
+  uploaded_at?: string | null;
+  // The email's robots (the managers of its region), each with its mark.
+  upload_robots?: RobotUpload[];
+  // Set only for archived emails (the board's history).
+  archived_at?: string | null;
+  archived_by_email?: string | null;
   // Derived on the board from the fields above and the board's last sync.
   production_status?: ProductionStatus;
+  // For an email pasted into a robot and not seen sent yet: from when the
+  // portal can show its first send (see firstSendEstimate).
+  first_send?: FirstSendEstimate;
 };
 
 // live: the portal sync saw robots send it; live_manual: marked by hand;
@@ -41,6 +63,79 @@ export type TranslationStatus = {
   changes: Array<{ key: string; before: string; after: string }>;
   checked_at: string | null;
   checked_by: string | null;
+  // Blocks added to or removed from the master since; the translation
+  // already has them, a new one with the master's text.
+  block_changes?: BlockChange[];
+};
+
+// BasedOnStatus tells a region's email what changed in the reference email
+// since it last matched it, and how it differs from the reference now.
+export type BasedOnStatus = {
+  reference_id: string;
+  reference_title: string;
+  reference_language: string;
+  reference_stage: string;
+  reference_sort_order: number;
+  based_on_version: number;
+  reference_latest_version: number;
+  stale: boolean;
+  changes: Array<{ key: string; before: string; after: string }>;
+  block_changes: BlockChange[];
+  checked_at: string | null;
+  checked_by: string | null;
+  // Fields only when both are in the same language. Blocks: "removed" is
+  // only in the reference, "added" only in this email.
+  field_differences: Array<{ key: string; reference: string; own: string }>;
+  block_differences: BlockChange[];
+  timing_difference: { reference: string; own: string } | null;
+};
+
+// ReferenceDifference sums up for the board how a region's email differs
+// from its reference now (see BasedOnStatus for the details).
+export type ReferenceDifference = {
+  fields: number;
+  blocks: BlockChange[];
+  timing: { reference: string; own: string } | null;
+};
+
+// A block of an email built from the library; a repeat has a suffix.
+export type LayoutItem = { block: string; suffix?: string };
+
+// The blocks an email is built from, in order; null for its own template.
+export type EmailLayout = LayoutItem[] | null;
+
+export type BlockChange = {
+  action: "added" | "removed";
+  block: string;
+  id: string;
+  name?: string;
+};
+
+// TranslationSuggestions are AI updates of a translation's fields after its
+// EN master changed; nothing is saved until the translator applies them.
+export type TranslationSuggestions = {
+  model: string;
+  fields: Array<{
+    key: string;
+    en_before: string;
+    en_after: string;
+    current: string;
+    suggestion: string;
+    problem: string;
+  }>;
+  skipped: string[];
+  // Glossary terms the email uses, sent along with the request.
+  glossary: string[];
+};
+
+// RobotUpload is one Bitrix24 robot of an email and the version pasted into
+// it. robot is a manager of the email's region, or "" for the one robot of
+// an email whose region lists no managers.
+export type RobotUpload = {
+  robot: string;
+  version: number | null;
+  uploaded_at: string | null;
+  uploaded_by_email: string | null;
 };
 
 export type ProductionStatus = "live" | "live_manual" | "not_seen" | "unknown";
@@ -49,6 +144,9 @@ export type EmailDetail = EmailListItem & {
   live_marked_at?: string | null;
   live_marked_by?: string | null;
   live_note?: string | null;
+  uploaded_at?: string | null;
+  archived_at?: string | null;
+  archived_by_email?: string | null;
   slug: string;
   original_html: string;
   review_html: string | null;
@@ -56,16 +154,25 @@ export type EmailDetail = EmailListItem & {
   template_hash: string | null;
   template_version: string | null;
   editable_fields: EditableFields;
+  layout?: EmailLayout;
+  // Rules of form the email breaks; it cannot be marked ready until they
+  // are fixed. Only the single-email endpoint sends them.
+  checks?: EmailCheck[];
+};
+
+// An error stops a save that brings it in; a warning lets the email be
+// saved. Both keep it from being marked ready.
+export type EmailCheck = {
+  level: "error" | "warning";
+  // The field it is about, "subject" or "preheader"; absent for the email
+  // as a whole.
+  field?: string;
+  message: string;
 };
 
 export type EmailVariant = string;
 
-export type EmailReviewStatus =
-  | "draft"
-  | "in_review"
-  | "changes_requested"
-  | "approved"
-  | "production_approved";
+export type EmailReviewStatus = "draft" | "ready";
 
 export type EmailCommentSeverity = "suggestion" | "issue" | "blocking";
 
@@ -77,12 +184,15 @@ export type Board = {
   created_at: string;
   updated_at: string;
   portal_synced_at: string | null;
+  // Set only in the response to creating a board.
+  copied_email_count?: number;
 };
 
 export type CreateBoardPayload = {
   name: string;
   key?: string;
   source_board_key?: string;
+  copy_emails?: boolean;
 };
 
 export type CreateBoardStagePayload = {
@@ -134,6 +244,8 @@ export type CreateEmailPayload = {
   language: string;
   variant: EmailVariant;
   adaptation_label?: string;
+  // A region of the board; the email's version then follows it.
+  region_key?: string;
   original_html: string;
 };
 
@@ -165,11 +277,13 @@ export type CreateSlotPayload = {
   sort_order?: number;
   send_timing?: string;
   send_condition?: string;
+  // Builds every language from these blocks; the emails then have no HTML.
+  layout?: LayoutItem[];
   emails: Array<{
     language: string;
     subject?: string;
     preheader?: string;
-    original_html: string;
+    original_html?: string;
   }>;
 };
 
@@ -185,6 +299,8 @@ export type DuplicateEmailPayload = {
   language?: string;
   variant?: EmailVariant;
   adaptation_label?: string;
+  // A region of the target board; the copy's version follows it.
+  region_key?: string;
   title?: string;
   subject?: string;
   preheader?: string;
@@ -196,6 +312,12 @@ export type EditableField = {
   type: EditableFieldType;
   value: string | number;
   order?: number;
+  // The value comes from the shared text with the same key in the email's
+  // language (Settings → Shared texts); the backend keeps it in sync.
+  shared?: boolean;
+  // "markdown" for a text field written in Markdown; the server sets it on
+  // the first edit of a field that can be formatted.
+  format?: "markdown";
 };
 
 export type EditableFields = Record<string, EditableField>;
@@ -256,9 +378,13 @@ export type UpdateEmailPlanningFieldsResponse =
 
 export type RenderedEmail = {
   html: string;
+  // Latest saved version the HTML was rendered from.
+  version: number | null;
+  subject: string;
+  review_status: EmailReviewStatus;
 };
 
-export type EmailVersionSource = "initial" | "manual" | "restore";
+export type EmailVersionSource = "initial" | "manual" | "restore" | "shared_text" | "block";
 
 export type EmailVersionListItem = {
   id: string;
@@ -283,6 +409,7 @@ export type EmailVersionDetail = EmailVersionListItem & {
   template_html: string;
   editable_fields: EditableFields;
   review_html: string;
+  layout?: EmailLayout;
 };
 
 export type EmailAnalysis = {
@@ -327,6 +454,9 @@ export type EmailAnalysisStreamState = {
 
 export type EmailRecommendation = {
   priority: "high" | "medium" | "low";
+  // The review block it is about ("subject", "preheader" or a block of the
+  // body); empty or absent for the whole email and in older analyses.
+  block?: string;
   title: string;
   details: string;
 };
@@ -363,6 +493,10 @@ export type AIAnalysisLogFilters = {
 export type AuthUser = {
   email: string;
   role: UserRole;
+  // Languages this person translates; outdated translations in them show in My tasks.
+  languages?: string[];
+  // Keys of boards this person manages like an admin; admins manage every board.
+  managed_boards?: string[];
 };
 
 export type UserRole = "super_admin" | "admin" | "reviewer";
@@ -370,10 +504,17 @@ export type UserRole = "super_admin" | "admin" | "reviewer";
 export type UserAdminItem = {
   id: string;
   email: string;
+  // Display name; empty means show the email.
+  name: string;
   role: UserRole;
   created_at: string;
   updated_at: string;
   last_seen_at: string | null;
+  languages: string[] | null;
+  // Boards this person manages like an admin (Users → Manages).
+  managed_boards: string[] | null;
+  // Other work addresses that sign in to this user.
+  aliases?: string[];
 };
 
 export type CreateAdminUserPayload = {
@@ -429,8 +570,10 @@ export type EmailEventAction =
   | "email_adaptation_created"
   | "email_created"
   | "email_archived"
+  | "email_restored"
   | "email_updated"
   | "email_planning_updated"
+  | "slot_updated"
   | "email_review_status_updated"
   | "email_area_approval_updated"
   | "comment_created"
@@ -470,6 +613,8 @@ export type EmailActivityType =
   | "email_duplicated"
   | "email_adaptation_created"
   | "email_archived"
+  | "email_restored"
+  | "slot_updated"
   | "ai_analysis_run";
 
 export type EmailActivityItem = {
@@ -530,6 +675,8 @@ export type EmailCommentMessage = {
   body: string;
   created_at: string;
   updated_at: string;
+  // Addresses of the people @mentioned in body (lowercase).
+  mention_emails?: string[];
 };
 
 export type CreateEmailCommentPayload = {
@@ -539,8 +686,24 @@ export type CreateEmailCommentPayload = {
   end_offset: number;
   body: string;
   severity: EmailCommentSeverity;
+  mention_user_ids?: string[];
 };
 
 export type CreateCommentMessagePayload = {
   body: string;
+  mention_user_ids?: string[];
+};
+
+// A region of a board: a version of its content (the reference chain or a
+// market that adapts it). Each manager has a robot in Bitrix24.
+export type BoardRegion = {
+  key: string;
+  name: string;
+  language: string;
+  managers: string[];
+  reference: boolean;
+  updated_by?: string;
+  updated_at?: string;
+  // Active emails of the board in the region.
+  emails: number;
 };

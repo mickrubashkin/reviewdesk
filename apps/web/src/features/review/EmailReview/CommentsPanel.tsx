@@ -50,6 +50,7 @@ export function CommentsPanel({
   onReply,
   onResolve,
   onSelectComment,
+  readOnly = false,
   replyingCommentId,
   staleCommentIds,
 }: {
@@ -77,6 +78,8 @@ export function CommentsPanel({
   onReply: (commentId: string, body: string) => void;
   onResolve: (commentId: string) => void;
   onSelectComment: (comment: EmailComment) => void;
+  // An archived email: its comments can be read, not added to.
+  readOnly?: boolean;
   replyingCommentId: string | null;
   staleCommentIds: Set<string>;
 }) {
@@ -174,12 +177,12 @@ export function CommentsPanel({
         <CommentFilterBar
           comments={comments}
           filter={filter}
-          onAddCommentClick={() => setIsComposerOpen((opened) => !opened)}
+          onAddCommentClick={readOnly ? undefined : () => setIsComposerOpen((opened) => !opened)}
           onFilterChange={onFilterChange}
         />
       ) : null}
 
-      {isComposerOpen ? (
+      {isComposerOpen && !readOnly ? (
         <CommentComposer
           blockOptions={blockOptions}
           createCommentError={createCommentError}
@@ -199,6 +202,7 @@ export function CommentsPanel({
         <Timeline active={filteredComments.length} bulletSize={24} lineWidth={2}>
           {filteredComments.map((comment) => (
             <CommentItem
+              canReply={!readOnly}
               canResolve={canResolveComment(comment)}
               isActive={comment.id === activeCommentId}
               isHovered={comment.id === hoveredCommentId}
@@ -245,18 +249,26 @@ export function CommentsPanel({
           gap="xs"
         >
           <Text fw={600}>No comments yet</Text>
-          <Text c="dimmed" ta="center" size="sm">
-            Select text or click a reviewable block in the email preview to add
-            the first comment.
-          </Text>
-          <Button
-            disabled={blockOptions.length === 0}
-            size="xs"
-            variant="light"
-            onClick={() => setIsComposerOpen(true)}
-          >
-            Add comment
-          </Button>
+          {readOnly ? (
+            <Text c="dimmed" ta="center" size="sm">
+              The email is archived: restore it to comment.
+            </Text>
+          ) : (
+            <>
+              <Text c="dimmed" ta="center" size="sm">
+                Select text or click a reviewable block in the email preview to add
+                the first comment.
+              </Text>
+              <Button
+                disabled={blockOptions.length === 0}
+                size="xs"
+                variant="light"
+                onClick={() => setIsComposerOpen(true)}
+              >
+                Add comment
+              </Button>
+            </>
+          )}
         </Stack>
       ) : null}
     </Stack>

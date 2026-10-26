@@ -7,7 +7,7 @@ func TestExtractContentPartsDoesNotInferFooterLinkAsPrimaryCTA(t *testing.T) {
 		<html>
 			<body>
 				<p>Thanks for joining.</p>
-				<a href="https://www.example.com/privacy/">Privacy policy</a>
+				<a href="https://www.bitrix24.com/privacy/">Privacy policy</a>
 			</body>
 		</html>
 	`, "", "", "")
@@ -28,7 +28,7 @@ func TestExtractContentPartsUsesStyledNonFooterLinkAsPrimaryCTA(t *testing.T) {
 		<html>
 			<body>
 				<a href="https://example.com/start" style="display: inline-block; border-radius: 6px">Start setup</a>
-				<a href="https://www.example.com/privacy/">Privacy policy</a>
+				<a href="https://www.bitrix24.com/privacy/">Privacy policy</a>
 			</body>
 		</html>
 	`, "", "", "")

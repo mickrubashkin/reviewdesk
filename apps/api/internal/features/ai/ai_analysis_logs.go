@@ -37,9 +37,10 @@ func insertAIAnalysisLog(ctx context.Context, dbpool *pgxpool.Pool, emailID stri
 			total_tokens,
 			cached_tokens,
 			force_refresh,
-			error_message
+			error_message,
+			kind
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, coalesce(nullif($13, ''), 'analysis'));
 	`,
 		emailID,
 		userID,
@@ -53,6 +54,7 @@ func insertAIAnalysisLog(ctx context.Context, dbpool *pgxpool.Pool, emailID stri
 		metrics.CachedTokens,
 		forceRefresh,
 		metrics.ErrorMessage,
+		metrics.Kind,
 	)
 
 	return err

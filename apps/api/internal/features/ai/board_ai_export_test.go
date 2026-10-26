@@ -29,7 +29,7 @@ func TestBoardAIExportRequiresSuperAdmin(t *testing.T) {
 func TestBuildBoardAIDocument(t *testing.T) {
 	positions := map[string]*boardPosition{
 		"registered/1": {Stage: "registered", SortOrder: 1, Title: "Welcome"},
-		"approved/2":   {Stage: "approved", SortOrder: 2, Title: "Set up workspace"},
+		"approved/2":   {Stage: "approved", SortOrder: 2, Title: "Set up NFR"},
 		"approved/3":   {Stage: "approved", SortOrder: 3, Title: "Reminder"},
 	}
 	doc := buildBoardAIDocument(boardAIDocumentInput{
@@ -37,7 +37,7 @@ func TestBuildBoardAIDocument(t *testing.T) {
 		BoardName: "Onboarding",
 		Stages:    []string{"registered", "approved"},
 		Docs: []emails.MarkdownDoc{
-			{Stage: "approved", SortOrder: 2, Markdown: "#### Workspace email\n"},
+			{Stage: "approved", SortOrder: 2, Markdown: "#### NFR email\n"},
 			{Stage: "registered", SortOrder: 1, Markdown: "#### Welcome email\n"},
 		},
 		Positions:      positions,
@@ -70,7 +70,7 @@ func TestBuildBoardAIDocument(t *testing.T) {
 	if strings.Contains(doc, "Off") {
 		t.Errorf("disabled rule leaked:\n%s", doc)
 	}
-	if strings.Index(doc, "Welcome email") > strings.Index(doc, "Workspace email") {
+	if strings.Index(doc, "Welcome email") > strings.Index(doc, "NFR email") {
 		t.Error("emails must follow board stage order")
 	}
 }

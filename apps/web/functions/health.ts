@@ -1,3 +1,5 @@
+const defaultBackendOrigin = "http://localhost:8080";
+
 export async function onRequest(context: PagesFunctionContext) {
   let requestURL: URL;
   let targetURL: URL;
@@ -43,10 +45,7 @@ export async function onRequest(context: PagesFunctionContext) {
 }
 
 function normalizeBackendOrigin(value: string | undefined) {
-  if (!value?.trim()) {
-    throw new Error("BACKEND_ORIGIN is not set");
-  }
-  const origin = value.trim().replace(/^['"]|['"]$/g, "");
+  const origin = (value ?? defaultBackendOrigin).trim().replace(/^['"]|['"]$/g, "");
   return new URL(origin).origin;
 }
 

@@ -1,0 +1,1 @@
+export { TranslationGlossary } from "./TranslationGlossary";

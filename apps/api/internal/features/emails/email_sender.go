@@ -53,6 +53,18 @@ func (sender LogEmailSender) SendLoginCode(_ context.Context, to string, code st
 	return err
 }
 
+// Send prints a notification email instead of sending it, for local runs
+// without RESEND_API_KEY.
+func (sender LogEmailSender) Send(_ context.Context, to string, subject string, text string, _ string) error {
+	writer := sender.Writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+
+	_, err := fmt.Fprintf(writer, "ReviewDesk email to %s: %s\n%s\n", to, subject, text)
+	return err
+}
+
 type ResendEmailSender struct {
 	APIKey   string
 	From     string
@@ -62,13 +74,18 @@ type ResendEmailSender struct {
 }
 
 func (sender ResendEmailSender) SendLoginCode(ctx context.Context, to string, code string) error {
+	return sender.Send(ctx, to, "Your ReviewDesk sign-in code", loginCodeEmailText(code), loginCodeEmailHTML(code))
+}
+
+// Send delivers one email through Resend.
+func (sender ResendEmailSender) Send(ctx context.Context, to string, subject string, text string, htmlBody string) error {
 	payload := resendEmailPayload{
 		From:    sender.From,
 		To:      []string{to},
 		ReplyTo: sender.ReplyTo,
-		Subject: "Your ReviewDesk sign-in code",
-		Text:    loginCodeEmailText(code),
-		HTML:    loginCodeEmailHTML(code),
+		Subject: subject,
+		Text:    text,
+		HTML:    htmlBody,
 	}
 
 	bodyBytes, err := json.Marshal(payload)
@@ -122,6 +139,27 @@ type resendEmailPayload struct {
 
 func NewLoginCodeEmailSender() EmailSender {
 	return MultiEmailSender{Senders: newLoginCodeEmailSendersFromEnv()}
+}
+
+// NotificationSender sends notification emails, such as @mentions.
+type NotificationSender interface {
+	Send(ctx context.Context, to string, subject string, text string, htmlBody string) error
+}
+
+// NewNotificationSender sends through Resend when RESEND_API_KEY is set and
+// prints the email otherwise. The public demo always prints: its users have
+// made-up addresses, and mail to them would hurt the sender's reputation.
+func NewNotificationSender() NotificationSender {
+	apiKey := strings.TrimSpace(os.Getenv("RESEND_API_KEY"))
+	if apiKey == "" || envBoolDefault("AUTH_DEMO_LOGIN_ENABLED", false) {
+		return LogEmailSender{Writer: os.Stdout}
+	}
+	return ResendEmailSender{
+		APIKey:  apiKey,
+		From:    authFromEmail(),
+		ReplyTo: authReplyToEmail(),
+		Client:  &http.Client{Timeout: 15 * time.Second},
+	}
 }
 
 func newLoginCodeEmailSendersFromEnv() []EmailSender {

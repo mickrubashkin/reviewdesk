@@ -17,6 +17,7 @@ import { notifications } from "@mantine/notifications";
 import { useMutation } from "@tanstack/react-query";
 
 import { exportBoardForAI, type BoardAIExportResult } from "../../ai-config/api";
+import { useBoardRegions } from "../api";
 import {
   allMarkdownSections,
   markdownSectionOptions,
@@ -28,6 +29,7 @@ import { downloadTextFile } from "../../ai-config/AIConfig/exportConfig";
 import { formatEmailReviewStatus } from "../../emails/reviewStatus";
 
 const tokenWarningThreshold = 100_000;
+const noRegion = "__none__";
 
 // Same convention the board uses for its default view: v1, else new.
 function defaultVariant(variants: string[]) {
@@ -67,6 +69,15 @@ export function BoardAIExportModal({
   const [selectedAdaptations, setSelectedAdaptations] = useState(
     adaptations.map((a) => a.value)
   );
+  // On a board with regions the choice is by region (the adaptation follows
+  // it); null is all of them.
+  const boardRegions = useBoardRegions(board.key).data ?? [];
+  const regionOptions = [
+    ...boardRegions.map((region) => ({ label: region.name, value: region.key })),
+    ...(emails.some((email) => !email.region_key) ? [{ label: "No region", value: noRegion }] : []),
+  ];
+  const [chosenRegions, setChosenRegions] = useState<string[] | null>(null);
+  const selectedRegions = chosenRegions ?? regionOptions.map((option) => option.value);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [includeBoard, setIncludeBoard] = useState(true);
   const [includeAISetup, setIncludeAISetup] = useState(true);
@@ -80,7 +91,9 @@ export function BoardAIExportModal({
   const matches = (email: EmailListItem) =>
     selectedLanguages.includes(email.language) &&
     selectedVariants.includes(email.variant) &&
-    selectedAdaptations.includes(email.adaptation_key);
+    (boardRegions.length > 0
+      ? selectedRegions.includes(email.region_key ?? noRegion)
+      : selectedAdaptations.includes(email.adaptation_key));
 
   const columns = useMemo(
     () => buildStageColumns(emails, board.stages),
@@ -162,12 +175,16 @@ export function BoardAIExportModal({
             value={selectedVariants}
             onChange={setSelectedVariants}
           />
-          <MultiSelect
-            data={adaptations}
-            label="Adaptation"
-            value={selectedAdaptations}
-            onChange={setSelectedAdaptations}
-          />
+          {boardRegions.length > 0 ? (
+            <MultiSelect data={regionOptions} label="Region" value={selectedRegions} onChange={setChosenRegions} />
+          ) : (
+            <MultiSelect
+              data={adaptations}
+              label="Adaptation"
+              value={selectedAdaptations}
+              onChange={setSelectedAdaptations}
+            />
+          )}
         </Group>
         <Group gap="xs">
           <Button size="compact-xs" variant="light" onClick={() => applyPreset("default")}>

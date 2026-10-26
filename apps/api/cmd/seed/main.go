@@ -383,6 +383,8 @@ func upsertEmail(ctx context.Context, dbpool *pgxpool.Pool, email seedEmail) err
 			template_html = EXCLUDED.template_html,
 			template_hash = EXCLUDED.template_hash,
 			editable_fields = EXCLUDED.editable_fields,
+			-- The seed's template replaces blocks the email may have had.
+			layout = NULL,
 			updated_at = now()
 		WHERE emails.sequence IS DISTINCT FROM EXCLUDED.sequence
 			OR emails.title IS DISTINCT FROM EXCLUDED.title

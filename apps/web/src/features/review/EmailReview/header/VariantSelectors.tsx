@@ -1,51 +1,24 @@
 import { Select } from "@mantine/core";
+import { formatVariantOptionLabel } from "../../../emails/EmailCard/EmailCard.helpers";
 import type { EmailVariant } from "../../../emails/types";
 import styles from "../EmailReview.module.css";
 
-export function LanguageSelect({
-  onSelect,
-  selectedEmailId,
-  versions,
-}: {
-  onSelect: (emailId: string) => void;
-  selectedEmailId: string;
-  versions: Array<{ id: string; language: string }>;
-}) {
-  return (
-    <Select
-      allowDeselect={false}
-      aria-label="Email language"
-      className={styles.headerCompactSelect}
-      classNames={{ input: styles.headerSelectInput }}
-      data={versions.map((version) => ({
-        label: version.language.toUpperCase(),
-        value: version.id,
-      }))}
-      disabled={versions.length <= 1}
-      size="xs"
-      value={selectedEmailId}
-      onChange={(value) => {
-        if (value) {
-          onSelect(value);
-        }
-      }}
-    />
-  );
-}
-
 export function AdaptationSelect({
   adaptations,
+  hasRegions,
   onSelect,
   selectedAdaptation,
 }: {
   adaptations: Array<{ adaptation_key: string; adaptation_label: string }>;
+  // On a board with regions the adaptations are its regions.
+  hasRegions: boolean;
   onSelect: (adaptationKey: string) => void;
   selectedAdaptation: string;
 }) {
   return (
     <Select
       allowDeselect={false}
-      aria-label="Email adaptation"
+      aria-label={hasRegions ? "Email region" : "Email adaptation"}
       className={styles.headerVersionSelect}
       classNames={{ input: styles.headerSelectInput }}
       data={adaptations.map((adaptation) => ({
@@ -79,7 +52,7 @@ export function VariantSelect({
       className={styles.headerVersionSelect}
       classNames={{ input: styles.headerSelectInput }}
       data={availableVariants.map((variant) => ({
-        label: variant,
+        label: formatVariantOptionLabel(variant, availableVariants),
         value: variant,
       }))}
       size="xs"
@@ -90,19 +63,5 @@ export function VariantSelect({
         }
       }}
     />
-  );
-}
-
-export function ReadOnlyVersionValue({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <span aria-label={label} className={styles.readOnlySelect}>
-      {value || "None"}
-    </span>
   );
 }

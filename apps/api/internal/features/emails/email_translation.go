@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	auth "github.com/mickrubashkin/reviewdesk/apps/api/internal/core/auth"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailblocks"
 )
 
 const emailEventTranslationConfirmed = "email_translation_confirmed"
@@ -34,11 +35,24 @@ type translationStatus struct {
 	Changes               []translationChange `json:"changes"`
 	CheckedAt             *time.Time          `json:"checked_at"`
 	CheckedBy             *string             `json:"checked_by"`
+
+	// BlockChanges are the blocks added to or removed from the master since
+	// (none when it switched to blocks): the translation already has them,
+	// a new one with the master's text.
+	BlockChanges []emailblocks.BlockChange `json:"block_changes"`
 }
+
+// TranslationStatus and TranslationChange let other packages read a
+// translation's status.
+type (
+	TranslationStatus = translationStatus
+	TranslationChange = translationChange
+)
 
 type versionText struct {
 	subject, preheader string
 	fields             map[string]string
+	layout             emailblocks.Layout
 }
 
 // translationHandler shows whether a translation is behind its EN master and
@@ -59,17 +73,24 @@ func translationHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// LoadTranslationStatus is loadTranslationStatus for other packages, e.g.
+// AI pre-translation of what changed in the master.
+func LoadTranslationStatus(ctx context.Context, db *pgxpool.Pool, id string) (TranslationStatus, error) {
+	return loadTranslationStatus(ctx, db, id)
+}
+
 func loadTranslationStatus(ctx context.Context, db *pgxpool.Pool, id string) (translationStatus, error) {
 	var status translationStatus
 	var fromVersion *int
+	var translationFieldsJSON []byte
 	err := db.QueryRow(ctx, `
 		SELECT m.id, m.title, m.language, t.translated_from_version, t.translation_checked_at, t.translation_checked_by,
-			coalesce((SELECT max(version_number) FROM email_versions WHERE email_id = m.id), 0)
+			coalesce((SELECT max(version_number) FROM email_versions WHERE email_id = m.id), 0), t.editable_fields
 		FROM emails t
 		JOIN emails m ON m.id = t.translation_of
 		WHERE t.id = $1;
 	`, id).Scan(&status.MasterID, &status.MasterTitle, &status.MasterLanguage, &fromVersion,
-		&status.CheckedAt, &status.CheckedBy, &status.MasterLatestVersion)
+		&status.CheckedAt, &status.CheckedBy, &status.MasterLatestVersion, &translationFieldsJSON)
 	if err != nil {
 		return status, err
 	}
@@ -77,6 +98,7 @@ func loadTranslationStatus(ctx context.Context, db *pgxpool.Pool, id string) (tr
 		status.TranslatedFromVersion = *fromVersion
 	}
 	status.Changes = []translationChange{}
+	status.BlockChanges = []emailblocks.BlockChange{}
 
 	before, errBefore := loadVersionText(ctx, db, status.MasterID, status.TranslatedFromVersion)
 	after, errAfter := loadVersionText(ctx, db, status.MasterID, status.MasterLatestVersion)
@@ -85,17 +107,45 @@ func loadTranslationStatus(ctx context.Context, db *pgxpool.Pool, id string) (tr
 		// up to date too.
 		return status, nil
 	}
+	// Fields shared in the translation have their own translation, like
+	// email_text_hash with skip in the database.
+	for key := range sharedFieldKeys(translationFieldsJSON) {
+		delete(before.fields, key)
+		delete(after.fields, key)
+	}
 	status.Changes = diffVersionText(before, after)
 	status.Stale = len(status.Changes) > 0
+	// A master that switched to blocks has the same text in another
+	// template: nothing to tell about blocks.
+	if before.layout != nil {
+		status.BlockChanges = emailblocks.Diff(before.layout, after.layout)
+	}
+	if len(status.BlockChanges) > 0 {
+		library, err := loadBlockLibrary(ctx, db)
+		if err != nil {
+			return status, err
+		}
+		for i, change := range status.BlockChanges {
+			for _, block := range library {
+				if block.Key == change.Block {
+					status.BlockChanges[i].Name = block.Name
+				}
+			}
+		}
+	}
 	return status, nil
 }
 
 func loadVersionText(ctx context.Context, db *pgxpool.Pool, emailID string, version int) (versionText, error) {
 	var subject, preheader *string
-	var fieldsJSON []byte
+	var fieldsJSON, layoutRaw []byte
 	if err := db.QueryRow(ctx, `
-		SELECT subject, preheader, editable_fields FROM email_versions WHERE email_id = $1 AND version_number = $2;
-	`, emailID, version).Scan(&subject, &preheader, &fieldsJSON); err != nil {
+		SELECT subject, preheader, editable_fields, layout FROM email_versions WHERE email_id = $1 AND version_number = $2;
+	`, emailID, version).Scan(&subject, &preheader, &fieldsJSON, &layoutRaw); err != nil {
+		return versionText{}, err
+	}
+	layout, err := parseLayout(layoutRaw)
+	if err != nil {
 		return versionText{}, err
 	}
 	var fields map[string]struct {
@@ -105,7 +155,7 @@ func loadVersionText(ctx context.Context, db *pgxpool.Pool, emailID string, vers
 	if err := json.Unmarshal(fieldsJSON, &fields); err != nil {
 		return versionText{}, err
 	}
-	text := versionText{subject: stringFromPointer(subject), preheader: stringFromPointer(preheader), fields: map[string]string{}}
+	text := versionText{subject: stringFromPointer(subject), preheader: stringFromPointer(preheader), fields: map[string]string{}, layout: layout}
 	for key, field := range fields {
 		if field.Type == "text" {
 			text.fields[key] = fmt.Sprint(field.Value)
@@ -151,11 +201,15 @@ func diffVersionText(before, after versionText) []translationChange {
 func confirmTranslationHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.FromRequest(r)
-		if !ok || !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		id := chi.URLParam(r, "id")
+		if canEdit, err := CanEditEmail(r.Context(), dbpool, user, id); err != nil || !canEdit {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 
 		tx, err := dbpool.Begin(r.Context())
 		if err != nil {
@@ -206,12 +260,15 @@ func confirmTranslationHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 }
 
 // linkTranslation ties a newly created email to its EN master at the master's
-// current version.
+// current version. A translation follows its master and adapts no
+// reference email.
 func linkTranslation(ctx context.Context, db emailEventExecutor, translationID, masterID string) error {
 	_, err := db.Exec(ctx, `
 		UPDATE emails
 		SET translation_of = $2,
-			translated_from_version = coalesce((SELECT max(version_number) FROM email_versions WHERE email_id = $2), 0)
+			translated_from_version = coalesce((SELECT max(version_number) FROM email_versions WHERE email_id = $2), 0),
+			based_on = NULL,
+			based_on_version = NULL
 		WHERE id = $1;
 	`, translationID, masterID)
 	return err

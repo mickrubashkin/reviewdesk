@@ -1,0 +1,83 @@
+.guide {
+  position: fixed;
+  z-index: 150;
+  left: 16px;
+  bottom: 16px;
+  width: 320px;
+  padding: 12px 14px 14px;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.steps {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.step[data-done] .stepText {
+  color: var(--mantine-color-dimmed);
+  text-decoration: line-through;
+}
+
+.stepText {
+  flex: 1;
+  min-width: 0;
+}
+
+.pill {
+  position: fixed;
+  z-index: 150;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: var(--mantine-color-white);
+  background: var(--mantine-primary-color-filled);
+  box-shadow: var(--mantine-shadow-lg);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+}
+
+.pillCount {
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.guide[data-side="right"],
+.pill[data-side="right"] {
+  right: 16px;
+  left: auto;
+}
+
+/* Phones: across the bottom, clear of the screen edges. */
+@media (max-width: 40em) {
+  .guide,
+  .guide[data-side="right"] {
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
+  }
+
+  .pill,
+  .pill[data-side="right"] {
+    right: auto;
+    left: 12px;
+    bottom: 12px;
+  }
+}

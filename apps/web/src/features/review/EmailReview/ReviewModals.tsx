@@ -13,13 +13,13 @@ import {
 import { type FormEvent, useMemo, useState } from "react";
 
 import { ApiError } from "../../../shared/api";
+import { useBoardRegions } from "../../boards/api";
 import { formatStageName } from "../../emails/stages";
 import type {
   Board,
   DuplicateEmailPayload,
   EmailDetail,
   EmailListItem,
-  EmailVariant,
 } from "../../emails/types";
 
 const currentEventValue = "current-event";
@@ -141,8 +141,10 @@ export function DuplicateEmailModal({
   const [stage, setStage] = useState(email.stage ?? "");
   const [eventMode, setEventMode] = useState(currentEventValue);
   const [language, setLanguage] = useState(email.language);
-  const [variant, setVariant] = useState<EmailVariant>(email.variant);
   const [adaptationLabel, setAdaptationLabel] = useState(email.adaptation_label);
+  // On a board with regions the copy goes into a region instead of getting
+  // an adaptation label.
+  const [regionKey, setRegionKey] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [subject, setSubject] = useState(email.subject ?? "");
   const [preheader, setPreheader] = useState(email.preheader ?? "");
@@ -150,7 +152,6 @@ export function DuplicateEmailModal({
   const [stageError, setStageError] = useState<string | null>(null);
   const [titleError, setTitleError] = useState<string | null>(null);
   const [languageError, setLanguageError] = useState<string | null>(null);
-  const [variantError, setVariantError] = useState<string | null>(null);
   const [adaptationError, setAdaptationError] = useState<string | null>(null);
   const [targetError, setTargetError] = useState<string | null>(null);
   const boardOptions = useMemo(
@@ -158,6 +159,11 @@ export function DuplicateEmailModal({
     [boards]
   );
   const selectedBoard = boards.find((board) => board.key === sequence);
+  const targetRegions = useBoardRegions(sequence).data ?? [];
+  const byRegion = targetRegions.length > 0;
+  const selectedRegion =
+    targetRegions.find((region) => region.key === regionKey) ??
+    (sequence === email.sequence ? targetRegions.find((region) => region.key === email.region_key) : undefined);
   const stageOptions = selectedBoard?.stages ?? [];
   const selectedStage = stageOptions.includes(stage)
     ? stage
@@ -170,7 +176,7 @@ export function DuplicateEmailModal({
     sequence !== email.sequence ||
     selectedStage !== (email.stage ?? "");
   const sortOrder = shouldUseNewSortOrder
-    ? getNextSortOrder(emails, sequence, selectedStage)
+    ? nextSlotPosition(emails, sequence, selectedStage, stageOptions)
     : email.sort_order;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -179,8 +185,8 @@ export function DuplicateEmailModal({
     const normalizedSequence = sequence.trim();
     const normalizedStage = selectedStage.trim();
     const normalizedLanguage = language.trim().toLowerCase();
-    const normalizedVariant = variant.trim().toLowerCase();
-    const normalizedAdaptationLabel = adaptationLabel.trim();
+    // Empty is the main email of the slot, not an adaptation.
+    const normalizedAdaptationLabel = adaptationLabel.trim() || "Default";
     if (!normalizedSequence) {
       setSequenceError("Board is required");
       return;
@@ -197,14 +203,6 @@ export function DuplicateEmailModal({
       setLanguageError("Language is required");
       return;
     }
-    if (!normalizedVariant) {
-      setVariantError("Version is required");
-      return;
-    }
-    if (!normalizedAdaptationLabel) {
-      setAdaptationError("Adaptation is required");
-      return;
-    }
 
     const payload: DuplicateEmailPayload = {
       sequence: normalizedSequence,
@@ -217,10 +215,11 @@ export function DuplicateEmailModal({
     if (normalizedLanguage !== email.language) {
       payload.language = normalizedLanguage;
     }
-    if (normalizedVariant !== email.variant) {
-      payload.variant = normalizedVariant;
-    }
-    if (normalizedAdaptationLabel !== email.adaptation_label) {
+    if (byRegion) {
+      if (selectedRegion) {
+        payload.region_key = selectedRegion.key;
+      }
+    } else if (normalizedAdaptationLabel !== email.adaptation_label) {
       payload.adaptation_label = normalizedAdaptationLabel;
     }
     const hasTargetChange =
@@ -228,13 +227,16 @@ export function DuplicateEmailModal({
       normalizedStage !== (email.stage ?? "") ||
       sortOrder !== email.sort_order ||
       normalizedLanguage !== email.language ||
-      normalizedVariant !== email.variant ||
-      normalizedAdaptationLabel !== email.adaptation_label ||
+      (byRegion
+        ? (selectedRegion?.key ?? null) !== (email.region_key ?? null)
+        : normalizedAdaptationLabel !== email.adaptation_label) ||
       targetTitle !== email.title ||
       subject !== (email.subject ?? "") ||
       preheader !== (email.preheader ?? "");
     if (!hasTargetChange) {
-      setTargetError("Change board, stage, language, version, adaptation, event, or copy before creating.");
+      setTargetError(
+        `Change board, stage, language, ${byRegion ? "region" : "adaptation"}, event, or copy before creating.`
+      );
       return;
     }
 
@@ -242,7 +244,6 @@ export function DuplicateEmailModal({
     setStageError(null);
     setTitleError(null);
     setLanguageError(null);
-    setVariantError(null);
     setAdaptationError(null);
     setTargetError(null);
     try {
@@ -261,7 +262,9 @@ export function DuplicateEmailModal({
           {error ? (
             <Alert color="red" title="Could not duplicate email">
               {isConflict
-                ? "This language, version, and adaptation already exist for the selected email."
+                ? byRegion
+                  ? "This slot already has an email in this language and version in that region."
+                  : "This language, version, and adaptation already exist for the selected email."
                 : "Try again or check that the API server is reachable."}
             </Alert>
           ) : null}
@@ -369,37 +372,41 @@ export function DuplicateEmailModal({
             }}
           />
 
-          <TextInput
-            disabled={isSubmitting}
-            error={variantError}
-            label="Version"
-            placeholder="v2"
-            value={variant}
-            onChange={(event) => {
-              onResetError();
-              setTargetError(null);
-              setVariant(event.currentTarget.value);
-              if (variantError) {
-                setVariantError(null);
-              }
-            }}
-          />
 
-          <TextInput
-            disabled={isSubmitting}
-            error={adaptationError}
-            label="Adaptation"
-            placeholder="Legal"
-            value={adaptationLabel}
-            onChange={(event) => {
-              onResetError();
-              setTargetError(null);
-              setAdaptationLabel(event.currentTarget.value);
-              if (adaptationError) {
-                setAdaptationError(null);
-              }
-            }}
-          />
+          {byRegion ? (
+            <Select
+              data={targetRegions.map((region) => ({
+                label: `${region.name} (${region.language.toUpperCase()})${region.reference ? " · reference" : ""}`,
+                value: region.key,
+              }))}
+              disabled={isSubmitting}
+              label="Region"
+              placeholder="No region"
+              value={selectedRegion?.key ?? null}
+              onChange={(value) => {
+                onResetError();
+                setTargetError(null);
+                setRegionKey(value);
+              }}
+            />
+          ) : (
+            <TextInput
+              disabled={isSubmitting}
+              error={adaptationError}
+              description="Empty: the main email of the slot, not an adaptation"
+              label="Adaptation"
+              placeholder="Default"
+              value={adaptationLabel}
+              onChange={(event) => {
+                onResetError();
+                setTargetError(null);
+                setAdaptationLabel(event.currentTarget.value);
+                if (adaptationError) {
+                  setAdaptationError(null);
+                }
+              }}
+            />
+          )}
 
           <TextInput
             disabled={isSubmitting}
@@ -446,17 +453,21 @@ export function DuplicateEmailModal({
   );
 }
 
-function getNextSortOrder(
+// nextSlotPosition is the next free position of the stage; an empty stage
+// starts where New slot starts it: (stage index + 1) * 100 + 1, so the first
+// email of Registered is #101.
+function nextSlotPosition(
   emails: Array<{ sequence: string; stage: string | null; sort_order: number }>,
   sequence: string,
-  stage: string
+  stage: string,
+  stages: string[]
 ) {
   const matchingSortOrders = emails
     .filter((email) => email.sequence === sequence && (email.stage ?? "") === stage)
     .map((email) => email.sort_order);
 
   if (matchingSortOrders.length === 0) {
-    return 0;
+    return (Math.max(stages.indexOf(stage), 0) + 1) * 100 + 1;
   }
 
   return Math.max(...matchingSortOrders) + 1;

@@ -10,11 +10,15 @@ export type ReviewCommentTarget = ReviewTextSelection & {
 };
 
 export type ReviewChangedBlockReason =
+  | "ai"
   | "approval"
   | "comment"
   | "comment_and_approval";
 
+// A block outlined in the preview: edited since a comment or approval, or
+// the subject of AI recommendations ("ai", labelled with their numbers).
 export type ReviewChangedBlockTarget = {
+  label?: string;
   reason: ReviewChangedBlockReason;
   reviewBlock: string;
 };
@@ -51,6 +55,7 @@ export type ReviewOverlayBadge = {
 
 export type ReviewChangedBlockRect = {
   height: number;
+  label?: string;
   left: number;
   reason: ReviewChangedBlockReason;
   reviewBlock: string;

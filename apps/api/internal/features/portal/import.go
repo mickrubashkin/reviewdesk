@@ -338,7 +338,7 @@ func stageKey(name string) string {
 }
 
 // importTitle shortens a subject to a board title: subjects repeat the
-// programme name ("Partner Program | Welcome Bonus Activated",
+// programme name ("Bitrix24 Partner Program | Kickstart Bonus Activated",
 // "Bitrix24: You haven't started yet"), which adds nothing on a card.
 func importTitle(subject string) string {
 	title := strings.TrimSpace(subject)

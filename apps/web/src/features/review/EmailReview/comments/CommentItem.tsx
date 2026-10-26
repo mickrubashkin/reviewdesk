@@ -1,4 +1,4 @@
-import { Badge, Button, Group, Stack, Text, Textarea, Timeline } from "@mantine/core";
+import { Badge, Button, Group, Stack, Text, Timeline } from "@mantine/core";
 import { ChatTextIcon, CheckIcon } from "@phosphor-icons/react";
 import { useState, type FormEvent, type KeyboardEvent, type RefCallback } from "react";
 
@@ -10,8 +10,12 @@ import {
   getReviewTargetLabel,
 } from "../EmailReview.helpers";
 import styles from "../EmailReview.module.css";
+import { useUserName } from "../../../../shared/userNames";
+import { MentionTextarea } from "../../../comments/MentionTextarea";
+import { MessageBody } from "../../../comments/MessageBody";
 
 export function CommentItem({
+  canReply = true,
   canResolve,
   comment,
   isActive,
@@ -25,6 +29,8 @@ export function CommentItem({
   onResolve,
   onSelect,
 }: {
+  // False on an archived email: it is read-only.
+  canReply?: boolean;
   canResolve: boolean;
   comment: EmailComment;
   isActive: boolean;
@@ -38,6 +44,7 @@ export function CommentItem({
   onResolve: (commentId: string) => void;
   onSelect: (comment: EmailComment) => void;
 }) {
+  const userName = useUserName();
   const isResolved = comment.status === "resolved";
   const [isReplyComposerOpen, setIsReplyComposerOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
@@ -88,7 +95,7 @@ export function CommentItem({
         <Group justify="space-between" gap="xs" wrap="nowrap">
           <Stack gap={2}>
             <Text fw={700} size="xs">
-              {comment.author_email ?? "Unknown author"}
+              {userName(comment.author_email, "Unknown author")}
             </Text>
             <Text c="dimmed" size="xs">
               {getReviewTargetLabel(comment)}
@@ -131,13 +138,13 @@ export function CommentItem({
             <Stack className={styles.commentMessage} gap={3} key={message.id}>
               <Group gap={6} wrap="nowrap">
                 <Text fw={650} size="xs">
-                  {message.author_email ?? "Unknown author"}
+                  {userName(message.author_email, "Unknown author")}
                 </Text>
                 <Text c="dimmed" size="xs">
                   {formatCommentDate(message.created_at)}
                 </Text>
               </Group>
-              <Text size="sm">{message.body}</Text>
+              <MessageBody body={message.body} mentionEmails={message.mention_emails} />
             </Stack>
           ))}
         </Stack>
@@ -148,14 +155,14 @@ export function CommentItem({
             onClick={(event) => event.stopPropagation()}
             onSubmit={handleReplySubmit}
           >
-            <Textarea
+            <MentionTextarea
               autosize
               disabled={isReplying}
               minRows={2}
-              placeholder="Reply"
+              placeholder="Reply, @ to mention"
               size="xs"
               value={replyDraft}
-              onChange={(event) => setReplyDraft(event.currentTarget.value)}
+              onChange={setReplyDraft}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
             />
@@ -191,17 +198,19 @@ export function CommentItem({
           </Text>
           {!isResolved ? (
             <Group gap={4}>
-              <Button
-                disabled={isReplying}
-                size="compact-xs"
-                variant="subtle"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setIsReplyComposerOpen(true);
-                }}
-              >
-                Reply
-              </Button>
+              {canReply ? (
+                <Button
+                  disabled={isReplying}
+                  size="compact-xs"
+                  variant="subtle"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIsReplyComposerOpen(true);
+                  }}
+                >
+                  Reply
+                </Button>
+              ) : null}
               {canResolve ? (
                 <Button
                   loading={isResolving}

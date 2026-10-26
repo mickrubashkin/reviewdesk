@@ -67,8 +67,11 @@ type EmailAnalysisChecks struct {
 
 type EmailRecommendation struct {
 	Priority string `json:"priority"`
-	Title    string `json:"title"`
-	Details  string `json:"details"`
+	// Block is the data-review-block the recommendation is about, "subject"
+	// or "preheader"; empty for the whole email and in older analyses.
+	Block   string `json:"block,omitempty"`
+	Title   string `json:"title"`
+	Details string `json:"details"`
 }
 
 type AIAnalysisResult struct {
@@ -77,6 +80,8 @@ type AIAnalysisResult struct {
 }
 
 type AIAnalysisMetrics struct {
+	// Kind is what the call was for: "analysis" (the default) or "translation".
+	Kind         string
 	Model        string
 	Status       string
 	LatencyMS    int

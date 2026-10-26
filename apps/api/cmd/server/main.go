@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/demo"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/features/ai"
 	featureauth "github.com/mickrubashkin/reviewdesk/apps/api/internal/features/auth"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/features/boards"
@@ -56,13 +58,26 @@ func main() {
 	registerOperationalRoutes(r, dbpool)
 
 	boards.Logger = serverEventLogger{}
+	boards.CopyEmails = emails.CopyBoardEmailsTx
 	boards.RegisterBoardRoutes(r, dbpool)
 
+	if err := emails.EnsureDefaultBlocks(ctx, dbpool); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to add the default email blocks: %v\n", err)
+		os.Exit(1)
+	}
 	emails.RegisterEmailRoutes(r, dbpool)
 	comments.Logger = commentEventLogger{}
+	comments.Mailer = emails.NewNotificationSender()
 	comments.RegisterCommentRoutes(r, dbpool)
 	ai.RegisterAIRoutes(r, dbpool, aiService)
 	portal.RegisterRoutes(r, dbpool)
+	if os.Getenv("PORTAL_AUTOSYNC_ENABLED") == "true" {
+		go portal.RunAutoSync(ctx, dbpool)
+	}
+	// Each demo visitor's sandbox is removed a day after the visit.
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_DEMO_LOGIN_ENABLED")), "true") {
+		go demo.RunSandboxCleanup(ctx, dbpool)
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {

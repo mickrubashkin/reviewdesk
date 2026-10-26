@@ -51,3 +51,16 @@ func createTestUserWithRole(t *testing.T, dbpool *pgxpool.Pool, role string) cor
 func withAuthUser(r *http.Request, user coreauth.AuthUser) *http.Request {
 	return r.WithContext(coreauth.WithUser(r.Context(), user))
 }
+
+// deleteTestUserByEmail removes a user a test is about to create, before the
+// test and after it, so reruns against the same database start clean.
+func deleteTestUserByEmail(t *testing.T, dbpool *pgxpool.Pool, email string) {
+	t.Helper()
+
+	remove := func() {
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM auth_events WHERE email = $1;`, email)
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM users WHERE email = $1;`, email)
+	}
+	remove()
+	t.Cleanup(remove)
+}

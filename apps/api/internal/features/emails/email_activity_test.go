@@ -170,7 +170,7 @@ func TestEmailEventActivitySummaryMarksStaleApprovalAfterEdit(t *testing.T) {
 		[]byte(`{"reason":"approval_stale_after_edit"}`),
 	)
 
-	if summary != "Marked approval stale after edit" {
+	if summary != "Moved back to draft after an edit" {
 		t.Fatalf("expected stale approval summary, got %q", summary)
 	}
 }
@@ -182,7 +182,7 @@ func TestEmailEventActivitySummaryMarksReapprovalAfterStaleEdit(t *testing.T) {
 		[]byte(`{"reason":"reapproved_after_stale_edit"}`),
 	)
 
-	if summary != "Re-approved after stale edit" {
+	if summary != "Marked ready again" {
 		t.Fatalf("expected reapproval summary, got %q", summary)
 	}
 }

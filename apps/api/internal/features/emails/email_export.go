@@ -105,11 +105,6 @@ func exportEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
 		var request exportEmailsRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -125,6 +120,10 @@ func exportEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		if len(request.IDs) > maxExportEmails {
 			http.Error(w, fmt.Sprintf("at most %d emails can be exported at once", maxExportEmails), http.StatusBadRequest)
+			return
+		}
+
+		if !requireManageEmails(w, r, dbpool, user, request.IDs) {
 			return
 		}
 
@@ -302,6 +301,7 @@ func buildExportArchive(emails []exportEmail, format string, options exportOptio
 		if format == exportFormatHTML {
 			html, err := emailedit.RenderEditableHTMLWithMetadata(email.TemplateHTML, email.EditableFields, emailedit.RenderMetadata{
 				Preheader: stringFromPointer(email.Preheader),
+				Subject:   stringFromPointer(email.Subject),
 			})
 			if err != nil {
 				return nil, fmt.Errorf("render email %s: %w", email.ID, err)

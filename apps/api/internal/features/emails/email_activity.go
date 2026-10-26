@@ -264,11 +264,15 @@ func listEmailEventActivity(ctx context.Context, dbpool *pgxpool.Pool, emailID s
 		emailEventDuplicated,
 		emailEventAdaptationCreated,
 		emailEventArchived,
+		emailEventRestored,
 		emailEventLiveMarked,
 		emailEventLiveUnmarked,
+		emailEventUploaded,
+		emailEventUploadUnmarked,
 		emailEventTranslationConfirmed,
 		emailEventPlaced,
 		emailEventTranslationLinked,
+		emailEventSlotUpdated,
 	})
 	if err != nil {
 		return nil, err
@@ -372,19 +376,21 @@ func emailEventActivitySummary(action string, changes []byte, metadata []byte) s
 	case emailEventReviewStatusUpdated:
 		reason := metadataString(metadata, "reason")
 		if reason == "approval_stale_after_edit" {
-			return "Marked approval stale after edit"
+			return "Moved back to draft after an edit"
 		}
-		if reason == "reapproved_after_stale_edit" {
-			return "Re-approved after stale edit"
+		if reason == "reapproved_after_stale_edit" || reason == "reapproved" {
+			return "Marked ready again"
 		}
-		if reason == "reapproved" {
-			return "Re-approved email"
+		switch changedFieldAfter(changes, "review_status") {
+		case "ready":
+			return "Marked ready"
+		case "draft":
+			return "Moved to draft"
+		case "":
+			return "Changed status"
+		default:
+			return "Changed status to " + changedFieldAfter(changes, "review_status")
 		}
-		nextStatus := changedFieldAfter(changes, "review_status")
-		if nextStatus != "" {
-			return "Changed review status to " + nextStatus
-		}
-		return "Changed review status"
 	case emailEventAreaApprovalUpdated:
 		areaName := metadataString(metadata, "area_name")
 		if areaName == "" {
@@ -415,6 +421,8 @@ func emailEventActivitySummary(action string, changes []byte, metadata []byte) s
 		return "Created adaptation"
 	case emailEventArchived:
 		return "Archived email"
+	case emailEventRestored:
+		return "Restored from the archive"
 	case emailEventLiveMarked:
 		if note := metadataString(metadata, "note"); note != "" {
 			return "Marked live by hand: " + note
@@ -422,12 +430,28 @@ func emailEventActivitySummary(action string, changes []byte, metadata []byte) s
 		return "Marked live by hand"
 	case emailEventLiveUnmarked:
 		return "Removed the live mark"
+	case emailEventUploaded:
+		into := "Bitrix24"
+		if robots := metadataString(metadata, "robots"); robots != "" {
+			into = "the Bitrix24 robots of " + robots
+		}
+		if version := metadataString(metadata, "version"); version != "" {
+			return "Uploaded version " + version + " to " + into
+		}
+		return "Uploaded to " + into
+	case emailEventUploadUnmarked:
+		if robots := metadataString(metadata, "robots"); robots != "" {
+			return "Removed the Bitrix24 upload mark of " + robots
+		}
+		return "Removed the Bitrix24 upload mark"
 	case emailEventTranslationConfirmed:
 		return "Marked the translation up to date with EN"
 	case emailEventPlaced:
 		return "Moved to a slot of the sequence"
 	case emailEventTranslationLinked:
 		return "Changed which EN email this translates"
+	case emailEventSlotUpdated:
+		return slotUpdatedSummary(changes, metadata)
 	default:
 		return "Changed email"
 	}
@@ -481,4 +505,35 @@ func loadEmailEventTarget(ctx context.Context, db emailEventExecutor, emailID st
 		return "", "", err
 	}
 	return slug, title, err
+}
+
+// slotUpdatedSummary describes an edit of the whole slot: where it moved and
+// which of its shared fields changed.
+func slotUpdatedSummary(changes, metadata []byte) string {
+	var parts []string
+	var move struct {
+		From *struct {
+			Stage     string `json:"stage"`
+			SortOrder int    `json:"sort_order"`
+		} `json:"from"`
+		To *struct {
+			Stage     string `json:"stage"`
+			SortOrder int    `json:"sort_order"`
+		} `json:"to"`
+	}
+	if json.Unmarshal(metadata, &move) == nil && move.From != nil && move.To != nil {
+		parts = append(parts, fmt.Sprintf("moved %s #%d → %s #%d", move.From.Stage, move.From.SortOrder, move.To.Stage, move.To.SortOrder))
+	}
+	var changed map[string]any
+	if json.Unmarshal(changes, &changed) == nil {
+		for _, field := range []struct{ key, label string }{{"title", "name"}, {"send_timing", "timing"}, {"send_condition", "condition"}} {
+			if _, ok := changed[field.key]; ok {
+				parts = append(parts, field.label)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return "Edited the slot"
+	}
+	return "Edited the slot: " + strings.Join(parts, ", ")
 }

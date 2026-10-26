@@ -11,14 +11,15 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "../../../shared/api";
-import { demoLogin, devLogin, requestLoginCode, verifyLoginCode } from "../api";
+import { defaultLoginDomain } from "../../../shared/brand";
+import { demoLogin, demoMode, devLogin, requestLoginCode, verifyLoginCode } from "../api";
 import styles from "./Login.module.css";
 
 const allowedDomains = getAllowedDomains();
 const allowedDomainsLabel = allowedDomains.map((domain) => `@${domain}`).join(", ");
 const storedEmailKey = "reviewdesk_login_email";
 const devLoginEnabled = import.meta.env.VITE_AUTH_DEV_LOGIN_ENABLED === "true";
-const demoLoginEnabled = import.meta.env.VITE_AUTH_DEMO_LOGIN_ENABLED === "true";
+const demoLoginEnabled = demoMode;
 
 export function Login() {
   const queryClient = useQueryClient();
@@ -87,7 +88,7 @@ export function Login() {
             <TextInput
               autoComplete="email"
               label="Email"
-              placeholder={`name@${allowedDomains[0] ?? "example.com"}`}
+              placeholder={`name@${allowedDomains[0] ?? defaultLoginDomain}`}
               required
               type="email"
               value={email}
@@ -266,7 +267,7 @@ function getAllowedDomains() {
   const value = String(
     import.meta.env.VITE_AUTH_ALLOWED_DOMAINS ??
       import.meta.env.VITE_AUTH_ALLOWED_DOMAIN ??
-      "example.com"
+      defaultLoginDomain
   );
 
   return value

@@ -11,6 +11,10 @@ const (
 	otpRequestWindow    = 10 * time.Minute
 	otpRequestsPerEmail = 3
 	otpRequestsPerIP    = 10
+	// A demo visit seeds a whole board; an office behind one address still
+	// fits.
+	demoLoginsPerIP = 20
+	demoLoginWindow = time.Hour
 )
 
 // otpRequestLimiter caps how many login codes can be requested. Counters live
@@ -19,6 +23,10 @@ const (
 type otpRequestLimiter struct {
 	byEmail *httprate.RateLimiter
 	byIP    *httprate.RateLimiter
+}
+
+func newDemoLoginLimiter() *httprate.RateLimiter {
+	return httprate.NewRateLimiter(demoLoginsPerIP, demoLoginWindow)
 }
 
 func newOTPRequestLimiter() otpRequestLimiter {

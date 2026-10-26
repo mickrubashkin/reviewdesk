@@ -61,8 +61,8 @@ func TestListEmailsIncludesOpenCommentCount(t *testing.T) {
 			if email.OpenBlockingCommentCount != 1 {
 				t.Fatalf("expected open blocking comment count 1, got %d", email.OpenBlockingCommentCount)
 			}
-			if email.ReviewStatus != "in_review" {
-				t.Fatalf("expected default review status in_review, got %q", email.ReviewStatus)
+			if email.ReviewStatus != "draft" {
+				t.Fatalf("expected default review status draft, got %q", email.ReviewStatus)
 			}
 			return
 		}
@@ -189,8 +189,8 @@ func TestCreateEmail(t *testing.T) {
 	if created.ID == "" {
 		t.Fatal("expected created email id")
 	}
-	if created.ReviewStatus != "in_review" {
-		t.Fatalf("expected default review status in_review, got %q", created.ReviewStatus)
+	if created.ReviewStatus != "draft" {
+		t.Fatalf("expected default review status draft, got %q", created.ReviewStatus)
 	}
 	t.Cleanup(func() {
 		_, _ = dbpool.Exec(context.Background(), `DELETE FROM emails WHERE id = $1;`, created.ID)
@@ -364,8 +364,8 @@ func TestGetEmailIncludesReviewStatus(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&email); err != nil {
 		t.Fatalf("failed to decode email: %v", err)
 	}
-	if email.ReviewStatus != "in_review" {
-		t.Fatalf("expected default review status in_review, got %q", email.ReviewStatus)
+	if email.ReviewStatus != "draft" {
+		t.Fatalf("expected default review status draft, got %q", email.ReviewStatus)
 	}
 }
 
@@ -381,7 +381,7 @@ func TestUpdateEmailReviewStatus(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
+		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
@@ -395,7 +395,7 @@ func TestUpdateEmailReviewStatus(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("failed to decode review status response: %v", err)
 	}
-	if payload.ReviewStatus != "approved" {
+	if payload.ReviewStatus != "ready" {
 		t.Fatalf("expected approved status, got %q", payload.ReviewStatus)
 	}
 
@@ -407,7 +407,7 @@ func TestUpdateEmailReviewStatus(t *testing.T) {
 	`, emailID).Scan(&storedStatus); err != nil {
 		t.Fatalf("failed to load stored review status: %v", err)
 	}
-	if storedStatus != "approved" {
+	if storedStatus != "ready" {
 		t.Fatalf("expected stored approved status, got %q", storedStatus)
 	}
 
@@ -423,8 +423,8 @@ func TestUpdateEmailReviewStatus(t *testing.T) {
 	`, emailID).Scan(&changes, &metadata); err != nil {
 		t.Fatalf("failed to load review status event: %v", err)
 	}
-	if !strings.Contains(string(changes), `"before": "in_review"`) ||
-		!strings.Contains(string(changes), `"after": "approved"`) {
+	if !strings.Contains(string(changes), `"before": "draft"`) ||
+		!strings.Contains(string(changes), `"after": "ready"`) {
 		t.Fatalf("expected review status changes, got %s", string(changes))
 	}
 	var approvalMetadata map[string]any
@@ -446,56 +446,6 @@ func TestUpdateEmailReviewStatus(t *testing.T) {
 	}
 }
 
-func TestUpdateEmailReviewStatusAllowsProductionApproval(t *testing.T) {
-	dbpool := testDBPool(t)
-	emailID := createTestEmail(t, dbpool)
-	user := createTestUserWithRole(t, dbpool, "admin")
-	approveRequiredTestAreas(t, dbpool, emailID, user)
-
-	router := chi.NewRouter()
-	RegisterEmailRoutes(router, dbpool)
-
-	request := httptest.NewRequest(
-		http.MethodPatch,
-		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"production_approved"}`)),
-	)
-	request = withAuthUser(request, user)
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected PATCH status 200, got %d: %s", response.Code, response.Body.String())
-	}
-
-	var payload updateEmailReviewStatusResponse
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		t.Fatalf("failed to decode review status response: %v", err)
-	}
-	if payload.ReviewStatus != "production_approved" {
-		t.Fatalf("expected production approved status, got %q", payload.ReviewStatus)
-	}
-
-	var metadata []byte
-	if err := dbpool.QueryRow(context.Background(), `
-		SELECT metadata
-		FROM email_events
-		WHERE email_id = $1
-			AND action = 'email_review_status_updated'
-		ORDER BY created_at DESC
-		LIMIT 1;
-	`, emailID).Scan(&metadata); err != nil {
-		t.Fatalf("failed to load review status event: %v", err)
-	}
-	var approvalMetadata map[string]any
-	if err := json.Unmarshal(metadata, &approvalMetadata); err != nil {
-		t.Fatalf("failed to decode production approval metadata: %v", err)
-	}
-	if value, ok := approvalMetadata["approved_content_hash"].(string); !ok || len(value) != 64 {
-		t.Fatalf("expected production approval content hash, got %#v", approvalMetadata["approved_content_hash"])
-	}
-}
-
 func TestUpdateEmailReviewStatusMarksReapprovalAfterStaleEdit(t *testing.T) {
 	dbpool := testDBPool(t)
 	emailID := createTestEmail(t, dbpool)
@@ -504,7 +454,7 @@ func TestUpdateEmailReviewStatusMarksReapprovalAfterStaleEdit(t *testing.T) {
 
 	_, err := dbpool.Exec(context.Background(), `
 		UPDATE emails
-		SET review_status = 'changes_requested'
+		SET review_status = 'draft'
 		WHERE id = $1;
 	`, emailID)
 	if err != nil {
@@ -529,7 +479,7 @@ func TestUpdateEmailReviewStatusMarksReapprovalAfterStaleEdit(t *testing.T) {
 			'comment-test-email',
 			'Comment Test Email',
 			'{"reason":"approval_stale_after_edit"}'::jsonb,
-			'{"review_status":{"before":"approved","after":"changes_requested"}}'::jsonb
+			'{"review_status":{"before":"approved","after":"draft"}}'::jsonb
 		);
 	`, user.ID, user.Email, emailID)
 	if err != nil {
@@ -542,7 +492,7 @@ func TestUpdateEmailReviewStatusMarksReapprovalAfterStaleEdit(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
+		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
@@ -568,8 +518,8 @@ func TestUpdateEmailReviewStatusMarksReapprovalAfterStaleEdit(t *testing.T) {
 	if !strings.Contains(string(metadataJSON), `"reason": "reapproved_after_stale_edit"`) {
 		t.Fatalf("expected reapproval metadata, got %s", string(metadataJSON))
 	}
-	if !strings.Contains(string(changesJSON), `"before": "changes_requested"`) ||
-		!strings.Contains(string(changesJSON), `"after": "approved"`) {
+	if !strings.Contains(string(changesJSON), `"before": "draft"`) ||
+		!strings.Contains(string(changesJSON), `"after": "ready"`) {
 		t.Fatalf("expected reapproval status change, got %s", string(changesJSON))
 	}
 }
@@ -977,7 +927,7 @@ func TestUpdateEmailReviewStatusRejectsReviewer(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
+		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
@@ -999,7 +949,7 @@ func TestUpdateEmailReviewStatusRejectsInvalidStatus(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
+		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
@@ -1037,7 +987,7 @@ func TestUpdateEmailReviewStatusRejectsApprovalWithOpenBlockingComment(t *testin
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
+		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
@@ -1046,7 +996,7 @@ func TestUpdateEmailReviewStatusRejectsApprovalWithOpenBlockingComment(t *testin
 	if response.Code != http.StatusConflict {
 		t.Fatalf("expected PATCH status 409, got %d: %s", response.Code, response.Body.String())
 	}
-	if !strings.Contains(response.Body.String(), "resolve blocking comments before approving") {
+	if !strings.Contains(response.Body.String(), "resolve blocking comments before marking the email ready") {
 		t.Fatalf("expected blocking approval error, got %q", response.Body.String())
 	}
 
@@ -1058,8 +1008,8 @@ func TestUpdateEmailReviewStatusRejectsApprovalWithOpenBlockingComment(t *testin
 	`, emailID).Scan(&reviewStatus); err != nil {
 		t.Fatalf("failed to load review status: %v", err)
 	}
-	if reviewStatus != "in_review" {
-		t.Fatalf("expected review status to remain in_review, got %q", reviewStatus)
+	if reviewStatus != "draft" {
+		t.Fatalf("expected review status to remain draft, got %q", reviewStatus)
 	}
 
 	var eventCount int
@@ -1104,7 +1054,7 @@ func TestUpdateEmailReviewStatusAllowsApprovalWithResolvedBlockingComment(t *tes
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
+		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
@@ -1118,12 +1068,12 @@ func TestUpdateEmailReviewStatusAllowsApprovalWithResolvedBlockingComment(t *tes
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("failed to decode review status response: %v", err)
 	}
-	if payload.ReviewStatus != "approved" {
+	if payload.ReviewStatus != "ready" {
 		t.Fatalf("expected approved status, got %q", payload.ReviewStatus)
 	}
 }
 
-func TestUpdateEmailReviewStatusRejectsApprovalWithPendingRequiredArea(t *testing.T) {
+func TestUpdateEmailReviewStatusIgnoresPendingAreaApprovals(t *testing.T) {
 	dbpool := testDBPool(t)
 	boardKey := createTestBoard(t, dbpool, "approval-gate-board", []string{"review"})
 	createTestBoardApprovalArea(t, dbpool, boardKey, "legal", "Legal", true, 10)
@@ -1137,46 +1087,15 @@ func TestUpdateEmailReviewStatusRejectsApprovalWithPendingRequiredArea(t *testin
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
+		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
-	if response.Code != http.StatusConflict {
-		t.Fatalf("expected PATCH status 409, got %d: %s", response.Code, response.Body.String())
-	}
-	if !strings.Contains(response.Body.String(), "complete required approvals before approving") ||
-		!strings.Contains(response.Body.String(), "Legal") ||
-		strings.Contains(response.Body.String(), "Brand") {
-		t.Fatalf("expected required area approval error, got %q", response.Body.String())
-	}
-}
-
-func TestUpdateEmailReviewStatusRejectsProductionApprovalWithPendingRequiredArea(t *testing.T) {
-	dbpool := testDBPool(t)
-	boardKey := createTestBoard(t, dbpool, "production-approval-gate-board", []string{"review"})
-	createTestBoardApprovalArea(t, dbpool, boardKey, "legal", "Legal", true, 10)
-	emailID := createBoardTestEmail(t, dbpool, boardKey, "review")
-	user := createTestUserWithRole(t, dbpool, "admin")
-
-	router := chi.NewRouter()
-	RegisterEmailRoutes(router, dbpool)
-
-	request := httptest.NewRequest(
-		http.MethodPatch,
-		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"production_approved"}`)),
-	)
-	request = withAuthUser(request, user)
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusConflict {
-		t.Fatalf("expected PATCH status 409, got %d: %s", response.Code, response.Body.String())
-	}
-	if !strings.Contains(response.Body.String(), "complete required approvals before approving") {
-		t.Fatalf("expected required area approval error, got %q", response.Body.String())
+	// Area approvals are no longer part of the ready gate.
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected PATCH status 200, got %d: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -1195,7 +1114,7 @@ func TestUpdateEmailReviewStatusAllowsApprovalWhenRequiredAreasApproved(t *testi
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
+		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
@@ -1225,7 +1144,7 @@ func TestUpdateEmailReviewStatusRejectsArchivedEmail(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/emails/"+emailID+"/review-status",
-		bytes.NewReader([]byte(`{"review_status":"approved"}`)),
+		bytes.NewReader([]byte(`{"review_status":"ready"}`)),
 	)
 	request = withAuthUser(request, user)
 	response := httptest.NewRecorder()
@@ -1276,7 +1195,7 @@ func TestInspectEmailHTML(t *testing.T) {
 	if !strings.Contains(inspection.ReviewHTML, "data-review-block") {
 		t.Fatalf("expected generated review html, got %q", inspection.ReviewHTML)
 	}
-	if len(inspection.Warnings) != 1 {
+	if !containsString(inspection.Warnings, "No data-review-block markers were found; review blocks will be generated automatically.") {
 		t.Fatalf("expected warning about generated review blocks, got %#v", inspection.Warnings)
 	}
 }
@@ -1527,13 +1446,20 @@ func TestRestoreEmailVersionCreatesNewLatestVersion(t *testing.T) {
 			</body>
 		</html>
 	`)
+	if _, err := dbpool.Exec(context.Background(), `
+		UPDATE emails
+		SET editable_fields = '{"intro_text": { "type": "text", "value": "Old intro" }}'::jsonb
+		WHERE id = $1;
+	`, emailID); err != nil {
+		t.Fatalf("failed to set initial editable fields: %v", err)
+	}
 	restoredVersionID := insertTestEmailVersion(t, dbpool, emailID, "system", "initial")
 	_, err := dbpool.Exec(context.Background(), `
 		UPDATE emails
 		SET
 			title = 'Current title',
 			editable_fields = '{"intro_text": { "type": "text", "value": "Current intro" }}'::jsonb,
-			review_status = 'approved'
+			review_status = 'ready'
 		WHERE id = $1;
 	`, emailID)
 	if err != nil {
@@ -1571,8 +1497,8 @@ func TestRestoreEmailVersionCreatesNewLatestVersion(t *testing.T) {
 	if title != "Comment Test Email" {
 		t.Fatalf("expected restored title, got %q", title)
 	}
-	if reviewStatus != "changes_requested" {
-		t.Fatalf("expected approved restore to become changes_requested, got %q", reviewStatus)
+	if reviewStatus != "draft" {
+		t.Fatalf("expected approved restore to become draft, got %q", reviewStatus)
 	}
 	if !strings.Contains(string(fieldsJSON), "Old intro") {
 		t.Fatalf("expected restored editable fields, got %s", string(fieldsJSON))
@@ -1718,7 +1644,7 @@ func TestUpdateEmailEditableFieldsMarksApprovedEmailChangesRequested(t *testing.
 
 	_, err := dbpool.Exec(context.Background(), `
 		UPDATE emails
-		SET review_status = 'approved'
+		SET review_status = 'ready'
 		WHERE id = $1;
 	`, emailID)
 	if err != nil {
@@ -1753,8 +1679,8 @@ func TestUpdateEmailEditableFieldsMarksApprovedEmailChangesRequested(t *testing.
 	`, emailID).Scan(&storedStatus); err != nil {
 		t.Fatalf("failed to load review status: %v", err)
 	}
-	if storedStatus != "changes_requested" {
-		t.Fatalf("expected changes_requested status, got %q", storedStatus)
+	if storedStatus != "draft" {
+		t.Fatalf("expected draft status, got %q", storedStatus)
 	}
 }
 
@@ -1826,7 +1752,7 @@ func TestUpdateEmailEditableFieldsRecordsStaleApprovalEvent(t *testing.T) {
 
 	_, err := dbpool.Exec(context.Background(), `
 		UPDATE emails
-		SET review_status = 'approved'
+		SET review_status = 'ready'
 		WHERE id = $1;
 	`, emailID)
 	if err != nil {
@@ -1869,8 +1795,8 @@ func TestUpdateEmailEditableFieldsRecordsStaleApprovalEvent(t *testing.T) {
 	if !strings.Contains(string(metadataJSON), `"reason": "approval_stale_after_edit"`) {
 		t.Fatalf("expected stale approval metadata, got %s", string(metadataJSON))
 	}
-	if !strings.Contains(string(changesJSON), `"before": "approved"`) ||
-		!strings.Contains(string(changesJSON), `"after": "changes_requested"`) {
+	if !strings.Contains(string(changesJSON), `"before": "ready"`) ||
+		!strings.Contains(string(changesJSON), `"after": "draft"`) {
 		t.Fatalf("expected stale approval status change, got %s", string(changesJSON))
 	}
 }
@@ -2317,7 +2243,7 @@ func TestUpdateEmailOriginalHTMLAsSuperAdminUsesExtractedTextForSoftWrappedSourc
 					"value": "Hi there,\n\nYour application to join the Bitrix24 Partner Program has been\nreceived.\n\nYour partner account is ready. Use the credentials below to\nlog in."
 				}
 			},
-			"original_html": "<html><body><td data-review-block=\"intro_body\" data-edit-text=\"intro_body\">Hi there,<br /><br />Your application to join the Bitrix24 Partner Program has been\nreceived.<br /><br />Your partner account is ready. Use the credentials below to\nlog in.</td></body></html>"
+			"original_html": "<html><body><table><tr><td data-review-block=\"intro_body\" data-edit-text=\"intro_body\">Hi there,<br /><br />Your application to join the Bitrix24 Partner Program has been\nreceived.<br /><br />Your partner account is ready. Use the credentials below to\nlog in.</td></tr></table></body></html>"
 		}`)),
 	)
 	request = withAuthUser(request, user)
@@ -2426,6 +2352,9 @@ func TestGetRenderedEmail(t *testing.T) {
 	if !strings.Contains(rendered.HTML, `href="https://example.com/start"`) {
 		t.Fatalf("expected rendered CTA URL, got %s", rendered.HTML)
 	}
+	if rendered.ReviewStatus == "" {
+		t.Fatalf("expected the review status with the rendered email")
+	}
 }
 
 func TestGetRenderedEmailRejectsArchivedEmail(t *testing.T) {
@@ -2517,8 +2446,8 @@ func TestDuplicateEmail(t *testing.T) {
 	if created.Variant != "new" {
 		t.Fatalf("expected duplicated variant new, got %q", created.Variant)
 	}
-	if created.ReviewStatus != "in_review" {
-		t.Fatalf("expected duplicated review status in_review, got %q", created.ReviewStatus)
+	if created.ReviewStatus != "draft" {
+		t.Fatalf("expected duplicated review status draft, got %q", created.ReviewStatus)
 	}
 	if created.Title != "Duplicated Email" {
 		t.Fatalf("expected duplicated title override, got %q", created.Title)
@@ -2613,8 +2542,10 @@ func TestDuplicateEmailAsCreatesLanguageVersionAndAdaptation(t *testing.T) {
 		_, _ = dbpool.Exec(context.Background(), `DELETE FROM emails WHERE id = $1;`, created.ID)
 	})
 
-	if created.Slug != "comment-test-email-es-v2--legal" {
-		t.Fatalf("expected duplicate-as slug comment-test-email-es-v2--legal, got %q", created.Slug)
+	// A new title builds the slug from board, stage and title (see newEmailSlug),
+	// so "Legal ES v2" plus language and version gives "es-v2" twice.
+	if created.Slug != "onboarding-registered-legal-es-v2-es-v2--legal" {
+		t.Fatalf("expected duplicate-as slug onboarding-registered-legal-es-v2-es-v2--legal, got %q", created.Slug)
 	}
 	if created.Language != "es" {
 		t.Fatalf("expected language es, got %q", created.Language)
@@ -2941,8 +2872,8 @@ func TestCreateEmailAdaptation(t *testing.T) {
 	if created.AdaptationKey != "uae" || created.AdaptationLabel != "UAE" {
 		t.Fatalf("expected uae/UAE adaptation, got %s/%s", created.AdaptationKey, created.AdaptationLabel)
 	}
-	if created.ReviewStatus != "in_review" {
-		t.Fatalf("expected adaptation review status in_review, got %q", created.ReviewStatus)
+	if created.ReviewStatus != "draft" {
+		t.Fatalf("expected adaptation review status draft, got %q", created.ReviewStatus)
 	}
 	assertJSONContainsField(t, created.EditableFields, "primary_cta_text")
 
@@ -3473,4 +3404,13 @@ func assertJSONContainsField(t *testing.T, raw json.RawMessage, key string) {
 	if _, ok := fields[key]; !ok {
 		t.Fatalf("expected JSON fields to contain %q, got %#v", key, fields)
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

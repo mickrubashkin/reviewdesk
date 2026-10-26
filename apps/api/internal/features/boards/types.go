@@ -60,6 +60,11 @@ type EmailEventExecutor interface {
 
 var Logger EventLogger
 
+// CopyEmails copies the source board's EN emails into a new board inside
+// the board's creation transaction; set by the server (the emails package
+// imports this one).
+var CopyEmails func(ctx context.Context, tx pgx.Tx, actor AuthUser, sourceBoardKey, targetBoardKey string) (int, error)
+
 
 type BoardItem struct {
 	ID        string    `json:"id"`
@@ -71,6 +76,8 @@ type BoardItem struct {
 	// PortalSyncedAt is the end of the last successful portal sync, so the
 	// board can tell "not sent in the period" apart from "never checked".
 	PortalSyncedAt *time.Time `json:"portal_synced_at"`
+	// CopiedEmailCount is set only in the response to creating a board.
+	CopiedEmailCount *int `json:"copied_email_count,omitempty"`
 }
 
 type BoardApprovalAreaItem struct {

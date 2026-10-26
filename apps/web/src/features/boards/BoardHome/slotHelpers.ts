@@ -28,3 +28,6 @@ export function matrixLanguages(columns: StageColumn[]) {
     ...[...present].filter((l) => !preferredLanguages.includes(l)).sort(),
   ];
 }
+
+// Languages the AI translates into; the API has the same list.
+export const aiTranslationLanguages = ["de", "es", "pl", "br"];

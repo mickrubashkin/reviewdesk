@@ -38,6 +38,8 @@ type EmailCommentMessage struct {
 	Body        string    `json:"body"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// MentionEmails are the addresses of the people @mentioned in Body.
+	MentionEmails []string `json:"mention_emails"`
 }
 
 type EventLogger interface {

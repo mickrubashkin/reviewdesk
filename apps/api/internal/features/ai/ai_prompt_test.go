@@ -10,7 +10,7 @@ import (
 func TestBuildEmailAnalysisInputOmitsFooterLinksAndFooterPrimaryCTA(t *testing.T) {
 	contentParts := EmailContentParts{
 		PrimaryCTA: "Privacy policy",
-		BodyText:   "Body copy. Example. All rights reserved. Privacy policy",
+		BodyText:   "Body copy. Acme. All rights reserved. Privacy policy",
 		Links:      []string{"Privacy policy", "Read docs"},
 		LinkGroups: emailtext.LinkGroups{
 			Primary: []string{"Privacy policy"},

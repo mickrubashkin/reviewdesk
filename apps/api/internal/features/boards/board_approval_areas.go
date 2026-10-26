@@ -47,7 +47,7 @@ func listBoardApprovalAreasHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func createBoardApprovalAreaHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireAdminUser(w, r)
+		user, ok := requireBoardManager(w, r, dbpool)
 		if !ok {
 			return
 		}
@@ -86,7 +86,7 @@ func createBoardApprovalAreaHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func updateBoardApprovalAreaHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireAdminUser(w, r)
+		user, ok := requireBoardManager(w, r, dbpool)
 		if !ok {
 			return
 		}
@@ -110,7 +110,7 @@ func updateBoardApprovalAreaHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func deleteBoardApprovalAreaHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireAdminUser(w, r)
+		user, ok := requireBoardManager(w, r, dbpool)
 		if !ok {
 			return
 		}
@@ -128,7 +128,7 @@ func deleteBoardApprovalAreaHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func reorderBoardApprovalAreasHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := requireAdminUser(w, r)
+		user, ok := requireBoardManager(w, r, dbpool)
 		if !ok {
 			return
 		}
@@ -316,7 +316,8 @@ func updateBoardApprovalArea(ctx context.Context, dbpool *pgxpool.Pool, boardKey
 	if request.Required != nil {
 		required = *request.Required
 	}
-	archiveExpression := "archived_at"
+	// Qualified: approval_areas in the FROM clause has its own archived_at.
+	archiveExpression := "board_approval_areas.archived_at"
 	if request.Archived != nil {
 		if *request.Archived {
 			archiveExpression = "now()"

@@ -45,8 +45,11 @@ var errSlotLanguageTaken = errors.New("this slot already has an email in this la
 func placeEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.FromRequest(r)
-		if !ok || !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !requireManageEmail(w, r, dbpool, user, chi.URLParam(r, "id")) {
 			return
 		}
 		var request placeEmailRequest
@@ -58,6 +61,9 @@ func placeEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		request.Stage = strings.TrimSpace(request.Stage)
 		if request.Sequence == "" || request.Stage == "" {
 			http.Error(w, "sequence and stage are required", http.StatusBadRequest)
+			return
+		}
+		if !requireManageBoard(w, r, dbpool, user, request.Sequence) {
 			return
 		}
 
@@ -87,6 +93,15 @@ func placeEmail(ctx context.Context, db *pgxpool.Pool, user AuthUser, id string,
 	}
 	defer tx.Rollback(ctx)
 
+	response, err := placeEmailTx(ctx, tx, user, id, request)
+	if err != nil {
+		return placeEmailResponse{}, err
+	}
+	return response, tx.Commit(ctx)
+}
+
+func placeEmailTx(ctx context.Context, tx pgx.Tx, user AuthUser, id string, request placeEmailRequest) (placeEmailResponse, error) {
+	var err error
 	var slug, title, language, fromSequence, fromStage string
 	var fromSortOrder int
 	if err := tx.QueryRow(ctx, `
@@ -133,7 +148,17 @@ func placeEmail(ctx context.Context, db *pgxpool.Pool, user AuthUser, id string,
 	}
 
 	response := placeEmailResponse{ID: id, Sequence: request.Sequence, Stage: request.Stage, SortOrder: sortOrder}
-	if language == "en" {
+	// A region's own version follows the reference email of the new slot
+	// instead of becoming a translation.
+	adapts, err := adaptsReference(ctx, tx, id)
+	if err != nil {
+		return placeEmailResponse{}, err
+	}
+	if adapts {
+		if err := linkToSlotReference(ctx, tx, id); err != nil {
+			return placeEmailResponse{}, err
+		}
+	} else if language == "en" {
 		if _, err := tx.Exec(ctx, `UPDATE emails SET translation_of = NULL, translated_from_version = NULL WHERE id = $1;`, id); err != nil {
 			return placeEmailResponse{}, err
 		}
@@ -174,7 +199,7 @@ func placeEmail(ctx context.Context, db *pgxpool.Pool, user AuthUser, id string,
 	}); err != nil {
 		return placeEmailResponse{}, err
 	}
-	return response, tx.Commit(ctx)
+	return response, nil
 }
 
 func requireStageOnBoard(ctx context.Context, tx pgx.Tx, boardKey, stage string) error {
@@ -208,8 +233,11 @@ type translationLinkRequest struct {
 func translationLinkHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.FromRequest(r)
-		if !ok || !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !requireManageEmail(w, r, dbpool, user, chi.URLParam(r, "id")) {
 			return
 		}
 		var request translationLinkRequest

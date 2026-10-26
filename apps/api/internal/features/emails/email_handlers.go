@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailblocks"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailedit"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailreview"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailtext"
@@ -34,11 +35,15 @@ func RegisterEmailRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Post("/api/emails", createEmailHandler(dbpool))
 	r.Post("/api/emails/inspect-html", inspectEmailHTMLHandler(dbpool))
 	r.Post("/api/emails/export", exportEmailsHandler(dbpool))
+	r.Post("/api/emails/bulk", bulkEmailHandler(dbpool))
 	r.Post("/api/slots", createSlotHandler(dbpool))
+	r.Patch("/api/slots", updateSlotHandler(dbpool))
+	r.Post("/api/slots/move", moveSlotHandler(dbpool))
 	r.Get("/api/emails/{id}", getEmailHandler(dbpool))
 	r.Get("/api/emails/{id}/activity", listEmailActivityHandler(dbpool))
 	r.Get("/api/emails/{id}/area-approvals", listEmailAreaApprovalsHandler(dbpool))
 	r.Get("/api/emails/{id}/rendered", getRenderedEmailHandler(dbpool))
+	r.Put("/api/emails/{id}/layout", updateEmailLayoutHandler(dbpool))
 	r.Get("/api/emails/{id}/versions", listEmailVersionsHandler(dbpool))
 	r.Get("/api/emails/{id}/versions/{versionId}", getEmailVersionHandler(dbpool))
 	r.Post("/api/emails/{id}/versions/{versionId}/restore", restoreEmailVersionHandler(dbpool))
@@ -50,12 +55,30 @@ func RegisterEmailRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Post("/api/emails/{id}/duplicate", duplicateEmailHandler(dbpool))
 	r.Post("/api/emails/{id}/adaptations", createEmailAdaptationHandler(dbpool))
 	r.Patch("/api/emails/{id}/archive", archiveEmailHandler(dbpool))
+	r.Patch("/api/emails/{id}/restore", restoreEmailHandler(dbpool))
 	r.Patch("/api/emails/{id}/live", markEmailLiveHandler(dbpool))
+	r.Patch("/api/emails/{id}/uploaded", markEmailUploadedHandler(dbpool))
+	r.Patch("/api/emails/{id}/take", takeEmailHandler(dbpool))
 	r.Get("/api/emails/{id}/translation", translationHandler(dbpool))
 	r.Post("/api/emails/{id}/translation/confirm", confirmTranslationHandler(dbpool))
 	r.Patch("/api/emails/{id}/translation-link", translationLinkHandler(dbpool))
+	r.Get("/api/emails/{id}/based-on", basedOnHandler(dbpool))
+	r.Post("/api/emails/{id}/based-on/confirm", confirmBasedOnHandler(dbpool))
+	r.Patch("/api/emails/{id}/based-on", basedOnLinkHandler(dbpool))
+	r.Get("/api/reference-differences", referenceDifferencesHandler(dbpool))
 	r.Patch("/api/emails/{id}/place", placeEmailHandler(dbpool))
 	r.Get("/api/admin/email-events", listEmailEventsHandler(dbpool))
+	r.Get("/api/shared-texts", listSharedTextsHandler(dbpool))
+	r.Put("/api/shared-texts/{key}/{language}", updateSharedTextHandler(dbpool))
+	r.Post("/api/shared-texts/{key}/{language}", createBoardSharedTextHandler(dbpool))
+	r.Delete("/api/shared-texts/{key}/{language}", deleteBoardSharedTextHandler(dbpool))
+	r.Get("/api/blocks", listEmailBlocksHandler(dbpool))
+	r.Get("/api/block-catalog", listBlockCatalogHandler(dbpool))
+	r.Get("/api/default-layout", defaultLayoutHandler(dbpool))
+	r.Put("/api/emails/{id}/region", updateEmailRegionHandler(dbpool))
+	r.Post("/api/layout-preview", layoutPreviewHandler(dbpool))
+	r.Put("/api/blocks/{key}", updateEmailBlockHandler(dbpool))
+	r.Post("/api/blocks/{key}/preview", previewEmailBlockHandler(dbpool))
 }
 
 func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
@@ -66,6 +89,25 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		if boardKey != "" {
 			args = append(args, boardKey)
 			boardFilter = "AND sequence = $1"
+		}
+		if user, ok := auth.FromRequest(r); ok {
+			visible, scoped, err := auth.ScopedBoards(r.Context(), dbpool, user)
+			if err != nil {
+				http.Error(w, "failed to load emails", http.StatusInternalServerError)
+				return
+			}
+			if scoped {
+				args = append(args, visible)
+				boardFilter += fmt.Sprintf(" AND sequence = ANY($%d)", len(args))
+			}
+		}
+		// ?archived=only lists the board's history instead of its active
+		// emails, newest archive first.
+		archivedFilter := "archived_at IS NULL"
+		order := "sort_order, created_at"
+		if r.URL.Query().Get("archived") == "only" {
+			archivedFilter = "archived_at IS NOT NULL"
+			order = "archived_at DESC, sort_order"
 		}
 
 		rows, err := dbpool.Query(r.Context(), `
@@ -83,6 +125,7 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				variant,
 				adaptation_key,
 				adaptation_label,
+				region_key,
 				review_status,
 				owner_email,
 				reviewer_email,
@@ -105,8 +148,17 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				portal.last_sent_at,
 				live_marked_at,
 				translation_of,
-				COALESCE(translation.stale, false)
+				COALESCE(translation.stale, false),
+				based_on,
+				COALESCE(reference.stale, false),
+				(SELECT max(version_number) FROM email_versions WHERE email_versions.email_id = emails.id) AS latest_version,
+				uploads.uploaded_version,
+				uploads.uploaded_at,
+				uploads.robots,
+				archived_at,
+				(SELECT email FROM users WHERE users.id = emails.archived_by) AS archived_by_email
 			FROM emails
+			LEFT JOIN email_upload_summary uploads ON uploads.email_id = emails.id
 			LEFT JOIN LATERAL (
 				-- Sent emails the portal sync tied to this one: confirmed by a
 				-- person, or matched automatically with no decision yet.
@@ -118,8 +170,9 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			LEFT JOIN LATERAL (
 				-- Outdated when the master's current text differs from the
 				-- master version the translation was made from.
-				SELECT email_text_hash(fv.subject, fv.preheader, fv.editable_fields)
-					<> email_text_hash(lv.subject, lv.preheader, lv.editable_fields) AS stale
+				-- Fields shared in the translation have their own translation.
+				SELECT email_text_hash(fv.subject, fv.preheader, fv.editable_fields, emails.editable_fields)
+					<> email_text_hash(lv.subject, lv.preheader, lv.editable_fields, emails.editable_fields) AS stale
 				FROM email_versions fv
 				JOIN LATERAL (
 					SELECT subject, preheader, editable_fields FROM email_versions
@@ -130,9 +183,23 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 					AND fv.email_id = emails.translation_of
 					AND fv.version_number = emails.translated_from_version
 			) translation ON true
-			WHERE archived_at IS NULL
+			LEFT JOIN LATERAL (
+				-- Same for a region's email and the reference email it adapts.
+				SELECT email_text_hash(fv.subject, fv.preheader, fv.editable_fields, emails.editable_fields)
+					<> email_text_hash(lv.subject, lv.preheader, lv.editable_fields, emails.editable_fields) AS stale
+				FROM email_versions fv
+				JOIN LATERAL (
+					SELECT subject, preheader, editable_fields FROM email_versions
+					WHERE email_id = emails.based_on
+					ORDER BY version_number DESC LIMIT 1
+				) lv ON true
+				WHERE emails.based_on IS NOT NULL
+					AND fv.email_id = emails.based_on
+					AND fv.version_number = emails.based_on_version
+			) reference ON true
+			WHERE `+archivedFilter+`
 			`+boardFilter+`
-			ORDER BY sort_order, created_at;
+			ORDER BY `+order+`;
 		`, args...)
 		if err != nil {
 			http.Error(w, "failed to load emails", http.StatusInternalServerError)
@@ -144,6 +211,7 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 		for rows.Next() {
 			var email EmailListItem
+			var uploadRobots []byte
 
 			err := rows.Scan(
 				&email.ID,
@@ -159,6 +227,7 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				&email.Variant,
 				&email.AdaptationKey,
 				&email.AdaptationLabel,
+				&email.RegionKey,
 				&email.ReviewStatus,
 				&email.OwnerEmail,
 				&email.ReviewerEmail,
@@ -171,7 +240,18 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				&email.LiveMarkedAt,
 				&email.TranslationOf,
 				&email.TranslationStale,
+				&email.BasedOn,
+				&email.BasedOnStale,
+				&email.LatestVersion,
+				&email.UploadedVersion,
+				&email.UploadedAt,
+				&uploadRobots,
+				&email.ArchivedAt,
+				&email.ArchivedByEmail,
 			)
+			if err == nil {
+				err = json.Unmarshal(uploadRobots, &email.UploadRobots)
+			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to scan email row: %v\n", err)
 				http.Error(w, "failed to read emails", http.StatusInternalServerError)
@@ -196,6 +276,8 @@ func getEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 		var email EmailDetail
 		var editableFields []byte
+		var layout []byte
+		var uploadRobots []byte
 
 		err := dbpool.QueryRow(r.Context(), `
 			SELECT
@@ -213,6 +295,9 @@ func getEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				variant,
 				adaptation_key,
 				adaptation_label,
+				region_key,
+				translation_of,
+				based_on,
 				review_status,
 				owner_email,
 				reviewer_email,
@@ -234,13 +319,21 @@ func getEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				live_marked_at,
 				live_marked_by,
 				live_note,
+				(SELECT max(version_number) FROM email_versions WHERE email_versions.email_id = emails.id) AS latest_version,
+				uploads.uploaded_version,
+				uploads.uploaded_at,
+				uploads.robots,
+				archived_at,
+				(SELECT email FROM users WHERE users.id = emails.archived_by) AS archived_by_email,
 				original_html,
 				review_html,
 				template_html,
 				template_hash,
 				template_version,
-				editable_fields
+				editable_fields,
+				layout
 			FROM emails
+			LEFT JOIN email_upload_summary uploads ON uploads.email_id = emails.id
 			WHERE id = $1;
 		`, id).Scan(
 			&email.ID,
@@ -257,6 +350,9 @@ func getEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			&email.Variant,
 			&email.AdaptationKey,
 			&email.AdaptationLabel,
+			&email.RegionKey,
+			&email.TranslationOf,
+			&email.BasedOn,
 			&email.ReviewStatus,
 			&email.OwnerEmail,
 			&email.ReviewerEmail,
@@ -267,12 +363,19 @@ func getEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			&email.LiveMarkedAt,
 			&email.LiveMarkedBy,
 			&email.LiveNote,
+			&email.LatestVersion,
+			&email.UploadedVersion,
+			&email.UploadedAt,
+			&uploadRobots,
+			&email.ArchivedAt,
+			&email.ArchivedByEmail,
 			&email.OriginalHTML,
 			&email.ReviewHTML,
 			&email.TemplateHTML,
 			&email.TemplateHash,
 			&email.TemplateVersion,
 			&editableFields,
+			&layout,
 		)
 
 		if err != nil {
@@ -282,6 +385,19 @@ func getEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		email.EditableFields = json.RawMessage(editableFields)
+		if err := json.Unmarshal(uploadRobots, &email.UploadRobots); err != nil {
+			http.Error(w, "invalid upload marks", http.StatusInternalServerError)
+			return
+		}
+		if email.Layout, err = parseLayout(layout); err != nil {
+			http.Error(w, "invalid email layout", http.StatusInternalServerError)
+			return
+		}
+		if email.Checks, err = checkStoredEmail(r.Context(), dbpool, layout, editableFields, email.Subject, email.Preheader); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to check email %s: %v\n", id, err)
+			http.Error(w, "failed to check the email", http.StatusInternalServerError)
+			return
+		}
 
 		_ = json.NewEncoder(w).Encode(email)
 	}
@@ -299,7 +415,10 @@ type createEmailRequest struct {
 	Language        string  `json:"language"`
 	Variant         string  `json:"variant"`
 	AdaptationLabel *string `json:"adaptation_label"`
-	OriginalHTML    string  `json:"original_html"`
+	// RegionKey puts the email in a region of the board; its adaptation
+	// then follows the region and adaptation_label is ignored.
+	RegionKey    *string `json:"region_key"`
+	OriginalHTML string  `json:"original_html"`
 }
 
 type inspectEmailHTMLRequest struct {
@@ -329,14 +448,12 @@ func createEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
 		var request createEmailRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if !requireManageBoard(w, r, dbpool, user, strings.TrimSpace(stringFromPointer(request.Sequence))) {
 			return
 		}
 
@@ -359,6 +476,7 @@ func createEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			Language:        request.Language,
 			Variant:         request.Variant,
 			AdaptationLabel: request.AdaptationLabel,
+			RegionKey:       strings.TrimSpace(stringFromPointer(request.RegionKey)),
 			OriginalHTML:    request.OriginalHTML,
 		})
 		if err != nil {
@@ -389,7 +507,13 @@ type NewEmailParams struct {
 	Language        string
 	Variant         string
 	AdaptationLabel *string
-	OriginalHTML    string
+	// RegionKey is a region of the board to put the email in; "" for none.
+	RegionKey    string
+	OriginalHTML string
+	// Layout builds the email from the block library instead of
+	// OriginalHTML: shared fields take the texts of its language and board,
+	// the others the text written in the block.
+	Layout emailblocks.Layout
 }
 
 // createEmailInputError is a validation problem the caller should see as 400.
@@ -434,8 +558,11 @@ func CreateEmailTx(r *http.Request, dbpool *pgxpool.Pool, tx pgx.Tx, user AuthUs
 		return EmailDetail{}, createEmailInputError("adaptation label must contain letters, numbers, spaces, hyphens, or underscores")
 	}
 	originalHTML := strings.TrimSpace(params.OriginalHTML)
+	if params.Layout != nil && originalHTML != "" {
+		return EmailDetail{}, createEmailInputError("give either blocks or HTML, not both")
+	}
 
-	if title == "" || stage == "" || originalHTML == "" {
+	if title == "" || stage == "" || (originalHTML == "" && params.Layout == nil) {
 		return EmailDetail{}, createEmailInputError("title, stage, and original_html are required")
 	}
 	exists, err := boards.Exists(r.Context(), dbpool, sequence)
@@ -450,7 +577,18 @@ func CreateEmailTx(r *http.Request, dbpool *pgxpool.Pool, tx pgx.Tx, user AuthUs
 	preheader := trimmedOptionalString(params.Preheader)
 	sendTiming := trimmedOptionalString(params.SendTiming)
 	sendCondition := trimmedOptionalString(params.SendCondition)
-	reviewHTML, err := emailreview.AddReviewBlocks(originalHTML)
+	var built *emailFromLayout
+	if params.Layout != nil {
+		if built, err = buildNewEmailFromLayout(r.Context(), tx, params.Layout, language, sequence, subject, preheader); err != nil {
+			return EmailDetail{}, err
+		}
+		originalHTML = built.template
+	}
+	renderedHTML := originalHTML
+	if built != nil {
+		renderedHTML = built.rendered
+	}
+	reviewHTML, err := emailreview.AddReviewBlocks(renderedHTML)
 	if err != nil {
 		return EmailDetail{}, createEmailInputError("invalid email HTML")
 	}
@@ -458,12 +596,19 @@ func CreateEmailTx(r *http.Request, dbpool *pgxpool.Pool, tx pgx.Tx, user AuthUs
 	if err != nil {
 		return EmailDetail{}, createEmailInputError("invalid editable fields in HTML")
 	}
+	var layoutJSONValue []byte
+	if built != nil {
+		editableFields = built.fields
+		if layoutJSONValue, err = layoutJSON(params.Layout); err != nil {
+			return EmailDetail{}, err
+		}
+	}
 	editableFieldsJSON, err := editableFields.JSON()
 	if err != nil {
 		return EmailDetail{}, createEmailInputError("invalid editable fields in HTML")
 	}
 	contentParts := emailtext.ExtractContentParts(
-		originalHTML,
+		renderedHTML,
 		stringFromPointer(subject),
 		stringFromPointer(preheader),
 		"",
@@ -472,12 +617,22 @@ func CreateEmailTx(r *http.Request, dbpool *pgxpool.Pool, tx pgx.Tx, user AuthUs
 	if err != nil {
 		return EmailDetail{}, err
 	}
+	if params.RegionKey != "" {
+		var found bool
+		adaptationKey, adaptationLabel, found, err = boards.RegionAdaptation(r.Context(), tx, sequence, params.RegionKey)
+		if err != nil {
+			return EmailDetail{}, fmt.Errorf("load region: %w", err)
+		}
+		if !found {
+			return EmailDetail{}, createEmailInputError("the board has no region " + params.RegionKey)
+		}
+	}
 	slug := emailSlugWithAdaptation(
 		newEmailSlug(sequence, stage, title, language, variant),
 		adaptationKey,
 	)
 
-	created, err := insertDuplicatedEmail(r, tx, duplicateEmailInsert{
+	created, err := insertDuplicatedEmail(r.Context(), tx, duplicateEmailInsert{
 		Slug:            slug,
 		Sequence:        sequence,
 		Title:           title,
@@ -496,12 +651,22 @@ func CreateEmailTx(r *http.Request, dbpool *pgxpool.Pool, tx pgx.Tx, user AuthUs
 		ReviewHTML:      &reviewHTML,
 		TemplateHTML:    originalHTML,
 		EditableFields:  editableFieldsJSON,
+		Layout:          layoutJSONValue,
 	})
 	if err != nil {
 		if isEmailCreationConflict(err) {
 			return EmailDetail{}, errCreateEmailConflict
 		}
 		return EmailDetail{}, err
+	}
+	if params.RegionKey != "" {
+		if _, err := tx.Exec(r.Context(), `UPDATE emails SET region_key = $2 WHERE id = $1;`, created.ID, params.RegionKey); err != nil {
+			return EmailDetail{}, fmt.Errorf("set region: %w", err)
+		}
+		if err := linkToSlotReference(r.Context(), tx, created.ID); err != nil {
+			return EmailDetail{}, fmt.Errorf("link reference: %w", err)
+		}
+		created.RegionKey = &params.RegionKey
 	}
 	if err := InsertEmailEvent(r.Context(), tx, EmailEventParam{
 		ActorUserID: user.ID,
@@ -532,7 +697,7 @@ func CreateEmailTx(r *http.Request, dbpool *pgxpool.Pool, tx pgx.Tx, user AuthUs
 		Preheader:          created.Preheader,
 		OriginalHTML:       created.OriginalHTML,
 		TemplateHTML:       created.TemplateHTML,
-		EditableFieldsJSON: editableFieldsJSON,
+		EditableFieldsJSON: created.EditableFields,
 	}); err != nil {
 		return EmailDetail{}, fmt.Errorf("record email version: %w", err)
 	}
@@ -540,14 +705,14 @@ func CreateEmailTx(r *http.Request, dbpool *pgxpool.Pool, tx pgx.Tx, user AuthUs
 	return created, nil
 }
 
-func inspectEmailHTMLHandler(_ *pgxpool.Pool) http.HandlerFunc {
+func inspectEmailHTMLHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.FromRequest(r)
 		if !ok {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
+		if manages, err := auth.ManagesAnyBoard(r.Context(), dbpool, user); err != nil || !manages {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -607,6 +772,13 @@ type updateEmailPlanningFieldsResponse struct {
 
 type renderedEmailResponse struct {
 	HTML string `json:"html"`
+	// Version is the latest saved version, read together with the fields
+	// so a copy of the HTML can be matched to the version it came from.
+	Version *int `json:"version"`
+	// Subject and ReviewStatus are read in the same query, so the copy
+	// dialog shows what was actually copied, not a stale list entry.
+	Subject      string `json:"subject"`
+	ReviewStatus string `json:"review_status"`
 }
 
 func getRenderedEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
@@ -616,12 +788,16 @@ func getRenderedEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		var templateHTML string
 		var preheader *string
 		var editableFieldsJSON []byte
+		var version *int
+		var subject, reviewStatus string
 		err := dbpool.QueryRow(r.Context(), `
-			SELECT template_html, preheader, editable_fields
+			SELECT template_html, preheader, editable_fields,
+				(SELECT max(version_number) FROM email_versions WHERE email_id = emails.id),
+				COALESCE(subject, ''), review_status
 			FROM emails
 			WHERE id = $1
 				AND archived_at IS NULL;
-		`, id).Scan(&templateHTML, &preheader, &editableFieldsJSON)
+		`, id).Scan(&templateHTML, &preheader, &editableFieldsJSON, &version, &subject, &reviewStatus)
 		if err != nil {
 			http.Error(w, "email not found", http.StatusNotFound)
 			return
@@ -635,6 +811,7 @@ func getRenderedEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 		html, err := emailedit.RenderEditableHTMLWithMetadata(templateHTML, editableFields, emailedit.RenderMetadata{
 			Preheader: stringFromPointer(preheader),
+			Subject:   subject,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to render email %s: %v\n", id, err)
@@ -643,7 +820,7 @@ func getRenderedEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(renderedEmailResponse{HTML: html})
+		_ = json.NewEncoder(w).Encode(renderedEmailResponse{HTML: html, Version: version, Subject: subject, ReviewStatus: reviewStatus})
 	}
 }
 
@@ -655,7 +832,7 @@ func updateEmailEditableFieldsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
+		if canEdit, err := CanEditEmail(r.Context(), dbpool, user, id); err != nil || !canEdit {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -681,249 +858,22 @@ func updateEmailEditableFieldsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(r.Context())
 
-		var originalHTML string
-		var templateHTML string
-		var currentTitle string
-		var currentSubject *string
-		var currentPreheader *string
-		var currentEditableFieldsJSON []byte
-		var slug string
-		var currentReviewStatus string
-		err = tx.QueryRow(r.Context(), `
-			SELECT slug, original_html, template_html, title, subject, preheader, editable_fields, review_status
-			FROM emails
-			WHERE id = $1
-				AND archived_at IS NULL
-			FOR UPDATE;
-		`, id).Scan(&slug, &originalHTML, &templateHTML, &currentTitle, &currentSubject, &currentPreheader, &currentEditableFieldsJSON, &currentReviewStatus)
-		if err != nil {
-			http.Error(w, "email not found", http.StatusNotFound)
+		_, err = saveEmailContent(r.Context(), tx, user, id, emailContentUpdate{
+			Title:          request.Title,
+			Subject:        request.Subject,
+			Preheader:      request.Preheader,
+			EditableFields: request.EditableFields,
+			OriginalHTML:   request.OriginalHTML,
+		}, emailContentSaveOptions{Source: "manual", Check: true})
+		var contentErr emailContentError
+		if errors.As(err, &contentErr) {
+			http.Error(w, contentErr.message, contentErr.status)
 			return
 		}
-
-		title := currentTitle
-		if request.Title != nil {
-			title = strings.TrimSpace(*request.Title)
-		}
-		if title == "" {
-			http.Error(w, "title is required", http.StatusBadRequest)
-			return
-		}
-
-		subject := currentSubject
-		if request.Subject != nil {
-			subject = request.Subject
-		}
-		preheader := currentPreheader
-		if request.Preheader != nil {
-			preheader = request.Preheader
-		}
-
-		nextOriginalHTML := originalHTML
-		nextTemplateHTML := templateHTML
-		nextEditableFields := request.EditableFields
-		originalHTMLChanged := false
-		if request.OriginalHTML != nil {
-			nextOriginalHTML = strings.TrimSpace(*request.OriginalHTML)
-			if nextOriginalHTML == "" {
-				http.Error(w, "original_html is required", http.StatusBadRequest)
-				return
-			}
-			if _, err := emailreview.AddReviewBlocks(nextOriginalHTML); err != nil {
-				http.Error(w, "invalid email HTML", http.StatusBadRequest)
-				return
-			}
-			extractedFields, err := emailedit.ExtractEditableFields(nextOriginalHTML)
-			if err != nil {
-				http.Error(w, "invalid editable fields in original_html", http.StatusBadRequest)
-				return
-			}
-			nextEditableFields = mergeEditableFields(extractedFields, request.EditableFields)
-			nextTemplateHTML = nextOriginalHTML
-			originalHTMLChanged = nextOriginalHTML != originalHTML
-		}
-
-		renderedHTML, err := emailedit.RenderEditableHTMLWithMetadata(nextTemplateHTML, nextEditableFields, emailedit.RenderMetadata{
-			Preheader: stringFromPointer(preheader),
-		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "invalid editable fields for email %s: %v\n", id, err)
-			http.Error(w, "invalid editable fields", http.StatusBadRequest)
-			return
-		}
-
-		reviewHTML, err := emailreview.AddReviewBlocks(renderedHTML)
-		if err != nil {
-			http.Error(w, "invalid email HTML", http.StatusBadRequest)
-			return
-		}
-
-		fieldsJSON, err := nextEditableFields.JSON()
-		if err != nil {
-			http.Error(w, "invalid editable fields", http.StatusBadRequest)
-			return
-		}
-		renderedBodyText := emailtext.HTMLToText(renderedHTML)
-		contentParts := emailtext.ExtractContentParts(
-			renderedHTML,
-			stringFromPointer(subject),
-			stringFromPointer(preheader),
-			renderedBodyText,
-		)
-		contentPartsJSON, err := json.Marshal(contentParts)
-		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to update editable fields for %s: %v\n", id, err)
 			http.Error(w, "failed to update editable fields", http.StatusInternalServerError)
 			return
-		}
-
-		changes, err := buildEmailUpdateChanges(
-			currentTitle,
-			currentSubject,
-			currentPreheader,
-			currentEditableFieldsJSON,
-			title,
-			subject,
-			preheader,
-			nextEditableFields,
-		)
-		if err != nil {
-			http.Error(w, "failed to update editable fields", http.StatusInternalServerError)
-			return
-		}
-		if originalHTMLChanged {
-			changes["original_html"] = map[string]any{
-				"before": originalHTML,
-				"after":  nextOriginalHTML,
-			}
-		}
-		changedReviewBlocks, err := changedReviewBlocksForEmailUpdate(templateHTML, nextTemplateHTML, changes)
-		if err != nil {
-			http.Error(w, "failed to update editable fields", http.StatusInternalServerError)
-			return
-		}
-		nextReviewStatus := currentReviewStatus
-		approvalBecameStale := len(changes) > 0 && isApprovedEmailReviewStatus(currentReviewStatus)
-		if approvalBecameStale {
-			nextReviewStatus = "changes_requested"
-		}
-		commentAnchorTexts, err := changedCommentAnchorTexts(
-			nextTemplateHTML,
-			renderedHTML,
-			currentTitle,
-			currentSubject,
-			currentPreheader,
-			currentEditableFieldsJSON,
-			title,
-			subject,
-			preheader,
-			nextEditableFields,
-		)
-		if err != nil {
-			http.Error(w, "failed to update editable fields", http.StatusInternalServerError)
-			return
-		}
-
-		result, err := tx.Exec(r.Context(), `
-			UPDATE emails
-			SET title = $2,
-				subject = $3,
-				preheader = $4,
-				editable_fields = $5::jsonb,
-				content_parts = $6::jsonb,
-				review_html = $7,
-				body_text = $8,
-				original_html = $9,
-				template_html = $10,
-				review_status = $11,
-				updated_at = now()
-			WHERE id = $1
-				AND archived_at IS NULL;
-		`, id, title, subject, preheader, fieldsJSON, contentPartsJSON, reviewHTML, renderedBodyText, nextOriginalHTML, nextTemplateHTML, nextReviewStatus)
-		if err != nil {
-			http.Error(w, "failed to update editable fields", http.StatusInternalServerError)
-			return
-		}
-		if result.RowsAffected() == 0 {
-			http.Error(w, "email not found", http.StatusNotFound)
-			return
-		}
-		if len(changes) > 0 || originalHTMLChanged {
-			if err := insertEmailVersion(r.Context(), tx, emailVersionSnapshot{
-				EmailID:              id,
-				CreatedByUserID:      user.ID,
-				CreatedByEmail:       user.Email,
-				Source:               "manual",
-				Title:                title,
-				Subject:              subject,
-				Preheader:            preheader,
-				OriginalHTML:         nextOriginalHTML,
-				TemplateHTML:         nextTemplateHTML,
-				EditableFieldsJSON:   fieldsJSON,
-				ChangedFieldCount:    countEditableFieldChanges(changes),
-				ChangedMetadataCount: countMetadataChanges(changes),
-				HTMLChanged:          originalHTMLChanged,
-			}); err != nil {
-				http.Error(w, "failed to record email version", http.StatusInternalServerError)
-				return
-			}
-		}
-		if err := resetCommentAnchorsForReviewBlocks(r.Context(), tx, id, commentAnchorTexts); err != nil {
-			http.Error(w, "failed to update editable fields", http.StatusInternalServerError)
-			return
-		}
-		updateEventMetadata := map[string]any{}
-		if len(changedReviewBlocks) > 0 {
-			updateEventMetadata["changed_review_blocks"] = changedReviewBlocks
-		}
-		if err := InsertEmailEvent(r.Context(), tx, EmailEventParam{
-			ActorUserID: user.ID,
-			ActorEmail:  user.Email,
-			Action:      emailEventUpdated,
-			EmailID:     &id,
-			EmailSlug:   &slug,
-			EmailTitle:  &title,
-			Metadata:    updateEventMetadata,
-			Changes:     changes,
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to insert email update event for %s: %v\n", id, err)
-			http.Error(w, "failed to record email event", http.StatusInternalServerError)
-			return
-		}
-		if len(changes) > 0 || originalHTMLChanged {
-			if err := markStaleAreaApprovalsAfterContentChange(
-				r.Context(),
-				tx,
-				id,
-				user,
-				"approval_stale_after_edit",
-			); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to mark stale area approvals for %s: %v\n", id, err)
-				http.Error(w, "failed to update area approvals", http.StatusInternalServerError)
-				return
-			}
-		}
-		if approvalBecameStale {
-			if err := InsertEmailEvent(r.Context(), tx, EmailEventParam{
-				ActorUserID: user.ID,
-				ActorEmail:  user.Email,
-				Action:      emailEventReviewStatusUpdated,
-				EmailID:     &id,
-				EmailSlug:   &slug,
-				EmailTitle:  &title,
-				Metadata: map[string]any{
-					"reason": "approval_stale_after_edit",
-				},
-				Changes: map[string]any{
-					"review_status": map[string]any{
-						"before": currentReviewStatus,
-						"after":  nextReviewStatus,
-					},
-				},
-			}); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to insert stale approval event for %s: %v\n", id, err)
-				http.Error(w, "failed to record email event", http.StatusInternalServerError)
-				return
-			}
 		}
 		if err := tx.Commit(r.Context()); err != nil {
 			http.Error(w, "failed to update editable fields", http.StatusInternalServerError)
@@ -934,6 +884,358 @@ func updateEmailEditableFieldsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// emailContentUpdate is a change to an email's text; nil keeps the current
+// value.
+type emailContentUpdate struct {
+	Title          *string
+	Subject        *string
+	Preheader      *string
+	EditableFields emailedit.EditableFields
+	OriginalHTML   *string
+	// Layout switches the email to these blocks. An email built from blocks
+	// is assembled from the library on every save, so a save with nil
+	// picks up changed blocks.
+	Layout emailblocks.Layout
+}
+
+type emailContentSaveOptions struct {
+	// Source is the version source: "manual", "shared_text" or "block".
+	Source string
+	// KeepStatus leaves a ready email ready. A shared text is checked on its
+	// own screen, so its edit does not send every email back to draft.
+	KeepStatus bool
+	// Metadata goes into the update event.
+	Metadata map[string]any
+	// SameText is a save that changes the markup only (a switch to
+	// blocks): the blocks are not marked as changed, so comments on them
+	// stay current.
+	SameText bool
+	// Check refuses a save that brings in a new error of form (no button,
+	// an empty required field). It is for edits people make on the email
+	// itself; saves that follow another change (a translation taking the EN
+	// blocks, a shared text, a block) go through.
+	Check bool
+}
+
+// emailContentError is a save refused because of the input, with the HTTP
+// status to answer with.
+type emailContentError struct {
+	status  int
+	message string
+}
+
+func (e emailContentError) Error() string { return e.message }
+
+// saveEmailContent writes new text into an active email inside tx: renders
+// the HTML, records a version and an event when something changed, resets
+// comment anchors on changed blocks and marks approvals stale. Shared fields
+// take their value from the shared text in the email's language and board.
+// An email built from blocks gets its template from the library; fields it
+// does not get in update keep their value. It reports whether anything
+// changed.
+func saveEmailContent(ctx context.Context, tx pgx.Tx, user AuthUser, id string, update emailContentUpdate, opts emailContentSaveOptions) (bool, error) {
+	var originalHTML string
+	var templateHTML string
+	var currentTitle string
+	var currentSubject *string
+	var currentPreheader *string
+	var currentEditableFieldsJSON []byte
+	var slug string
+	var language string
+	var board string
+	var currentReviewStatus string
+	var currentLayoutJSON []byte
+	err := tx.QueryRow(ctx, `
+		SELECT slug, lower(language), coalesce(sequence, ''), original_html, template_html, title, subject, preheader, editable_fields, review_status, layout
+		FROM emails
+		WHERE id = $1
+			AND archived_at IS NULL
+		FOR UPDATE;
+	`, id).Scan(&slug, &language, &board, &originalHTML, &templateHTML, &currentTitle, &currentSubject, &currentPreheader, &currentEditableFieldsJSON, &currentReviewStatus, &currentLayoutJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, emailContentError{http.StatusNotFound, "email not found"}
+	}
+	if err != nil {
+		return false, err
+	}
+	currentLayout, err := parseLayout(currentLayoutJSON)
+	if err != nil {
+		return false, err
+	}
+	nextLayout := currentLayout
+	if update.Layout != nil {
+		nextLayout = update.Layout
+	}
+	if nextLayout != nil && update.OriginalHTML != nil {
+		return false, emailContentError{http.StatusBadRequest, "the email is built from blocks: change its blocks, not its HTML"}
+	}
+
+	title := currentTitle
+	if update.Title != nil {
+		title = strings.TrimSpace(*update.Title)
+	}
+	if title == "" {
+		return false, emailContentError{http.StatusBadRequest, "title is required"}
+	}
+
+	subject := currentSubject
+	if update.Subject != nil {
+		subject = update.Subject
+	}
+	preheader := currentPreheader
+	if update.Preheader != nil {
+		preheader = update.Preheader
+	}
+
+	nextOriginalHTML := originalHTML
+	nextTemplateHTML := templateHTML
+	nextEditableFields := update.EditableFields
+	originalHTMLChanged := false
+	if update.OriginalHTML != nil {
+		nextOriginalHTML = strings.TrimSpace(*update.OriginalHTML)
+		if nextOriginalHTML == "" {
+			return false, emailContentError{http.StatusBadRequest, "original_html is required"}
+		}
+		if _, err := emailreview.AddReviewBlocks(nextOriginalHTML); err != nil {
+			return false, emailContentError{http.StatusBadRequest, "invalid email HTML"}
+		}
+		extractedFields, err := emailedit.ExtractEditableFields(nextOriginalHTML)
+		if err != nil {
+			return false, emailContentError{http.StatusBadRequest, "invalid editable fields in original_html"}
+		}
+		nextEditableFields = mergeEditableFields(extractedFields, update.EditableFields)
+		nextTemplateHTML = nextOriginalHTML
+		originalHTMLChanged = nextOriginalHTML != originalHTML
+	}
+	if nextLayout != nil {
+		var currentFields emailedit.EditableFields
+		if err := json.Unmarshal(currentEditableFieldsJSON, &currentFields); err != nil {
+			return false, err
+		}
+		for key, field := range update.EditableFields {
+			currentFields[key] = field
+		}
+		nextTemplateHTML, nextEditableFields, err = buildFromLayout(ctx, tx, nextLayout, language, currentFields)
+		if err != nil {
+			return false, err
+		}
+		// The assembled template is the email's HTML; there is no other.
+		nextOriginalHTML = nextTemplateHTML
+		originalHTMLChanged = nextTemplateHTML != templateHTML || nextOriginalHTML != originalHTML
+	}
+	layoutChanged := !sameLayout(currentLayout, nextLayout)
+	nextLayoutJSON, err := layoutJSON(nextLayout)
+	if err != nil {
+		return false, err
+	}
+	nextEditableFields, err = resolveSharedFields(ctx, tx, language, board, nextEditableFields)
+	if err != nil {
+		return false, err
+	}
+
+	if update.OriginalHTML == nil {
+		previousFields := emailedit.EditableFields{}
+		if len(currentEditableFieldsJSON) > 0 {
+			if err := json.Unmarshal(currentEditableFieldsJSON, &previousFields); err != nil {
+				return false, err
+			}
+		}
+		if err := emailedit.FormatEditedFields(nextTemplateHTML, previousFields, nextEditableFields); err != nil {
+			return false, emailContentError{http.StatusBadRequest, "invalid email HTML"}
+		}
+	}
+	for key, field := range nextEditableFields {
+		if err := emailedit.ValidateFormat(key, field); err != nil {
+			return false, emailContentError{http.StatusBadRequest, err.Error()}
+		}
+	}
+	if opts.Check {
+		before, err := checkStoredEmail(ctx, tx, currentLayoutJSON, currentEditableFieldsJSON, currentSubject, currentPreheader)
+		if err != nil {
+			return false, err
+		}
+		after, err := checkEmail(ctx, tx, nil, nextLayout, nextEditableFields, subject, preheader)
+		if err != nil {
+			return false, err
+		}
+		if added := emailblocks.NewErrors(before, after); len(added) > 0 {
+			return false, emailContentError{http.StatusBadRequest, issueMessages(added)}
+		}
+	}
+
+	renderedHTML, err := emailedit.RenderEditableHTMLWithMetadata(nextTemplateHTML, nextEditableFields, emailedit.RenderMetadata{
+		Preheader: stringFromPointer(preheader),
+		Subject:   stringFromPointer(subject),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid editable fields for email %s: %v\n", id, err)
+		return false, emailContentError{http.StatusBadRequest, "invalid editable fields"}
+	}
+
+	reviewHTML, err := emailreview.AddReviewBlocks(renderedHTML)
+	if err != nil {
+		return false, emailContentError{http.StatusBadRequest, "invalid email HTML"}
+	}
+
+	fieldsJSON, err := nextEditableFields.JSON()
+	if err != nil {
+		return false, emailContentError{http.StatusBadRequest, "invalid editable fields"}
+	}
+	renderedBodyText := emailtext.HTMLToText(renderedHTML)
+	contentParts := emailtext.ExtractContentParts(
+		renderedHTML,
+		stringFromPointer(subject),
+		stringFromPointer(preheader),
+		renderedBodyText,
+	)
+	contentPartsJSON, err := json.Marshal(contentParts)
+	if err != nil {
+		return false, err
+	}
+
+	changes, err := buildEmailUpdateChanges(
+		currentTitle,
+		currentSubject,
+		currentPreheader,
+		currentEditableFieldsJSON,
+		title,
+		subject,
+		preheader,
+		nextEditableFields,
+	)
+	if err != nil {
+		return false, err
+	}
+	if originalHTMLChanged && nextLayout == nil {
+		changes["original_html"] = map[string]any{
+			"before": originalHTML,
+			"after":  nextOriginalHTML,
+		}
+	}
+	if layoutChanged {
+		changes["layout"] = layoutChange(currentLayout, nextLayout)
+	}
+	changedReviewBlocks, err := changedReviewBlocksForEmailUpdate(templateHTML, nextTemplateHTML, changes)
+	if err != nil {
+		return false, err
+	}
+	nextReviewStatus := currentReviewStatus
+	approvalBecameStale := len(changes) > 0 && isApprovedEmailReviewStatus(currentReviewStatus) && !opts.KeepStatus
+	if approvalBecameStale {
+		nextReviewStatus = "draft"
+	}
+	commentAnchorTexts, err := changedCommentAnchorTexts(
+		nextTemplateHTML,
+		renderedHTML,
+		currentTitle,
+		currentSubject,
+		currentPreheader,
+		currentEditableFieldsJSON,
+		title,
+		subject,
+		preheader,
+		nextEditableFields,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE emails
+		SET title = $2,
+			subject = $3,
+			preheader = $4,
+			editable_fields = $5::jsonb,
+			content_parts = $6::jsonb,
+			review_html = $7,
+			body_text = $8,
+			original_html = $9,
+			template_html = $10,
+			review_status = $11,
+			layout = $12::jsonb,
+			updated_at = now()
+		WHERE id = $1
+			AND archived_at IS NULL;
+	`, id, title, subject, preheader, fieldsJSON, contentPartsJSON, reviewHTML, renderedBodyText, nextOriginalHTML, nextTemplateHTML, nextReviewStatus, nextLayoutJSON); err != nil {
+		return false, err
+	}
+	changed := len(changes) > 0 || originalHTMLChanged
+	if changed {
+		if err := insertEmailVersion(ctx, tx, emailVersionSnapshot{
+			EmailID:              id,
+			CreatedByUserID:      user.ID,
+			CreatedByEmail:       user.Email,
+			Source:               opts.Source,
+			Title:                title,
+			Subject:              subject,
+			Preheader:            preheader,
+			OriginalHTML:         nextOriginalHTML,
+			TemplateHTML:         nextTemplateHTML,
+			EditableFieldsJSON:   fieldsJSON,
+			ChangedFieldCount:    countEditableFieldChanges(changes),
+			ChangedMetadataCount: countMetadataChanges(changes),
+			HTMLChanged:          originalHTMLChanged,
+		}); err != nil {
+			return false, fmt.Errorf("record email version: %w", err)
+		}
+	}
+	if err := resetCommentAnchorsForReviewBlocks(ctx, tx, id, commentAnchorTexts); err != nil {
+		return false, err
+	}
+	updateEventMetadata := map[string]any{}
+	for key, value := range opts.Metadata {
+		updateEventMetadata[key] = value
+	}
+	if len(changedReviewBlocks) > 0 && !opts.SameText {
+		updateEventMetadata["changed_review_blocks"] = changedReviewBlocks
+	}
+	if err := InsertEmailEvent(ctx, tx, EmailEventParam{
+		ActorUserID: user.ID,
+		ActorEmail:  user.Email,
+		Action:      emailEventUpdated,
+		EmailID:     &id,
+		EmailSlug:   &slug,
+		EmailTitle:  &title,
+		Metadata:    updateEventMetadata,
+		Changes:     changes,
+	}); err != nil {
+		return false, fmt.Errorf("record email update event: %w", err)
+	}
+	if changed {
+		if err := markStaleAreaApprovalsAfterContentChange(
+			ctx,
+			tx,
+			id,
+			user,
+			"approval_stale_after_edit",
+		); err != nil {
+			return false, fmt.Errorf("mark stale area approvals: %w", err)
+		}
+	}
+	if approvalBecameStale {
+		if err := InsertEmailEvent(ctx, tx, EmailEventParam{
+			ActorUserID: user.ID,
+			ActorEmail:  user.Email,
+			Action:      emailEventReviewStatusUpdated,
+			EmailID:     &id,
+			EmailSlug:   &slug,
+			EmailTitle:  &title,
+			Metadata: map[string]any{
+				"reason": "approval_stale_after_edit",
+			},
+			Changes: map[string]any{
+				"review_status": map[string]any{
+					"before": currentReviewStatus,
+					"after":  nextReviewStatus,
+				},
+			},
+		}); err != nil {
+			return false, fmt.Errorf("record stale approval event: %w", err)
+		}
+	}
+	return changed, nil
+}
+
 func updateEmailPlanningFieldsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -942,8 +1244,7 @@ func updateEmailPlanningFieldsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -1079,8 +1380,7 @@ func updateEmailReviewStatusHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -1103,108 +1403,19 @@ func updateEmailReviewStatusHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(r.Context())
 
-		var slug string
-		var title string
-		var currentStatus string
-		var currentSubject *string
-		var currentPreheader *string
-		var currentTemplateHash *string
-		var currentTemplateHTML string
-		var currentEditableFieldsText string
-		err = tx.QueryRow(r.Context(), `
-			SELECT slug, title, review_status, subject, preheader, template_hash, template_html, editable_fields::text
-			FROM emails
-			WHERE id = $1
-				AND archived_at IS NULL
-			FOR UPDATE;
-		`, id).Scan(
-			&slug,
-			&title,
-			&currentStatus,
-			&currentSubject,
-			&currentPreheader,
-			&currentTemplateHash,
-			&currentTemplateHTML,
-			&currentEditableFieldsText,
-		)
-		if err != nil {
+		var blocked emailStatusBlockedError
+		err = setEmailReviewStatus(r.Context(), tx, user, id, nextStatus)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
 			http.Error(w, "email not found", http.StatusNotFound)
 			return
-		}
-
-		if currentStatus != nextStatus {
-			if isApprovedEmailReviewStatus(nextStatus) {
-				blockers, err := emailApprovalGateBlockers(r.Context(), tx, id)
-				if err != nil {
-					http.Error(w, "failed to update review status", http.StatusInternalServerError)
-					return
-				}
-				if len(blockers) > 0 {
-					http.Error(w, strings.Join(blockers, "; "), http.StatusConflict)
-					return
-				}
-			}
-
-			eventMetadata := map[string]any{}
-			if isApprovedEmailReviewStatus(nextStatus) {
-				for key, value := range approvalContentSnapshot(
-					title,
-					currentSubject,
-					currentPreheader,
-					currentTemplateHash,
-					currentTemplateHTML,
-					currentEditableFieldsText,
-				) {
-					eventMetadata[key] = value
-				}
-			}
-			if currentStatus == "changes_requested" && isApprovedEmailReviewStatus(nextStatus) {
-				eventMetadata["reason"] = "reapproved"
-				reapprovesStaleEdit, err := latestReviewStatusEventMarkedApprovalStale(r.Context(), tx, id)
-				if err != nil {
-					http.Error(w, "failed to update review status", http.StatusInternalServerError)
-					return
-				}
-				if reapprovesStaleEdit {
-					eventMetadata["reason"] = "reapproved_after_stale_edit"
-				}
-			}
-
-			result, err := tx.Exec(r.Context(), `
-				UPDATE emails
-				SET review_status = $2,
-					updated_at = now()
-				WHERE id = $1
-					AND archived_at IS NULL;
-			`, id, nextStatus)
-			if err != nil {
-				http.Error(w, "failed to update review status", http.StatusInternalServerError)
-				return
-			}
-			if result.RowsAffected() == 0 {
-				http.Error(w, "email not found", http.StatusNotFound)
-				return
-			}
-
-			if err := InsertEmailEvent(r.Context(), tx, EmailEventParam{
-				ActorUserID: user.ID,
-				ActorEmail:  user.Email,
-				Action:      emailEventReviewStatusUpdated,
-				EmailID:     &id,
-				EmailSlug:   &slug,
-				EmailTitle:  &title,
-				Metadata:    eventMetadata,
-				Changes: map[string]any{
-					"review_status": map[string]any{
-						"before": currentStatus,
-						"after":  nextStatus,
-					},
-				},
-			}); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to insert email review status event for %s: %v\n", id, err)
-				http.Error(w, "failed to record email event", http.StatusInternalServerError)
-				return
-			}
+		case errors.As(err, &blocked):
+			http.Error(w, blocked.Error(), http.StatusConflict)
+			return
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "failed to update review status for %s: %v\n", id, err)
+			http.Error(w, "failed to update review status", http.StatusInternalServerError)
+			return
 		}
 
 		if err := tx.Commit(r.Context()); err != nil {
@@ -1215,6 +1426,112 @@ func updateEmailReviewStatusHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(updateEmailReviewStatusResponse{ReviewStatus: nextStatus})
 	}
+}
+
+// emailStatusBlockedError lists why an email cannot be marked ready yet.
+type emailStatusBlockedError []string
+
+func (e emailStatusBlockedError) Error() string { return strings.Join(e, "; ") }
+
+// setEmailReviewStatus changes the status of one email inside tx and records
+// it in the history. Marking ready goes through the approval gates and the
+// checks of form, warnings included; a missing or archived email returns
+// pgx.ErrNoRows.
+func setEmailReviewStatus(ctx context.Context, tx pgx.Tx, user AuthUser, id string, nextStatus string) error {
+	var slug string
+	var title string
+	var currentStatus string
+	var currentSubject *string
+	var currentPreheader *string
+	var currentTemplateHash *string
+	var currentTemplateHTML string
+	var currentEditableFieldsText string
+	var currentLayoutJSON []byte
+	err := tx.QueryRow(ctx, `
+		SELECT slug, title, review_status, subject, preheader, template_hash, template_html, editable_fields::text, layout
+		FROM emails
+		WHERE id = $1
+			AND archived_at IS NULL
+		FOR UPDATE;
+	`, id).Scan(
+		&slug,
+		&title,
+		&currentStatus,
+		&currentSubject,
+		&currentPreheader,
+		&currentTemplateHash,
+		&currentTemplateHTML,
+		&currentEditableFieldsText,
+		&currentLayoutJSON,
+	)
+	if err != nil {
+		return err
+	}
+	if currentStatus == nextStatus {
+		return nil
+	}
+
+	eventMetadata := map[string]any{}
+	if isApprovedEmailReviewStatus(nextStatus) {
+		blockers, err := emailApprovalGateBlockers(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		issues, err := checkStoredEmail(ctx, tx, currentLayoutJSON, []byte(currentEditableFieldsText), currentSubject, currentPreheader)
+		if err != nil {
+			return err
+		}
+		for _, issue := range issues {
+			blockers = append(blockers, issue.Message)
+		}
+		if len(blockers) > 0 {
+			return emailStatusBlockedError(blockers)
+		}
+		for key, value := range approvalContentSnapshot(
+			title,
+			currentSubject,
+			currentPreheader,
+			currentTemplateHash,
+			currentTemplateHTML,
+			currentEditableFieldsText,
+		) {
+			eventMetadata[key] = value
+		}
+	}
+	if currentStatus == "draft" && isApprovedEmailReviewStatus(nextStatus) {
+		reapprovesStaleEdit, err := latestReviewStatusEventMarkedApprovalStale(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if reapprovesStaleEdit {
+			eventMetadata["reason"] = "reapproved_after_stale_edit"
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE emails
+		SET review_status = $2,
+			updated_at = now()
+		WHERE id = $1;
+	`, id, nextStatus); err != nil {
+		return err
+	}
+
+	return InsertEmailEvent(ctx, tx, EmailEventParam{
+		ActorUserID: user.ID,
+		ActorEmail:  user.Email,
+		Action:      emailEventReviewStatusUpdated,
+		EmailID:     &id,
+		EmailSlug:   &slug,
+		EmailTitle:  &title,
+		Metadata:    eventMetadata,
+		Changes: map[string]any{
+			"review_status": map[string]any{
+				"before": currentStatus,
+				"after":  nextStatus,
+			},
+		},
+	})
 }
 
 func emailApprovalGateBlockers(ctx context.Context, db emailEventExecutor, emailID string) ([]string, error) {
@@ -1232,42 +1549,7 @@ func emailApprovalGateBlockers(ctx context.Context, db emailEventExecutor, email
 		return nil, err
 	}
 	if openBlockingCommentCount > 0 {
-		blockers = append(blockers, "resolve blocking comments before approving")
-	}
-
-	rows, err := db.Query(ctx, `
-		SELECT board_approval_areas.name, coalesce(email_area_approvals.status, 'pending') AS status
-		FROM emails
-		JOIN boards ON boards.key = coalesce(nullif(trim(emails.sequence), ''), 'onboarding')
-		JOIN board_approval_areas ON board_approval_areas.board_id = boards.id
-			AND board_approval_areas.archived_at IS NULL
-			AND board_approval_areas.required = true
-		LEFT JOIN email_area_approvals ON email_area_approvals.email_id = emails.id
-			AND email_area_approvals.board_approval_area_id = board_approval_areas.id
-		WHERE emails.id = $1
-			AND emails.archived_at IS NULL
-			AND coalesce(email_area_approvals.status, 'pending') <> 'approved'
-		ORDER BY board_approval_areas.sort_order, board_approval_areas.created_at;
-	`, emailID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	pendingRequiredAreas := []string{}
-	for rows.Next() {
-		var name string
-		var status string
-		if err := rows.Scan(&name, &status); err != nil {
-			return nil, err
-		}
-		pendingRequiredAreas = append(pendingRequiredAreas, fmt.Sprintf("%s (%s)", name, status))
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if len(pendingRequiredAreas) > 0 {
-		blockers = append(blockers, "complete required approvals before approving: "+strings.Join(pendingRequiredAreas, ", "))
+		blockers = append(blockers, "resolve blocking comments before marking the email ready")
 	}
 
 	return blockers, nil
@@ -1330,7 +1612,7 @@ func contentHash(value string) string {
 
 func isValidEmailReviewStatus(status string) bool {
 	switch status {
-	case "draft", "in_review", "changes_requested", "approved", "production_approved":
+	case "draft", "ready":
 		return true
 	default:
 		return false
@@ -1338,7 +1620,7 @@ func isValidEmailReviewStatus(status string) bool {
 }
 
 func isApprovedEmailReviewStatus(status string) bool {
-	return status == "approved" || status == "production_approved"
+	return status == "ready"
 }
 
 type duplicateEmailRequest struct {
@@ -1360,9 +1642,12 @@ type duplicateEmailAsRequest struct {
 	Language        *string `json:"language"`
 	Variant         *string `json:"variant"`
 	AdaptationLabel *string `json:"adaptation_label"`
-	Title           *string `json:"title"`
-	Subject         *string `json:"subject"`
-	Preheader       *string `json:"preheader"`
+	// RegionKey puts the copy in a region of the target board; its
+	// adaptation then follows the region and adaptation_label is ignored.
+	RegionKey *string `json:"region_key"`
+	Title     *string `json:"title"`
+	Subject   *string `json:"subject"`
+	Preheader *string `json:"preheader"`
 }
 
 func duplicateEmailAsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
@@ -1373,8 +1658,7 @@ func duplicateEmailAsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -1405,6 +1689,9 @@ func duplicateEmailAsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		if !exists {
 			http.Error(w, "board not found", http.StatusBadRequest)
+			return
+		}
+		if !requireManageBoard(w, r, dbpool, user, sequence) {
 			return
 		}
 
@@ -1446,6 +1733,20 @@ func duplicateEmailAsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			adaptationKey, adaptationLabel, err = normalizeEmailAdaptation(request.AdaptationLabel)
 			if err != nil {
 				http.Error(w, "invalid adaptation_label", http.StatusBadRequest)
+				return
+			}
+		}
+		regionKey := ""
+		if request.RegionKey != nil && strings.TrimSpace(*request.RegionKey) != "" {
+			regionKey = strings.TrimSpace(*request.RegionKey)
+			var found bool
+			adaptationKey, adaptationLabel, found, err = boards.RegionAdaptation(r.Context(), dbpool, sequence, regionKey)
+			if err != nil {
+				http.Error(w, "failed to load the region", http.StatusInternalServerError)
+				return
+			}
+			if !found {
+				http.Error(w, "the board has no region "+regionKey, http.StatusBadRequest)
 				return
 			}
 		}
@@ -1505,7 +1806,7 @@ func duplicateEmailAsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(r.Context())
 
-		created, err := insertDuplicatedEmail(r, tx, duplicateEmailInsert{
+		created, err := insertDuplicatedEmail(r.Context(), tx, duplicateEmailInsert{
 			Slug:            slug,
 			Sequence:        sequence,
 			Title:           title,
@@ -1526,6 +1827,7 @@ func duplicateEmailAsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			TemplateHTML:    source.TemplateHTML,
 			TemplateHash:    source.TemplateHash,
 			TemplateVersion: source.TemplateVersion,
+			Layout:          source.Layout,
 			EditableFields:  source.EditableFields,
 		})
 		if err != nil {
@@ -1543,6 +1845,16 @@ func duplicateEmailAsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			sequence == source.Sequence && stage == source.Stage && sortOrder == source.SortOrder {
 			if err := linkTranslation(r.Context(), tx, created.ID, id); err != nil {
 				http.Error(w, "failed to link translation", http.StatusInternalServerError)
+				return
+			}
+		}
+		if regionKey != "" {
+			if _, err := tx.Exec(r.Context(), `UPDATE emails SET region_key = $2 WHERE id = $1;`, created.ID, regionKey); err != nil {
+				http.Error(w, "failed to set the region", http.StatusInternalServerError)
+				return
+			}
+			if err := linkToSlotReference(r.Context(), tx, created.ID); err != nil {
+				http.Error(w, "failed to link the reference", http.StatusInternalServerError)
 				return
 			}
 		}
@@ -1564,6 +1876,7 @@ func duplicateEmailAsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				"variant":          created.Variant,
 				"adaptation_key":   created.AdaptationKey,
 				"adaptation_label": created.AdaptationLabel,
+				"region_key":       regionKey,
 				"mode":             "duplicate_as",
 			},
 		}); err != nil {
@@ -1589,8 +1902,7 @@ func duplicateEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -1662,7 +1974,7 @@ func duplicateEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(r.Context())
 
-		created, err := insertDuplicatedEmail(r, tx, duplicateEmailInsert{
+		created, err := insertDuplicatedEmail(r.Context(), tx, duplicateEmailInsert{
 			Slug:            slug,
 			Sequence:        source.Sequence,
 			Title:           title,
@@ -1683,6 +1995,7 @@ func duplicateEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			TemplateHTML:    source.TemplateHTML,
 			TemplateHash:    source.TemplateHash,
 			TemplateVersion: source.TemplateVersion,
+			Layout:          source.Layout,
 			EditableFields:  source.EditableFields,
 		})
 		if err != nil {
@@ -1732,8 +2045,7 @@ func createEmailAdaptationHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -1773,7 +2085,7 @@ func createEmailAdaptationHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(r.Context())
 
-		created, err := insertDuplicatedEmail(r, tx, duplicateEmailInsert{
+		created, err := insertDuplicatedEmail(r.Context(), tx, duplicateEmailInsert{
 			Slug:            adaptationEmailSlug(source.Slug, source.AdaptationKey, key),
 			Sequence:        source.Sequence,
 			Title:           source.Title,
@@ -1794,6 +2106,7 @@ func createEmailAdaptationHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			TemplateHTML:    source.TemplateHTML,
 			TemplateHash:    source.TemplateHash,
 			TemplateVersion: source.TemplateVersion,
+			Layout:          source.Layout,
 			EditableFields:  source.EditableFields,
 		})
 		if err != nil {
@@ -1841,27 +2154,7 @@ func archiveEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		var snapshot emailArchiveSnapshot
-		err := dbpool.QueryRow(r.Context(), `
-			SELECT id, slug, title, language, variant, stage
-			FROM emails
-			WHERE id = $1
-				AND archived_at IS NULL;
-		`, id).Scan(
-			&snapshot.ID,
-			&snapshot.Slug,
-			&snapshot.Title,
-			&snapshot.Language,
-			&snapshot.Variant,
-			&snapshot.Stage,
-		)
-		if err != nil {
-			http.Error(w, "email not found", http.StatusNotFound)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -1872,41 +2165,14 @@ func archiveEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(r.Context())
 
-		archivedSlug := archivedEmailSlug(snapshot.Slug, snapshot.ID)
-		result, err := tx.Exec(r.Context(), `
-			UPDATE emails
-			SET archived_at = now(),
-				archived_by = $2,
-				slug = $3,
-				updated_at = now()
-			WHERE id = $1
-				AND archived_at IS NULL;
-		`, id, user.ID, archivedSlug)
-		if err != nil {
-			http.Error(w, "failed to archive email", http.StatusInternalServerError)
-			return
-		}
-		if result.RowsAffected() == 0 {
+		err = archiveEmail(r.Context(), tx, user, id)
+		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "email not found", http.StatusNotFound)
 			return
 		}
-		if err := InsertEmailEvent(r.Context(), tx, EmailEventParam{
-			ActorUserID: user.ID,
-			ActorEmail:  user.Email,
-			Action:      emailEventArchived,
-			EmailID:     &snapshot.ID,
-			EmailSlug:   &snapshot.Slug,
-			EmailTitle:  &snapshot.Title,
-			Metadata: map[string]any{
-				"slug":     snapshot.Slug,
-				"title":    snapshot.Title,
-				"language": snapshot.Language,
-				"variant":  snapshot.Variant,
-				"stage":    snapshot.Stage,
-			},
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to insert email archive event for %s: %v\n", id, err)
-			http.Error(w, "failed to record email event", http.StatusInternalServerError)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to archive email %s: %v\n", id, err)
+			http.Error(w, "failed to archive email", http.StatusInternalServerError)
 			return
 		}
 		if err := tx.Commit(r.Context()); err != nil {
@@ -1916,6 +2182,55 @@ func archiveEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// archiveEmail archives one email inside tx and records it in the history;
+// a missing or already archived email returns pgx.ErrNoRows.
+func archiveEmail(ctx context.Context, tx pgx.Tx, user AuthUser, id string) error {
+	var snapshot emailArchiveSnapshot
+	err := tx.QueryRow(ctx, `
+		SELECT id, slug, title, language, variant, stage
+		FROM emails
+		WHERE id = $1
+			AND archived_at IS NULL
+		FOR UPDATE;
+	`, id).Scan(
+		&snapshot.ID,
+		&snapshot.Slug,
+		&snapshot.Title,
+		&snapshot.Language,
+		&snapshot.Variant,
+		&snapshot.Stage,
+	)
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE emails
+		SET archived_at = now(),
+			archived_by = $2,
+			slug = $3,
+			updated_at = now()
+		WHERE id = $1;
+	`, id, user.ID, archivedEmailSlug(snapshot.Slug, snapshot.ID)); err != nil {
+		return err
+	}
+	return InsertEmailEvent(ctx, tx, EmailEventParam{
+		ActorUserID: user.ID,
+		ActorEmail:  user.Email,
+		Action:      emailEventArchived,
+		EmailID:     &snapshot.ID,
+		EmailSlug:   &snapshot.Slug,
+		EmailTitle:  &snapshot.Title,
+		Metadata: map[string]any{
+			"slug":     snapshot.Slug,
+			"title":    snapshot.Title,
+			"language": snapshot.Language,
+			"variant":  snapshot.Variant,
+			"stage":    snapshot.Stage,
+		},
+	})
 }
 
 func listEmailEventsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
@@ -2075,6 +2390,7 @@ type emailDuplicateSource struct {
 	TemplateHash    *string
 	TemplateVersion *string
 	EditableFields  []byte
+	Layout          []byte
 }
 
 type emailArchiveSnapshot struct {
@@ -2087,8 +2403,12 @@ type emailArchiveSnapshot struct {
 }
 
 func loadEmailForDuplicate(r *http.Request, dbpool *pgxpool.Pool, id string) (emailDuplicateSource, error) {
+	return loadEmailForDuplicateTx(r.Context(), dbpool, id)
+}
+
+func loadEmailForDuplicateTx(ctx context.Context, db rowQuerier, id string) (emailDuplicateSource, error) {
 	var source emailDuplicateSource
-	err := dbpool.QueryRow(r.Context(), `
+	err := db.QueryRow(ctx, `
 		SELECT
 			slug,
 			sequence,
@@ -2109,7 +2429,8 @@ func loadEmailForDuplicate(r *http.Request, dbpool *pgxpool.Pool, id string) (em
 			template_html,
 			template_hash,
 			template_version,
-			editable_fields
+			editable_fields,
+			layout
 		FROM emails
 		WHERE id = $1
 			AND archived_at IS NULL;
@@ -2134,6 +2455,7 @@ func loadEmailForDuplicate(r *http.Request, dbpool *pgxpool.Pool, id string) (em
 		&source.TemplateHash,
 		&source.TemplateVersion,
 		&source.EditableFields,
+		&source.Layout,
 	)
 
 	return source, err
@@ -2161,13 +2483,23 @@ type duplicateEmailInsert struct {
 	TemplateHash    *string
 	TemplateVersion *string
 	EditableFields  []byte
+	// Layout is copied as is: the copy is built from the same blocks.
+	Layout []byte
 }
 
-func insertDuplicatedEmail(r *http.Request, db emailEventExecutor, email duplicateEmailInsert) (EmailDetail, error) {
+func insertDuplicatedEmail(ctx context.Context, db emailEventExecutor, email duplicateEmailInsert) (EmailDetail, error) {
 	var created EmailDetail
 	var editableFields []byte
 
-	err := db.QueryRow(r.Context(), `
+	// Fields equal to a shared text of the email's language and board point
+	// at it; copied marks that do not fit are dropped.
+	linkedFields, err := linkSharedFieldsJSON(ctx, db, email.Language, email.Sequence, email.EditableFields, true)
+	if err != nil {
+		return EmailDetail{}, err
+	}
+	email.EditableFields = linkedFields
+
+	err = db.QueryRow(ctx, `
 		INSERT INTO emails (
 			slug,
 			sequence,
@@ -2189,9 +2521,10 @@ func insertDuplicatedEmail(r *http.Request, db emailEventExecutor, email duplica
 			template_hash,
 			template_version,
 			editable_fields,
-			send_condition
+			send_condition,
+			layout
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18, $19, $20::jsonb, $21)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18, $19, $20::jsonb, $21, $22::jsonb)
 		RETURNING
 			id,
 			slug,
@@ -2220,7 +2553,7 @@ func insertDuplicatedEmail(r *http.Request, db emailEventExecutor, email duplica
 			template_hash,
 			template_version,
 			editable_fields;
-	`, email.Slug, email.Sequence, email.Title, email.Subject, email.Preheader, email.SendTiming, email.Stage, email.SortOrder, email.Language, email.Variant, email.AdaptationKey, email.AdaptationLabel, email.BodyText, email.ContentParts, email.OriginalHTML, email.ReviewHTML, email.TemplateHTML, email.TemplateHash, email.TemplateVersion, email.EditableFields, email.SendCondition).Scan(
+	`, email.Slug, email.Sequence, email.Title, email.Subject, email.Preheader, email.SendTiming, email.Stage, email.SortOrder, email.Language, email.Variant, email.AdaptationKey, email.AdaptationLabel, email.BodyText, email.ContentParts, email.OriginalHTML, email.ReviewHTML, email.TemplateHTML, email.TemplateHash, email.TemplateVersion, email.EditableFields, email.SendCondition, email.Layout).Scan(
 		&created.ID,
 		&created.Slug,
 		&created.Sequence,
@@ -2291,7 +2624,11 @@ func buildEmailUpdateChanges(
 			}
 			continue
 		}
-		if !reflect.DeepEqual(currentField, nextField) {
+		// Order follows the template: a block added above moves it without
+		// changing the field.
+		currentCompared, nextCompared := currentField, nextField
+		currentCompared.Order, nextCompared.Order = 0, 0
+		if !reflect.DeepEqual(currentCompared, nextCompared) {
 			fieldChanges[key] = map[string]any{
 				"before": currentField,
 				"after":  nextField,

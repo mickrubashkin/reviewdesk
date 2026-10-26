@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-logs db-migrate db-migrate-status db-migrate-down db-seed db-seed-demo db-reset-demo api-dev web-dev dev setup-dev test-api test-web lint smoke-check
+.PHONY: db-up db-down db-logs db-migrate db-migrate-status db-migrate-down db-seed db-seed-demo db-reset-demo db-sync-meta api-dev web-dev dev setup-dev test-api test-web lint smoke-check
 
 db-up:
 	docker compose up -d db
@@ -27,6 +27,9 @@ db-seed-demo:
 db-reset-demo:
 	cd apps/api && go run ./cmd/demoseed -reset
 
+db-sync-meta:
+	cd apps/api && go run ./cmd/syncmeta
+
 api-dev:
 	cd apps/api && go run ./cmd/server
 
@@ -34,13 +37,13 @@ web-dev:
 	cd apps/web && npm run dev
 
 setup-dev: db-up db-migrate
-	DEMO_SEED_ENABLED=true $(MAKE) db-seed-demo
+	@if [ -d db/seeds/emails ]; then $(MAKE) db-seed; else DEMO_SEED_ENABLED=true $(MAKE) db-seed-demo; fi
 
 test-api:
 	cd apps/api && go test ./...
 
 test-web:
-	cd apps/web && npm run lint && npm run build
+	cd apps/web && npm run lint && npm test && npm run build
 
 lint: test-api test-web
 

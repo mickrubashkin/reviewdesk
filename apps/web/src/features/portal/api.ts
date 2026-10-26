@@ -50,6 +50,8 @@ export type UnseenEmail = {
   language: string;
   variant: string;
   adaptation_label: string;
+  // The email's region on a board with regions, else "".
+  region_name: string;
   send_timing: string | null;
   send_condition: string | null;
 };
@@ -60,8 +62,15 @@ export type ManualLiveEmail = UnseenEmail & {
   live_note: string | null;
 };
 
+export type PortalSyncSettings = {
+  auto_sync: boolean;
+  category_id: number | null;
+  days: number;
+};
+
 export type PortalOverview = {
   latest_run: PortalSyncRun | null;
+  settings: PortalSyncSettings;
   stages: PortalStage[];
   groups: PortalGroup[];
   unseen: UnseenEmail[];
@@ -94,6 +103,14 @@ export function startPortalSync(boardKey: string, payload: { category_id: number
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+}
+
+export function savePortalSyncSettings(boardKey: string, settings: PortalSyncSettings) {
+  return fetchJson<PortalSyncSettings>(`/api/boards/${encodeURIComponent(boardKey)}/portal/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
   });
 }
 
@@ -156,4 +173,17 @@ export function isImportCandidate(group: PortalGroup) {
     !/^\s*(test|teste|тест)(?:[^\p{L}]|$)/iu.test(group.subject) &&
     !/^\s*(re|fw|fwd|aw)\s*:/i.test(group.subject)
   );
+}
+
+// The portal already sends the current version of a ready email that has no
+// upload mark for it. Only a suggestion: a super admin confirms the mark.
+export type UploadSuggestion = {
+  email_id: string;
+  version: number;
+  sends: number;
+  last_sent_at: string;
+};
+
+export function fetchUploadSuggestions(): Promise<UploadSuggestion[]> {
+  return fetchJson<UploadSuggestion[]>("/api/portal/upload-suggestions");
 }

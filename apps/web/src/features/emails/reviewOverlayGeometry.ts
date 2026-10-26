@@ -224,6 +224,7 @@ function createChangedBlockRectFromFrameDocumentRect(
   return {
     height: rect.height,
     left: rect.left + frameWindow.scrollX,
+    label: target.label,
     reason: target.reason,
     reviewBlock: target.reviewBlock,
     top: rect.top + frameWindow.scrollY,
@@ -239,6 +240,7 @@ function createChangedBlockRectFromRootRect(
   return {
     height: rect.height,
     left: rect.left - overlayRootRect.left,
+    label: target.label,
     reason: target.reason,
     reviewBlock: target.reviewBlock,
     top: rect.top - overlayRootRect.top,

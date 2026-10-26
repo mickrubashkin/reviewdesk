@@ -13,18 +13,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	auth "github.com/mickrubashkin/reviewdesk/apps/api/internal/core/auth"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailblocks"
 )
 
 const slotMasterLanguage = "en"
 
 type createSlotRequest struct {
-	Sequence      string                   `json:"sequence"`
-	Stage         string                   `json:"stage"`
-	Title         string                   `json:"title"`
-	SortOrder     *int                     `json:"sort_order"`
-	SendTiming    *string                  `json:"send_timing"`
-	SendCondition *string                  `json:"send_condition"`
-	Emails        []createSlotEmailRequest `json:"emails"`
+	Sequence      string  `json:"sequence"`
+	Stage         string  `json:"stage"`
+	Title         string  `json:"title"`
+	SortOrder     *int    `json:"sort_order"`
+	SendTiming    *string `json:"send_timing"`
+	SendCondition *string `json:"send_condition"`
+	// Layout builds every language from these blocks; the emails then have
+	// no HTML of their own.
+	Layout emailblocks.Layout       `json:"layout"`
+	Emails []createSlotEmailRequest `json:"emails"`
 }
 
 type createSlotEmailRequest struct {
@@ -43,6 +47,9 @@ var errSlotPositionTaken = errors.New("this position in the stage is already use
 
 // createSlotHandler creates one slot of the sequence with all its languages
 // in a single transaction. EN is required because it is the source language.
+// Built from blocks, every language gets the same blocks with the shared
+// texts of its language; the texts of the email start as written in the
+// blocks.
 func createSlotHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.FromRequest(r)
@@ -50,11 +57,6 @@ func createSlotHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
 		var request createSlotRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -62,6 +64,9 @@ func createSlotHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		if err := validateSlotRequest(&request); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if !requireManageBoard(w, r, dbpool, user, request.Sequence) {
 			return
 		}
 
@@ -101,6 +106,7 @@ func createSlotHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				Language:      email.Language,
 				Variant:       "v1",
 				OriginalHTML:  email.OriginalHTML,
+				Layout:        request.Layout,
 			})
 			if err != nil {
 				var inputErr createEmailInputError
@@ -152,8 +158,12 @@ func validateSlotRequest(request *createSlotRequest) error {
 		if seen[language] {
 			return fmt.Errorf("language %s is listed twice", strings.ToUpper(language))
 		}
-		if strings.TrimSpace(request.Emails[i].OriginalHTML) == "" {
+		hasHTML := strings.TrimSpace(request.Emails[i].OriginalHTML) != ""
+		if request.Layout == nil && !hasHTML {
 			return fmt.Errorf("%s: HTML is empty", strings.ToUpper(language))
+		}
+		if request.Layout != nil && hasHTML {
+			return fmt.Errorf("%s: the slot is built from blocks, leave the HTML empty", strings.ToUpper(language))
 		}
 		seen[language] = true
 		request.Emails[i].Language = language

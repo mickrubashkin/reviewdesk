@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const aiAnalysisSchemaVersion = "email-analysis-schema-v4"
+const aiAnalysisSchemaVersion = "email-analysis-schema-v5"
 
 // Appended only when set so prompts without a board config keep their hash.
 func instructionHashPart(instruction string) string {
@@ -33,19 +33,20 @@ func (service AIAnalysisService) PromptHash() string {
 }
 
 func (service AIAnalysisService) buildOpenAIAnalysisRequestBody(email EmailDetail) map[string]any {
+	blocks := analysisBlocks(email)
 	return map[string]any{
 		"model":             service.Model,
 		"stream":            true,
 		"instructions":      service.analysisInstructions(),
 		"input":             buildEmailAnalysisInput(service.ReviewRules, service.SequenceContext, service.ResponseLanguage, email),
-		"max_output_tokens": 550,
+		"max_output_tokens": 600,
 		"text": map[string]any{
 			"format": map[string]any{
 				"type":        "json_schema",
 				"name":        "email_analysis",
 				"description": "Email text review result",
 				"strict":      true,
-				"schema":      service.emailAnalysisSchema(),
+				"schema":      service.emailAnalysisSchema(analysisBlockIDs(blocks)),
 			},
 		},
 	}
@@ -73,6 +74,7 @@ If primary_cta is present, do not infer the main CTA from links or repeated body
 Support links are not competing CTAs when they help complete primary_cta and are phrased as help.
 Footer links are omitted from the input.
 Use support and other links only as supporting context.
+email.blocks are the parts of the email in order, each with an id and its text. Set each recommendation's block to the id of the part it is about, or subject or preheader; use "" only when it is about the whole email.
 Return only JSON matching the schema.
 Limits:
 - summary: 1 short sentence
@@ -82,7 +84,9 @@ Limits:
 `), service.ResponseLanguage, service.ResponseLanguage)
 }
 
-func (service AIAnalysisService) emailAnalysisSchema() map[string]any {
+// emailAnalysisSchema is the answer the model gives; blockIDs are the values
+// a recommendation's block may take (see analysisBlockIDs).
+func (service AIAnalysisService) emailAnalysisSchema(blockIDs []string) map[string]any {
 	responseLanguage := service.ResponseLanguage
 
 	return map[string]any{
@@ -130,8 +134,13 @@ func (service AIAnalysisService) emailAnalysisSchema() map[string]any {
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []string{"priority", "title", "details"},
+					"required":             []string{"priority", "block", "title", "details"},
 					"properties": map[string]any{
+						"block": map[string]any{
+							"type":        "string",
+							"description": "The id of the email block the recommendation is about, from email.blocks, or subject or preheader; empty for the whole email.",
+							"enum":        blockIDs,
+						},
 						"priority": map[string]any{
 							"type": "string",
 							"enum": []string{"high", "medium", "low"},
@@ -170,6 +179,7 @@ func buildEmailAnalysisInput(reviewRules string, sequenceContext string, respons
 		PrimaryCTA string             `json:"primary_cta"`
 		BodyText   string             `json:"body_text"`
 		Links      analysisLinkGroups `json:"links"`
+		Blocks     []analysisBlock    `json:"blocks"`
 	}
 
 	type analysisInput struct {
@@ -198,6 +208,7 @@ func buildEmailAnalysisInput(reviewRules string, sequenceContext string, respons
 			PrimaryCTA: analysisPrimaryCTA(parts.PrimaryCTA),
 			BodyText:   limitText(analysisBodyText(firstNonEmpty(parts.BodyText, emailBodyText(email))), 3000),
 			Links:      emailLinkGroups(parts),
+			Blocks:     analysisBlocks(email),
 		},
 	}
 
@@ -256,8 +267,11 @@ func analysisBodyText(value string) string {
 	lowerValue := strings.ToLower(trimmedValue)
 	footerStart := len(trimmedValue)
 
+	if index := strings.Index(lowerValue, "all rights reserved"); index >= 0 {
+		footerStart = copyrightStart(lowerValue, index)
+	}
+
 	for _, marker := range []string{
-		"example. all rights reserved.",
 		"this is an automatically generated notification",
 		"you received this email because",
 		"to manage your email preferences",
@@ -268,6 +282,23 @@ func analysisBodyText(value string) string {
 	}
 
 	return strings.TrimSpace(trimmedValue[:footerStart])
+}
+
+// copyrightStart finds where the copyright line ending in "all rights
+// reserved" (at index) begins: at a nearby "©", or else at the company name
+// sentence right before it ("Acme. All rights reserved.").
+func copyrightStart(lowerValue string, index int) int {
+	prefix := lowerValue[:index]
+	if sign := strings.LastIndex(prefix, "©"); sign >= 0 && index-sign <= 80 {
+		return sign
+	}
+
+	companyName := strings.TrimSuffix(strings.TrimRight(prefix, " "), ".")
+	if sentenceEnd := strings.LastIndex(companyName, ". "); sentenceEnd >= 0 {
+		return sentenceEnd + 1
+	}
+
+	return 0
 }
 
 func nonFooterLinkTexts(values []string) []string {

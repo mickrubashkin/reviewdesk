@@ -1,26 +1,17 @@
 import type { AuthUser } from "../../emails/types";
 
 export type EmailReviewProps = {
-  currentUserEmail: AuthUser["email"];
-  currentUserRole: AuthUser["role"];
+  // Role, languages the user translates and boards they manage decide what
+  // they may change here.
+  currentUser: AuthUser;
   emailId: string;
 };
 
 export type ReviewViewport = "desktop" | "mobile";
 
-export type ReviewContentTab =
-  | "email"
-  | "ai"
-  | "comments"
-  | "more";
-
-export type ReviewPanelTab = "ai" | "comments";
-export type ReviewUtilityPanel =
-  | "planning"
-  | "approvals"
-  | "handoff"
-  | "history"
-  | "activity";
+export type ReviewPanelTab = "comments" | "ai" | "details" | "history";
+// Compact layout adds the email preview as its own tab.
+export type ReviewContentTab = ReviewPanelTab | "email";
 export type CommentStatusFilter = "open" | "all";
 export type CommentBlockOption = {
   label: string;

@@ -420,6 +420,12 @@
   box-shadow: 0 0 0 2px rgba(224, 49, 49, 0.14);
 }
 
+.changedBlockRect[data-reason="ai"] {
+  border-color: rgba(121, 80, 242, 0.9);
+  background: rgba(132, 94, 247, 0.06);
+  box-shadow: 0 0 0 2px rgba(121, 80, 242, 0.14);
+}
+
 .changedBlockBadge {
   position: absolute;
   right: 0;
@@ -440,6 +446,14 @@
 .changedBlockRect[data-reason="approval"] .changedBlockBadge,
 .changedBlockRect[data-reason="comment_and_approval"] .changedBlockBadge {
   background: rgba(224, 49, 49, 0.94);
+}
+
+/* Next to the block, so a short one (the subject) keeps its text visible. */
+.changedBlockRect[data-reason="ai"] .changedBlockBadge {
+  right: auto;
+  left: calc(100% + 4px);
+  border-radius: 3px;
+  background: rgba(121, 80, 242, 0.94);
 }
 
 .reviewOverlayRect {
