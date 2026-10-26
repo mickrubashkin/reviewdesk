@@ -84,7 +84,7 @@ make test-web
 - `apps/api/cmd/demoseed` - synthetic demo dataset (`db/seeds/demo-emails` plus generated emails).
 - `apps/web/src` - React application.
 - `db/migrations` - PostgreSQL migrations.
-- `docs/` - [case study](docs/case-study.md), [backend](docs/Backend%20Architecture.md) and [frontend](docs/Frontend%20Architecture.md) architecture, [demo plan](docs/demo-plan.md), [roadmap](docs/roadmap.md).
+- `docs/` - [case study](docs/case-study.md), [backend](docs/Backend%20Architecture.md) and [frontend](docs/Frontend%20Architecture.md) architecture, [roadmap](docs/roadmap.md).
 
 ## Demo Data
 
@@ -94,8 +94,6 @@ Generic public-demo data is seeded separately from normal team data:
 DEMO_SEED_ENABLED=true make db-seed-demo
 DEMO_SEED_ENABLED=true DEMO_RESET_CONFIRM=demo make db-reset-demo
 ```
-
-See `docs/demo-plan.md` for the public demo strategy.
 
 Public demo login is also environment-gated:
 
