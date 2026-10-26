@@ -10,11 +10,13 @@ import {
   type SyntheticEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 
 import { useBitrixVariables } from "../../bitrix-variables/api";
+import { sharedTextsForEmail, useSharedTexts } from "../../shared-texts/api";
 import { ReviewCommentOverlay } from "../ReviewCommentOverlay";
 import type {
   EditableField,
@@ -39,6 +41,7 @@ import {
 import { markBitrixVariables } from "./bitrixVariables";
 import { SelectionComposer } from "./SelectionComposer";
 import styles from "../EmailPreviewDrawer.module.css";
+import { previewSender } from "../../../shared/brand";
 
 export type SelectionMenuState = ReviewTextSelection & {
   editableTarget: InlineEditableTarget | null;
@@ -53,12 +56,17 @@ export type InlineEditInput = {
   label: string;
   type: "text" | "url" | "image" | "number";
   value: string | number;
+  // A text field on a block element (td, th, div) can be Markdown; the
+  // server makes it Markdown on its first edit.
+  formattable?: boolean;
 };
 
 export type InlineEditableTarget = {
   inputs: InlineEditInput[];
   label: string;
 };
+
+const noFieldLimits: Record<string, number> = {};
 
 type MailPreviewProps = {
   activeCommentId?: string | null;
@@ -69,8 +77,12 @@ type MailPreviewProps = {
   createCommentError?: boolean;
   email: EmailDetail;
   enableReviewSelectionComposer?: boolean;
+  // How long a field may be, by key; the editor counts the characters.
+  fieldLimits?: Record<string, number>;
   hoveredCommentId?: string | null;
   inlineEditError?: boolean;
+  // What the API said when it refused the edit, e.g. an empty required field.
+  inlineEditErrorMessage?: string;
   isApplyingInlineEdit?: boolean;
   isCreatingComment?: boolean;
   isScanning: boolean;
@@ -96,8 +108,10 @@ export function MailPreview({
   createCommentError = false,
   email,
   enableReviewSelectionComposer = false,
+  fieldLimits = noFieldLimits,
   hoveredCommentId = null,
   inlineEditError = false,
+  inlineEditErrorMessage,
   isApplyingInlineEdit = false,
   isCreatingComment = false,
   isScanning,
@@ -125,8 +139,15 @@ export function MailPreview({
   const [draftInlineEdit, setDraftInlineEdit] = useState<
     Record<string, string | number>
   >({});
+  // Fields switched to or from their shared text in the open editor.
+  const [draftShared, setDraftShared] = useState<Record<string, boolean>>({});
   const [frameLoadVersion, setFrameLoadVersion] = useState(0);
   const variables = useBitrixVariables().data;
+  const sharedTextsQuery = useSharedTexts(canEditContent);
+  const sharedTexts = useMemo(
+    () => sharedTextsForEmail(sharedTextsQuery.data, email.language, email.sequence),
+    [email.language, email.sequence, sharedTextsQuery.data]
+  );
   useEffect(() => {
     if (variables) {
       markBitrixVariables(frameRef.current?.contentDocument, variables);
@@ -138,6 +159,7 @@ export function MailPreview({
       setSelectionMenu(null);
       setDraftComment("");
       setDraftInlineEdit({});
+      setDraftShared({});
       setFrameLoadVersion((version) => version + 1);
 
       if (enableReviewSelectionComposer) {
@@ -159,6 +181,7 @@ export function MailPreview({
     setDraftComment("");
     setDraftCommentSeverity("issue");
     setDraftInlineEdit({});
+    setDraftShared({});
   };
   const openCommentComposer = () => {
     setSelectionMenu((current) =>
@@ -182,6 +205,7 @@ export function MailPreview({
           current.editableTarget.inputs.map((input) => [input.key, input.value])
         )
       );
+      setDraftShared({});
       return { ...current, mode: "edit" };
     });
   };
@@ -227,8 +251,11 @@ export function MailPreview({
         continue;
       }
       if (input.field) {
+        // A shared field gets its value from the shared text on the server.
+        const shared = draftShared[input.key] ?? Boolean(input.field.shared);
         nextEditableFields[input.key] = {
           ...input.field,
+          shared,
           value: input.type === "number" ? Number(value) || 0 : String(value),
         };
       }
@@ -323,10 +350,15 @@ export function MailPreview({
         draftComment={draftComment}
         draftCommentSeverity={draftCommentSeverity}
         draftInlineEdit={draftInlineEdit}
+        draftShared={draftShared}
+        fieldLimits={fieldLimits}
         inlineEditError={inlineEditError}
+        inlineEditErrorMessage={inlineEditErrorMessage}
         isApplyingInlineEdit={isApplyingInlineEdit}
         isCreatingComment={isCreatingComment}
+        language={email.language}
         selectionMenu={selectionMenu}
+        sharedTexts={sharedTexts}
         trimmedDraft={trimmedDraft}
         variables={variables}
         onApplyInlineEdit={handleApplyInlineEdit}
@@ -334,6 +366,7 @@ export function MailPreview({
         onDraftCommentChange={setDraftComment}
         onDraftCommentSeverityChange={setDraftCommentSeverity}
         onDraftInlineEditChange={setDraftInlineEdit}
+        onDraftSharedChange={setDraftShared}
         onEditSourceHTML={onEditSourceHTML}
         onOpenCommentComposer={openCommentComposer}
         onOpenInlineEditor={openInlineEditor}
@@ -353,10 +386,10 @@ export function MailPreview({
           <header className={styles.mailHeader}>
             <Group className={styles.mailMetaRow} justify="space-between" gap="sm">
               <Group gap="sm" wrap="nowrap">
-                <div className={styles.mailAvatar}>B</div>
+                <div className={styles.mailAvatar}>{previewSender.initial}</div>
                 <Stack gap={0}>
                   <Text size="sm" fw={600}>
-                    Bitrix24 Partners
+                    {previewSender.name}
                   </Text>
                   <Text
                     className={styles.headerReviewBlock}
@@ -408,7 +441,7 @@ export function MailPreview({
                     </Text>
                   ) : null}
                   <Text size="xs" c="dimmed">
-                    Reply-To: partners@example.com
+                    Reply-To: {previewSender.replyTo}
                   </Text>
                 </Stack>
               </Group>

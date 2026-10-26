@@ -3,7 +3,6 @@ import type {
   CommentStatusFilter,
   ReviewContentTab,
   ReviewPanelTab,
-  ReviewUtilityPanel,
   ReviewViewport,
 } from "../EmailReview.types";
 
@@ -15,8 +14,6 @@ export function useEmailReviewLayout() {
   const [actionMenuOpened, setActionMenuOpened] = useState(false);
   const [activeContentTab, setActiveContentTab] =
     useState<ReviewContentTab>("email");
-  const [activeUtilityPanel, setActiveUtilityPanel] =
-    useState<ReviewUtilityPanel | null>(null);
   const [archiveModalOpened, setArchiveModalOpened] = useState(false);
   const [duplicateModalOpened, setDuplicateModalOpened] = useState(false);
   const [sourceHTMLModalOpened, setSourceHTMLModalOpened] = useState(false);
@@ -81,8 +78,6 @@ export function useEmailReviewLayout() {
     setActionMenuOpened,
     activeContentTab,
     setActiveContentTab,
-    activeUtilityPanel,
-    setActiveUtilityPanel,
     archiveModalOpened,
     setArchiveModalOpened,
     duplicateModalOpened,

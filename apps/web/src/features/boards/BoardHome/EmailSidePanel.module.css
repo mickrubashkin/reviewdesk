@@ -30,3 +30,38 @@
 .translation:not(:empty) {
   padding: var(--mantine-spacing-xs) var(--mantine-spacing-md) 0;
 }
+
+.tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tabList {
+  padding: 0 var(--mantine-spacing-md);
+}
+
+.comments {
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+}
+
+.thread {
+  padding: 6px var(--mantine-spacing-sm);
+  border: 1px solid var(--mantine-color-gray-2);
+  border-left: 3px solid var(--thread-color);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.thread[data-resolved] {
+  opacity: 0.7;
+}
+
+.threadQuote {
+  padding-left: 6px;
+  border-left: 2px solid var(--mantine-color-gray-3);
+}
+
+.threadReply {
+  margin-top: 6px;
+}

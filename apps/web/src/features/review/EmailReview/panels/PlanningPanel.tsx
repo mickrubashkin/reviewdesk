@@ -2,19 +2,20 @@ import { Button, Group, Loader, Select, Stack, Text, Textarea, TextInput } from 
 import { useState } from "react";
 
 import type { EmailDetail, UpdateEmailPlanningFieldsPayload, UserAdminItem, UserRole } from "../../../emails/types";
+import { useBoardRegions } from "../../../boards/api";
 import { nullableTrimmed } from "../EmailReview.helpers";
 import styles from "../EmailReview.module.css";
+import { canManageBoard } from "../../../emails/permissions";
 
 function assigneeOptions(
   users: UserAdminItem[],
   currentEmail: string,
-  allowedRoles: UserRole[]
+  isAllowed: (user: UserAdminItem) => boolean
 ) {
-  const allowedRoleSet = new Set<UserRole>(allowedRoles);
   const options = users
-    .filter((user) => allowedRoleSet.has(user.role))
+    .filter(isAllowed)
     .map((user) => ({
-      label: `${user.email} (${formatUserRole(user.role)})`,
+      label: `${user.name ? `${user.name} · ` : ""}${user.email} (${formatUserRole(user.role)})`,
       value: user.email,
     }));
   const normalizedCurrentEmail = currentEmail.trim();
@@ -51,7 +52,6 @@ export function PlanningPanel({
   onSubmit: (payload: UpdateEmailPlanningFieldsPayload) => void;
 }) {
   const [ownerEmail, setOwnerEmail] = useState(email?.owner_email ?? "");
-  const [reviewerEmail, setReviewerEmail] = useState(email?.reviewer_email ?? "");
   const [dueDate, setDueDate] = useState(email?.due_date ?? "");
   const [implementationNotes, setImplementationNotes] = useState(
     email?.implementation_notes ?? ""
@@ -61,6 +61,9 @@ export function PlanningPanel({
   const [adaptationLabel, setAdaptationLabel] = useState(
     email?.adaptation_label ?? "Default"
   );
+  // On a board with regions the email's version follows its region (Region
+  // above), so the adaptation is not edited here.
+  const hasRegions = (useBoardRegions(email?.sequence).data ?? []).length > 0;
 
   if (!email) {
     return (
@@ -72,7 +75,8 @@ export function PlanningPanel({
 
   const payload = {
     owner_email: nullableTrimmed(ownerEmail),
-    reviewer_email: nullableTrimmed(reviewerEmail),
+    // Not shown in the UI any more; send the stored value back unchanged.
+    reviewer_email: email.reviewer_email ?? null,
     due_date: nullableTrimmed(dueDate),
     implementation_notes: nullableTrimmed(implementationNotes),
     send_timing: nullableTrimmed(sendTiming),
@@ -81,21 +85,15 @@ export function PlanningPanel({
   };
   const isDirty =
     payload.owner_email !== (email.owner_email ?? null) ||
-    payload.reviewer_email !== (email.reviewer_email ?? null) ||
     payload.due_date !== (email.due_date ?? null) ||
     payload.implementation_notes !== (email.implementation_notes ?? null) ||
     payload.send_timing !== (email.send_timing ?? null) ||
     payload.send_condition !== (email.send_condition ?? null) ||
     payload.adaptation_label !== email.adaptation_label;
-  const ownerOptions = assigneeOptions(adminUsers, ownerEmail, [
-    "admin",
-    "super_admin",
-  ]);
-  const reviewerOptions = assigneeOptions(adminUsers, reviewerEmail, [
-    "reviewer",
-    "admin",
-    "super_admin",
-  ]);
+  // Owners are the people who manage the email's board.
+  const ownerOptions = assigneeOptions(adminUsers, ownerEmail, (user) =>
+    canManageBoard(user, email.sequence)
+  );
 
   return (
     <form
@@ -118,17 +116,6 @@ export function PlanningPanel({
           value={ownerEmail || null}
           onChange={(value) => setOwnerEmail(value ?? "")}
         />
-        <Select
-          clearable
-          disabled={!canManage || isSaving}
-          label="Reviewer"
-          nothingFoundMessage="No users found"
-          placeholder="reviewer@example.com"
-          searchable
-          data={reviewerOptions}
-          value={reviewerEmail || null}
-          onChange={(value) => setReviewerEmail(value ?? "")}
-        />
         {canManage && isLoadingUsers ? (
           <Text c="dimmed" size="xs">
             Loading user options
@@ -149,13 +136,15 @@ export function PlanningPanel({
             value={sendTiming}
             onChange={(event) => setSendTiming(event.currentTarget.value)}
           />
-          <TextInput
-            disabled={!canManage || isSaving}
-            label="Adaptation"
-            placeholder="Default"
-            value={adaptationLabel}
-            onChange={(event) => setAdaptationLabel(event.currentTarget.value)}
-          />
+          {hasRegions ? null : (
+            <TextInput
+              disabled={!canManage || isSaving}
+              label="Adaptation"
+              placeholder="Default"
+              value={adaptationLabel}
+              onChange={(event) => setAdaptationLabel(event.currentTarget.value)}
+            />
+          )}
         </Group>
         <TextInput
           disabled={!canManage || isSaving}

@@ -17,6 +17,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { diffWords } from "diff";
 import { useNavigate } from "react-router-dom";
 
+import { useBoardRegions } from "../../boards/api";
+import { versionName } from "../../boards/regions";
 import { fetchEmails } from "../../emails/api";
 import { formatStageName } from "../../emails/stages";
 import { decidePortalGroup, fetchPortalGroup, type GroupDecision } from "../api";
@@ -42,6 +44,7 @@ export function GroupDrawer({
     queryFn: () => fetchPortalGroup(groupID, chosenEmailID ?? undefined),
   });
   const emailsQuery = useQuery({ queryKey: ["emails", boardKey], queryFn: () => fetchEmails(boardKey) });
+  const regions = useBoardRegions(boardKey).data ?? [];
   const decideMutation = useMutation({
     mutationFn: (payload: { decision: GroupDecision | null; email_id?: string }) =>
       decidePortalGroup(groupID, payload),
@@ -57,7 +60,7 @@ export function GroupDrawer({
   const candidates = (emailsQuery.data ?? [])
     .filter((e) => e.variant !== "old" && (!language || e.language === language))
     .map((e) => ({
-      label: `${formatStageName(e.stage ?? "")} #${e.sort_order} · ${e.title} · ${e.language.toUpperCase()} · ${e.adaptation_label}`,
+      label: `${formatStageName(e.stage ?? "")} #${e.sort_order} · ${e.title} · ${e.language.toUpperCase()} · ${versionName(e, e.language, regions)}`,
       value: e.id,
     }));
   const parts = detail?.match ? diffWords(detail.match.text, detail.sample_text) : [];

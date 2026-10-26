@@ -1,0 +1,1 @@
+export { SharedTexts } from "./SharedTexts";

@@ -62,7 +62,8 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 		return err
 	}
 
-	since := time.Now().AddDate(0, 0, -options.Days).UTC().Format(time.RFC3339)
+	sinceTime := time.Now().AddDate(0, 0, -options.Days).UTC()
+	since := sinceTime.Format(time.RFC3339)
 	categoryByDeal := map[int64]int{}
 	dealsWithEmails := map[int64]bool{}
 	seen := 0
@@ -152,7 +153,7 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 					body_html = EXCLUDED.body_html,
 					fingerprint = EXCLUDED.fingerprint,
 					synced_at = now();
-			`, activityID, options.BoardKey, dealID, sentAt, a.Subject, a.Description, Fingerprint(NormalizedText(a.Description)))
+			`, activityID, options.BoardKey, dealID, sentAt, RedactPartnerData(a.Subject), a.Description, Fingerprint(NormalizedText(a.Description)))
 			dealsWithEmails[dealID] = true
 			stored++
 		}
@@ -174,6 +175,10 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 		return err
 	}
 	if err := matchGroups(ctx, db, options.BoardKey); err != nil {
+		return err
+	}
+	progress("Removing partner data from stored copies")
+	if err := minimizeSentEmails(ctx, db, options.BoardKey, sinceTime); err != nil {
 		return err
 	}
 	_, err = db.Exec(ctx, `UPDATE portal_sync_runs SET groups_count = $2, progress = 'Done' WHERE id = $1;`, runID, groups)
@@ -340,12 +345,12 @@ func stageAt(changes []stageChange, at time.Time) string {
 	return stage
 }
 
+// Fingerprints are computed when a copy is fetched. Bodies are not kept after
+// a sync (see minimizeSentEmails), so after a change to NormalizedText run a
+// sync over the full window to refresh them.
 func rebuildGroups(ctx context.Context, db *pgxpool.Pool, boardKey string) (int, error) {
-	if err := refreshFingerprints(ctx, db, boardKey); err != nil {
-		return 0, err
-	}
 	rows, err := db.Query(ctx, `
-		SELECT activity_id, fingerprint, subject, sent_at, COALESCE(stage_id, '')
+		SELECT activity_id, fingerprint, subject, sent_at, COALESCE(stage_id, ''), body_html <> ''
 		FROM portal_sent_emails
 		WHERE board_key = $1
 		ORDER BY sent_at;
@@ -365,7 +370,8 @@ func rebuildGroups(ctx context.Context, db *pgxpool.Pool, boardKey string) (int,
 		var activityID int64
 		var fingerprint, subject, stage string
 		var sentAt time.Time
-		if err := rows.Scan(&activityID, &fingerprint, &subject, &sentAt, &stage); err != nil {
+		var hasBody bool
+		if err := rows.Scan(&activityID, &fingerprint, &subject, &sentAt, &stage, &hasBody); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -374,7 +380,11 @@ func rebuildGroups(ctx context.Context, db *pgxpool.Pool, boardKey string) (int,
 			g = &group{subjects: map[string]int{}, stages: map[string]int{}, first: sentAt}
 			groups[fingerprint] = g
 		}
-		g.sample, g.last = activityID, sentAt
+		// The sample is the latest copy that still has its body.
+		if hasBody || g.sample == 0 {
+			g.sample = activityID
+		}
+		g.last = sentAt
 		g.count++
 		g.subjects[subject]++
 		if stage != "" {
@@ -405,7 +415,7 @@ func rebuildGroups(ctx context.Context, db *pgxpool.Pool, boardKey string) (int,
 
 	batch := &pgx.Batch{}
 	for fingerprint, g := range groups {
-		text := NormalizedText(bodies[g.sample])
+		text := NormalizedText(RedactPartnerData(bodies[g.sample]))
 		stagesJSON, _ := json.Marshal(g.stages)
 		batch.Queue(`
 			INSERT INTO portal_email_groups (
@@ -441,43 +451,6 @@ func rebuildGroups(ctx context.Context, db *pgxpool.Pool, boardKey string) (int,
 		return 0, err
 	}
 	return len(groups), nil
-}
-
-// refreshFingerprints recomputes every stored fingerprint from the body, so
-// emails loaded before a change to NormalizedText still group with new ones.
-func refreshFingerprints(ctx context.Context, db *pgxpool.Pool, boardKey string) error {
-	rows, err := db.Query(ctx, `SELECT activity_id, body_html, fingerprint FROM portal_sent_emails WHERE board_key = $1;`, boardKey)
-	if err != nil {
-		return err
-	}
-	var ids []int64
-	var fingerprints []string
-	for rows.Next() {
-		var id int64
-		var body, stored string
-		if err := rows.Scan(&id, &body, &stored); err != nil {
-			rows.Close()
-			return err
-		}
-		if current := Fingerprint(NormalizedText(body)); current != stored {
-			ids = append(ids, id)
-			fingerprints = append(fingerprints, current)
-		}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	_, err = db.Exec(ctx, `
-		UPDATE portal_sent_emails p
-		SET fingerprint = v.fingerprint
-		FROM unnest($1::bigint[], $2::text[]) AS v(activity_id, fingerprint)
-		WHERE p.activity_id = v.activity_id;
-	`, ids, fingerprints)
-	return err
 }
 
 type serviceEmail struct {

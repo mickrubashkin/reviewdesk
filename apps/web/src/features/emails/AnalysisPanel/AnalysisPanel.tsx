@@ -22,6 +22,9 @@ import styles from "../EmailPreviewDrawer.module.css";
 
 type AnalysisPanelProps = {
   analysis: EmailAnalysis | null;
+  // Names a review block for people; the preview outlines the block with
+  // the recommendation's number while the AI tab is open.
+  blockLabel?: (reviewBlock: string) => string;
   error: string | null;
   isStreaming: boolean;
   preview: StreamPreview;
@@ -30,6 +33,7 @@ type AnalysisPanelProps = {
 
 export function AnalysisPanel({
   analysis,
+  blockLabel,
   error,
   isStreaming,
   preview,
@@ -165,6 +169,16 @@ export function AnalysisPanel({
                   {recommendation.title}
                 </Text>
               </Group>
+              {recommendation.block ? (
+                <Group gap={6}>
+                  <Badge color="violet" radius="sm" size="xs" variant="filled">
+                    AI {index + 1}
+                  </Badge>
+                  <Text c="dimmed" size="xs">
+                    {blockLabel ? blockLabel(recommendation.block) : recommendation.block}
+                  </Text>
+                </Group>
+              ) : null}
               <Text size="sm" c="dimmed">
                 {recommendation.details}
               </Text>

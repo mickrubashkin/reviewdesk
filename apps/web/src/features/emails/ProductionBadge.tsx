@@ -1,5 +1,6 @@
 import { Badge, Tooltip } from "@mantine/core";
 
+import { firstSendPart } from "./statusSummary";
 import type { EmailListItem } from "./types";
 
 // ProductionBadge shows whether robots actually send an email, from the last
@@ -43,7 +44,17 @@ export function ProductionBadge({ email, versions }: { email: EmailListItem; ver
           Live (manual)
         </Badge>
       );
-    case "not_seen":
+    case "not_seen": {
+      if (email.first_send) {
+        const part = firstSendPart(email, email.first_send);
+        return (
+          <Tooltip label={part.detail} multiline w={280}>
+            <Badge color={part.color} size="xs" style={{ flexShrink: 0 }} variant="light">
+              {part.label}
+            </Badge>
+          </Tooltip>
+        );
+      }
       return (
         <Tooltip label="Not sent by CRM robots in the last synced period">
           <Badge color="gray" size="xs" style={{ flexShrink: 0 }} variant="outline">
@@ -51,6 +62,7 @@ export function ProductionBadge({ email, versions }: { email: EmailListItem; ver
           </Badge>
         </Tooltip>
       );
+    }
     default:
       return null;
   }

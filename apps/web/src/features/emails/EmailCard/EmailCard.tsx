@@ -15,6 +15,7 @@ import type {
   EmailReviewStatus,
   EmailVariant,
   EmailVersionGroup,
+  AuthUser,
 } from "../types";
 import {
   getAvailableVariants,
@@ -26,13 +27,16 @@ import {
   getVersionsForVariantAndAdaptation,
 } from "../stages";
 import { isApprovedEmailReviewStatus } from "../reviewStatus";
+import { useBoardRegions } from "../../boards/api";
+import { versionName } from "../../boards/regions";
 import { EmailCardMenu } from "./EmailCardMenu";
 import { formatEmailTitle } from "./EmailCard.helpers";
-import { ProductionBadge } from "../ProductionBadge";
+import { EmailStatusLine } from "../EmailStatusLine";
 import { OverflowTooltipText } from "./OverflowTooltipText";
 import styles from "./EmailCard.module.css";
 
 type EmailCardProps = {
+  currentUser: AuthUser;
   emailGroup: EmailVersionGroup;
   selectedEmailId: string | undefined;
   onOpen: (groupKey: string, emailId: string) => void;
@@ -41,6 +45,7 @@ type EmailCardProps = {
 };
 
 export function EmailCard({
+  currentUser,
   emailGroup,
   selectedEmailId,
   onOpen,
@@ -65,9 +70,13 @@ export function EmailCard({
     selectedAdaptation
   );
   const availableVariants = getAvailableVariants(emailGroup.versions);
-  const availableAdaptations = getAvailableAdaptations(
-    emailGroup.versions,
-    selectedVariant
+  // On a board with regions the versions are named after them.
+  const regions = useBoardRegions(selectedEmail.sequence).data ?? [];
+  const availableAdaptations = getAvailableAdaptations(emailGroup.versions, selectedVariant).map(
+    (adaptation) => ({
+      adaptation_key: adaptation.adaptation_key,
+      adaptation_label: versionName(adaptation, selectedEmail.language, regions),
+    })
   );
   const openCommentCount = emailGroup.versions.reduce(
     (count, email) => count + (email.open_comment_count ?? 0),
@@ -187,8 +196,10 @@ export function EmailCard({
 
             <EmailCardMenu
               availableAdaptations={availableAdaptations}
+              hasRegions={regions.length > 0}
               availableVariants={availableVariants}
               commentedVersions={commentedVersions}
+              currentUser={currentUser}
               openBlockingCommentCount={openBlockingCommentCount}
               openCommentCount={openCommentCount}
               selectedAdaptation={selectedAdaptation}
@@ -230,7 +241,11 @@ export function EmailCard({
             {selectedEmail.send_timing ?? "No timing"}
             {selectedEmail.send_condition ? ` · ${selectedEmail.send_condition}` : ""}
           </Text>
-          <ProductionBadge email={selectedEmail} versions={emailGroup.versions} />
+          <EmailStatusLine
+            email={selectedEmail}
+            noWrap
+            versions={emailGroup.versions.filter((v) => v.language === selectedEmail.language)}
+          />
         </Group>
       </Stack>
     </Card>

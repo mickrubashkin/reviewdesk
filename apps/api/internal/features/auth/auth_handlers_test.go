@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -25,7 +26,7 @@ func (sender *recordingEmailSender) SendLoginCode(_ context.Context, _ string, _
 }
 
 func TestRequestOTPCodeDisallowedDomainDoesNotSendEmail(t *testing.T) {
-	t.Setenv("AUTH_ALLOWED_DOMAIN", "company.test")
+	t.Setenv("AUTH_ALLOWED_DOMAIN", "acme.example")
 
 	emailSender := &recordingEmailSender{}
 	request := httptest.NewRequest(
@@ -47,12 +48,12 @@ func TestRequestOTPCodeDisallowedDomainDoesNotSendEmail(t *testing.T) {
 
 func TestIsAllowedAuthEmailUsesDomainList(t *testing.T) {
 	t.Setenv("AUTH_ALLOWED_DOMAIN", "")
-	t.Setenv("AUTH_ALLOWED_DOMAINS", "company.test, @example.org, example.com.br")
+	t.Setenv("AUTH_ALLOWED_DOMAINS", "acme.example, @bitrix24.com, bitrix24.com.br")
 
 	for _, email := range []string{
-		"user@company.test",
-		"user@example.org",
-		"user@example.com.br",
+		"user@acme.example",
+		"user@bitrix24.com",
+		"user@bitrix24.com.br",
 	} {
 		if !isAllowedAuthEmail(email) {
 			t.Fatalf("expected %s to be allowed", email)
@@ -65,13 +66,13 @@ func TestIsAllowedAuthEmailUsesDomainList(t *testing.T) {
 }
 
 func TestIsAllowedAuthEmailFallsBackToSingleDomain(t *testing.T) {
-	t.Setenv("AUTH_ALLOWED_DOMAIN", "example.com")
+	t.Setenv("AUTH_ALLOWED_DOMAIN", "acme.example")
 	t.Setenv("AUTH_ALLOWED_DOMAINS", "")
 
-	if !isAllowedAuthEmail("user@example.com") {
+	if !isAllowedAuthEmail("user@acme.example") {
 		t.Fatalf("expected configured domain to be allowed")
 	}
-	if isAllowedAuthEmail("user@example.org") {
+	if isAllowedAuthEmail("user@bitrix24.com") {
 		t.Fatalf("expected unconfigured domain to be disallowed")
 	}
 }
@@ -94,7 +95,7 @@ func TestDevLoginDisabledByDefault(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/auth/dev-login",
-		strings.NewReader(`{"email":"user@example.com"}`),
+		strings.NewReader(`{"email":"user@acme.example"}`),
 	)
 	response := httptest.NewRecorder()
 
@@ -107,14 +108,14 @@ func TestDevLoginDisabledByDefault(t *testing.T) {
 
 func TestDevLoginCreatesSessionWhenEnabled(t *testing.T) {
 	t.Setenv("AUTH_DEV_LOGIN_ENABLED", "true")
-	t.Setenv("AUTH_ALLOWED_DOMAINS", "example.com")
-	t.Setenv("AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL", "dev@example.com")
+	t.Setenv("AUTH_ALLOWED_DOMAINS", "acme.example")
+	t.Setenv("AUTH_BOOTSTRAP_SUPER_ADMIN_EMAIL", "dev@acme.example")
 	dbpool := testDBPool(t)
 
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/auth/dev-login",
-		strings.NewReader(`{"email":"dev@example.com"}`),
+		strings.NewReader(`{"email":"dev@acme.example"}`),
 	)
 	response := httptest.NewRecorder()
 
@@ -132,7 +133,7 @@ func TestDevLoginCreatesSessionWhenEnabled(t *testing.T) {
 	err := dbpool.QueryRow(
 		context.Background(),
 		`SELECT role FROM users WHERE email = $1`,
-		"dev@example.com",
+		"dev@acme.example",
 	).Scan(&role)
 	if err != nil {
 		t.Fatalf("expected dev user to be created: %v", err)
@@ -150,45 +151,68 @@ func TestDemoLoginDisabledByDefault(t *testing.T) {
 	)
 	response := httptest.NewRecorder()
 
-	demoLoginHandler(nil).ServeHTTP(response, request)
+	demoLoginHandler(nil, newDemoLoginLimiter()).ServeHTTP(response, request)
 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d", response.Code)
 	}
 }
 
-func TestDemoLoginCreatesReviewerSessionWhenEnabled(t *testing.T) {
+func TestDemoLoginCreatesSandboxPerVisitor(t *testing.T) {
 	t.Setenv("AUTH_DEMO_LOGIN_ENABLED", "true")
 	dbpool := testDBPool(t)
+	ctx := context.Background()
+	handler := demoLoginHandler(dbpool, newDemoLoginLimiter())
 
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"/api/auth/demo-login",
-		nil,
-	)
-	response := httptest.NewRecorder()
-
-	demoLoginHandler(dbpool).ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	visit := func() string {
+		request := httptest.NewRequest(http.MethodPost, "/api/auth/demo-login", nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+		}
+		cookies := response.Result().Cookies()
+		if len(cookies) != 1 || cookies[0].Name != sessionCookieName {
+			t.Fatalf("expected one session cookie, got %#v", cookies)
+		}
+		if until := time.Until(cookies[0].Expires); until > 25*time.Hour {
+			t.Fatalf("expected the session to end with the sandbox, ends in %s", until)
+		}
+		var email string
+		if err := dbpool.QueryRow(ctx, `
+			SELECT u.email FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.session_hash = $1;
+		`, hashToken(cookies[0].Value)).Scan(&email); err != nil {
+			t.Fatal(err)
+		}
+		return email
 	}
-	cookies := response.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != sessionCookieName {
-		t.Fatalf("expected one session cookie, got %#v", cookies)
+	first, second := visit(), visit()
+	t.Cleanup(func() {
+		_, _ = dbpool.Exec(context.Background(), `
+			DELETE FROM email_events WHERE email_id IN (SELECT id FROM emails WHERE sequence IN (SELECT unnest(managed_boards) FROM users WHERE email = ANY($1)));
+			`, []string{first, second})
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM emails WHERE sequence IN (SELECT unnest(managed_boards) FROM users WHERE email = ANY($1));`, []string{first, second})
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM boards WHERE key IN (SELECT unnest(managed_boards) FROM users WHERE email = ANY($1));`, []string{first, second})
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM auth_events WHERE email = ANY($1);`, []string{first, second})
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM users WHERE email = ANY($1);`, []string{first, second})
+	})
+	if first == second {
+		t.Fatalf("expected each visitor to get their own user, both got %s", first)
 	}
 
 	var role string
-	err := dbpool.QueryRow(
-		context.Background(),
-		`SELECT role FROM users WHERE email = $1`,
-		demoLoginEmail,
-	).Scan(&role)
-	if err != nil {
-		t.Fatalf("expected demo user to be created: %v", err)
+	var scoped bool
+	var boards []string
+	var emails int
+	if err := dbpool.QueryRow(ctx, `
+		SELECT role, board_scoped, managed_boards,
+			(SELECT count(*) FROM emails WHERE sequence = ANY(users.managed_boards))
+		FROM users WHERE email = $1;
+	`, first).Scan(&role, &scoped, &boards, &emails); err != nil {
+		t.Fatal(err)
 	}
-	if role != "reviewer" {
-		t.Fatalf("expected demo user to be reviewer, got %q", role)
+	if role != "reviewer" || !scoped || len(boards) != 1 || emails == 0 {
+		t.Fatalf("expected a scoped reviewer with one seeded board, got %s scoped=%v boards=%v emails=%d", role, scoped, boards, emails)
 	}
 }
 
@@ -377,6 +401,8 @@ func TestAdminCanCreateReviewerUser(t *testing.T) {
 	dbpool := testDBPool(t)
 	admin := createTestUserWithRole(t, dbpool, "admin")
 
+	deleteTestUserByEmail(t, dbpool, "new.reviewer@example.com")
+
 	router := chi.NewRouter()
 	RegisterAuthRoutes(router, dbpool, &recordingEmailSender{})
 
@@ -420,6 +446,8 @@ func TestAdminCanCreateReviewerUser(t *testing.T) {
 func TestSuperAdminCanCreateAdminUser(t *testing.T) {
 	dbpool := testDBPool(t)
 	superAdmin := createTestUserWithRole(t, dbpool, "super_admin")
+
+	deleteTestUserByEmail(t, dbpool, "new-admin@example.com")
 
 	router := chi.NewRouter()
 	RegisterAuthRoutes(router, dbpool, &recordingEmailSender{})

@@ -3,16 +3,19 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import {
   formatEmailReviewStatus,
-  isProductionApprovedEmailReviewStatus,
+  isApprovedEmailReviewStatus,
+  needsBitrixUpload,
 } from "../../emails/reviewStatus";
 import { formatStageName } from "../../emails/stages";
 import { matchesProductionFilter } from "../../emails/productionStatus";
-import type { EmailDetail, EmailListItem, EmailReviewStatus, StageColumn } from "../../emails/types";
+import type { BoardRegion, EmailDetail, EmailListItem, EmailReviewStatus, StageColumn } from "../../emails/types";
 
-import type {
-  BoardFilterOptions,
-  BoardFilters,
-  HandoffFilters,
+import {
+  noRegionFilter,
+  type BoardEmailState,
+  type BoardFilterCounts,
+  type BoardFilterOptions,
+  type BoardFilters,
 } from "./BoardHome.types";
 
 export function filterColumnsBySearch(columns: StageColumn[], query: string) {
@@ -82,37 +85,67 @@ export function filterColumnsByBoardFilters(
 
 
 function emailMatchesBoardFilters(email: EmailListItem, filters: BoardFilters) {
+  const mine = filters.mine.toLowerCase();
   return (
-    (filters.comments === "all" || (email.open_comment_count ?? 0) > 0) &&
-    (!filters.language || email.language === filters.language) &&
-    (!filters.adaptation || email.adaptation_key === filters.adaptation) &&
-    (!filters.variant || email.variant === filters.variant) &&
+    (!mine ||
+      email.owner_email?.trim().toLowerCase() === mine ||
+      email.reviewer_email?.trim().toLowerCase() === mine) &&
+    (!filters.openComments || hasOpenComments(email)) &&
+    (!filters.staleTranslation || email.translation_stale) &&
+    (!filters.needsUpload || needsBitrixUpload(email)) &&
+    (filters.languages.length === 0 || filters.languages.includes(email.language)) &&
+    (filters.states.length === 0 ||
+      filters.states.some((state) => emailHasState(email, state))) &&
     (!filters.owner || assigneeFilterValue(email.owner_email) === filters.owner) &&
-    (!filters.reviewer ||
-      assigneeFilterValue(email.reviewer_email) === filters.reviewer) &&
-    (!filters.status || email.review_status === filters.status) &&
-    matchesProductionFilter(email.production_status, filters.production) &&
-    (!filters.translation || (filters.translation === "stale" && email.translation_stale))
+    (!filters.variant || email.variant === filters.variant) &&
+    (!filters.adaptation || email.adaptation_key === filters.adaptation) &&
+    (!filters.region ||
+      (filters.region === noRegionFilter ? !email.region_key : email.region_key === filters.region))
   );
 }
 
 
-export function getActiveBoardFilterCount(filters: BoardFilters) {
-  return [
-    filters.comments === "open" ? filters.comments : "",
-    filters.language,
-    filters.adaptation,
-    filters.variant,
-    filters.owner,
-    filters.reviewer,
-    filters.status,
-    filters.production,
-    filters.translation,
-  ].filter(Boolean).length;
+function hasOpenComments(email: EmailListItem) {
+  return (email.open_comment_count ?? 0) > 0;
+}
+
+function emailHasState(email: EmailListItem, state: BoardEmailState) {
+  return state === "live"
+    ? matchesProductionFilter(email.production_status, "live")
+    : email.review_status === state;
 }
 
 
-export function getBoardFilterOptions(emails: EmailListItem[]): BoardFilterOptions {
+export function getActiveBoardFilterCount(filters: BoardFilters) {
+  return (
+    [
+      filters.mine,
+      filters.openComments,
+      filters.staleTranslation,
+      filters.needsUpload,
+      filters.owner,
+      filters.variant,
+      filters.adaptation,
+      filters.region,
+    ].filter(Boolean).length +
+    filters.languages.length +
+    filters.states.length
+  );
+}
+
+
+export function getBoardFilterCounts(emails: EmailListItem[]): BoardFilterCounts {
+  return {
+    openComments: emails.filter(hasOpenComments).length,
+    staleTranslation: emails.filter((email) => email.translation_stale).length,
+    needsUpload: emails.filter(needsBitrixUpload).length,
+  };
+}
+
+
+// getBoardFilterOptions lists what the board's emails can be filtered by. On
+// a board with regions the region replaces the adaptation, which follows it.
+export function getBoardFilterOptions(emails: EmailListItem[], regions: BoardRegion[] = []): BoardFilterOptions {
   const adaptationByKey = new Map<string, string>();
 
   for (const email of emails) {
@@ -124,11 +157,22 @@ export function getBoardFilterOptions(emails: EmailListItem[]): BoardFilterOptio
   const variants = uniqueSorted(emails.map((email) => email.variant));
 
   return {
-    languages: uniqueSorted(emails.map((email) => email.language)).map((language) => ({
-      label: language.toUpperCase(),
-      value: language,
-    })),
-    adaptations: Array.from(adaptationByKey.entries())
+    // EN is the master, so it goes first.
+    languages: uniqueSorted(emails.map((email) => email.language))
+      .sort((first, second) => Number(second === "en") - Number(first === "en"))
+      .map((language) => ({
+        label: language.toUpperCase(),
+        value: language,
+      })),
+    regions: regions.length
+      ? [
+          ...[...regions]
+            .sort((first, second) => Number(second.reference) - Number(first.reference))
+            .map((region) => ({ label: region.name, value: region.key })),
+          ...(emails.some((email) => !email.region_key) ? [{ label: "No region", value: noRegionFilter }] : []),
+        ]
+      : [],
+    adaptations: (regions.length ? [] : Array.from(adaptationByKey.entries()))
       .map(([value, label]) => ({ label, value }))
       .sort((first, second) => {
         if (first.value === "default") {
@@ -144,7 +188,6 @@ export function getBoardFilterOptions(emails: EmailListItem[]): BoardFilterOptio
       value: variant,
     })),
     owners: assigneeFilterOptions(emails.map((email) => email.owner_email)),
-    reviewers: assigneeFilterOptions(emails.map((email) => email.reviewer_email)),
   };
 }
 
@@ -236,41 +279,6 @@ function normalizeSearchText(value: string) {
 }
 
 
-export function filterEmailsByHandoffFilters(
-  emails: EmailListItem[],
-  filters: HandoffFilters
-) {
-  const languageSet = new Set(filters.languages);
-  const adaptationSet = new Set(filters.adaptations);
-  const stageSet = new Set(filters.stages);
-
-  return emails.filter((email) => {
-    if (languageSet.size > 0 && !languageSet.has(email.language)) {
-      return false;
-    }
-    if (
-      adaptationSet.size > 0 &&
-      !adaptationSet.has(email.adaptation_key)
-    ) {
-      return false;
-    }
-    if (stageSet.size > 0 && !stageSet.has(email.stage ?? "")) {
-      return false;
-    }
-    return true;
-  });
-}
-
-
-export function getActiveHandoffFilterCount(filters: HandoffFilters) {
-  return (
-    filters.adaptations.length +
-    filters.languages.length +
-    filters.stages.length
-  );
-}
-
-
 export function buildSequenceHandoffManifest(
   boardKey: string,
   boardName: string,
@@ -293,8 +301,8 @@ export function buildSequenceHandoffManifest(
     title: email.title,
     variant: email.variant,
   }));
-  const productionApprovedCount = emails.filter((email) =>
-    isProductionApprovedEmailReviewStatus(email.review_status)
+  const readyCount = emails.filter((email) =>
+    isApprovedEmailReviewStatus(email.review_status)
   ).length;
   const openBlockingCommentCount = emails.reduce(
     (total, email) => total + email.open_blocking_comment_count,
@@ -302,8 +310,7 @@ export function buildSequenceHandoffManifest(
   );
 
   return {
-    approved_count: productionApprovedCount,
-    production_approved_count: productionApprovedCount,
+    ready_count: readyCount,
     board_key: boardKey,
     board_name: boardName,
     email_count: emails.length,
@@ -311,7 +318,7 @@ export function buildSequenceHandoffManifest(
     open_blocking_comment_count: openBlockingCommentCount,
     ready_for_handoff:
       emails.length > 0 &&
-      productionApprovedCount === emails.length &&
+      readyCount === emails.length &&
       openBlockingCommentCount === 0,
   };
 }

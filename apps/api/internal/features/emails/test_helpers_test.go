@@ -55,6 +55,7 @@ func createTestEmail(t *testing.T, dbpool *pgxpool.Pool) string {
 		INSERT INTO emails (
 			slug,
 			title,
+			sequence,
 			stage,
 			sort_order,
 			language,
@@ -67,6 +68,7 @@ func createTestEmail(t *testing.T, dbpool *pgxpool.Pool) string {
 		VALUES (
 			'comment-test-email',
 			'Comment Test Email',
+			'onboarding',
 			'test',
 			9999,
 			'en',

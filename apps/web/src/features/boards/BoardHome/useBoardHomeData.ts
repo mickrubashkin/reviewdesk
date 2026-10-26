@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ApiError } from "../../../shared/api";
-import { createBoard, fetchBoards } from "../api";
+import { demoMode } from "../../auth/api";
+import { createBoard, fetchBoards, useBoardRegions } from "../api";
 import {
   fetchEmails,
   updateEmailReviewStatus,
@@ -16,28 +17,28 @@ import {
 } from "../../emails/reviewStatus";
 import { buildStageColumns } from "../../emails/stages";
 import { getProductionStatus } from "../../emails/productionStatus";
+import { withFirstSendEstimates } from "../../emails/firstSend";
 import type {
   AuthUser,
+  Board,
   CreateBoardPayload,
   EmailReviewStatus,
 } from "../../emails/types";
 
 import {
   applyReviewStatusToBoardCaches,
-  buildSequenceHandoffManifest,
   filterColumnsByBoardFilters,
   filterColumnsBySearch,
-  filterEmailsByHandoffFilters,
   getActiveBoardFilterCount,
-  getActiveHandoffFilterCount,
+  getBoardFilterCounts,
   getBoardFilterOptions,
 } from "./BoardHome.helpers";
 import {
   defaultBoardFilters,
-  defaultHandoffFilters,
+  type BoardFilterChange,
   type BoardFilters,
-  type HandoffFilters,
 } from "./BoardHome.types";
+import { canManageBoard, isAdminRole } from "../../emails/permissions";
 
 export function useBoardHomeData({
   boardFilters,
@@ -57,11 +58,11 @@ export function useBoardHomeData({
   const [userMenuOpened, setUserMenuOpened] = useState(false);
   const [createBoardModalOpened, setCreateBoardModalOpened] = useState(false);
   const [manageStagesModalOpened, setManageStagesModalOpened] = useState(false);
-  const [handoffFilters, setHandoffFilters] =
-    useState<HandoffFilters>(defaultHandoffFilters);
-  const isCompactHeader = useMediaQuery("(max-width: 64em)");
-  const isAdmin =
-    currentUser.role === "admin" || currentUser.role === "super_admin";
+  const isCompactHeader = useMediaQuery("(max-width: 70em)");
+  const isAdmin = isAdminRole(currentUser.role);
+  // canManage is admin rights on this board: admins everywhere, board
+  // managers (Users → Manages) on their boards; elsewhere the board is read-only.
+  const canManage = canManageBoard(currentUser, boardKey);
 
   const boardsQuery = useQuery({
     queryKey: ["boards"],
@@ -75,8 +76,17 @@ export function useBoardHomeData({
   const createBoardMutation = useMutation({
     mutationFn: (payload: CreateBoardPayload) => createBoard(payload),
     onSuccess: (board) => {
+      // Known before the refetch, or the board page would not find it and
+      // send us back to the previous board.
+      queryClient.setQueryData<Board[]>(["boards"], (boards = []) => [...boards, board]);
       void queryClient.invalidateQueries({ queryKey: ["boards"] });
       setCreateBoardModalOpened(false);
+      if (board.copied_email_count !== undefined) {
+        notifications.show({
+          color: "green",
+          message: `${board.name} created with ${board.copied_email_count} EN drafts`,
+        });
+      }
       navigate(`/boards/${encodeURIComponent(board.key)}`);
     },
   });
@@ -100,7 +110,7 @@ export function useBoardHomeData({
       );
       notifications.show({
         color: "green",
-        message: `Review status changed to ${formatEmailReviewStatus(response.review_status)}.`,
+        message: `Status changed to ${formatEmailReviewStatus(response.review_status)}.`,
         title: "Status updated",
       });
     },
@@ -109,7 +119,7 @@ export function useBoardHomeData({
         color: "red",
         message:
           error instanceof ApiError && error.status === 409
-            ? "Resolve blocking comments before approval."
+            ? "Resolve blocking comments before marking the email ready."
             : "Try again or check that you have admin access.",
         title:
           error instanceof ApiError && error.status === 409
@@ -128,31 +138,31 @@ export function useBoardHomeData({
 
   const boardEmails = useMemo(
     () =>
-      (emailsQuery.data ?? []).map((email) => ({
-        ...email,
-        production_status: getProductionStatus(email, activeBoard?.portal_synced_at),
-      })),
+      withFirstSendEstimates(
+        (emailsQuery.data ?? []).map((email) => ({
+          ...email,
+          production_status: getProductionStatus(email, activeBoard?.portal_synced_at),
+        }))
+      ),
     [activeBoard?.portal_synced_at, emailsQuery.data]
   );
   const columns = useMemo(
     () => buildStageColumns(boardEmails, activeBoard?.stages ?? []),
     [activeBoard?.stages, boardEmails]
   );
+  const boardRegions = useBoardRegions(boardKey).data;
   const searchQuery = boardSearchQuery.trim();
   const searchedColumns = useMemo(
     () => filterColumnsBySearch(columns, searchQuery),
     [columns, searchQuery]
   );
   const boardFilterOptions = useMemo(
-    () => getBoardFilterOptions(emailsQuery.data ?? []),
-    [emailsQuery.data]
+    () => getBoardFilterOptions(emailsQuery.data ?? [], boardRegions ?? []),
+    [emailsQuery.data, boardRegions]
   );
-  const openCommentEmailCount = useMemo(
-    () =>
-      (emailsQuery.data ?? []).filter(
-        (email) => (email.open_comment_count ?? 0) > 0
-      ).length,
-    [emailsQuery.data]
+  const boardFilterCounts = useMemo(
+    () => getBoardFilterCounts(boardEmails),
+    [boardEmails]
   );
   const visibleColumns = useMemo(
     () => filterColumnsByBoardFilters(searchedColumns, boardFilters),
@@ -167,36 +177,14 @@ export function useBoardHomeData({
       ),
     [visibleColumns]
   );
-  const handoffEmails = useMemo(
-    () => filterEmailsByHandoffFilters(emailsQuery.data ?? [], handoffFilters),
-    [emailsQuery.data, handoffFilters]
-  );
-  const sequenceHandoffManifest = useMemo(
-    () =>
-      buildSequenceHandoffManifest(
-        activeBoard?.key ?? boardKey,
-        activeBoard?.name ?? boardKey,
-        handoffEmails
-      ),
-    [activeBoard?.key, activeBoard?.name, boardKey, handoffEmails]
-  );
-  const sequenceHandoffJSON = useMemo(
-    () => JSON.stringify(sequenceHandoffManifest, null, 2),
-    [sequenceHandoffManifest]
-  );
   const activeBoardFilterCount = getActiveBoardFilterCount(boardFilters);
-  const updateBoardFilter = (key: keyof BoardFilters, value: string | null) => {
-    onBoardFiltersChange({
-      ...boardFilters,
-      [key]: value ?? "",
-    });
+  const updateBoardFilter: BoardFilterChange = (key, value) => {
+    onBoardFiltersChange({ ...boardFilters, [key]: value });
   };
   const resetBoardFilters = () => {
     onBoardFiltersChange(defaultBoardFilters);
   };
   const hasBoardFilters = activeBoardFilterCount > 0;
-  const activeHandoffFilterCount = getActiveHandoffFilterCount(handoffFilters);
-  const canExportSequenceHandoff = sequenceHandoffManifest.email_count > 0;
 
   const filterEmptyState =
     searchQuery || hasBoardFilters ? "No matching emails" : "No emails on this board";
@@ -216,9 +204,16 @@ export function useBoardHomeData({
   );
   const preferredBoard =
     boards.find((board) => board.key === "onboarding") ?? boards[0];
-  const headerSubtitle = searchQuery
-    ? `${activeBoard?.name ?? "Board review"} · ${visibleGroupCount} of ${totalGroupCount} matches`
-    : `${activeBoard?.name ?? "Board review"} · ${emailsQuery.data?.length ?? 0} emails`;
+  // The board's name is in the board picker next to it; the compact header
+  // has the picker in its menu, so it names the board instead. A demo
+  // visitor works on a private copy that the demo deletes after a day.
+  const headerSubtitle = demoMode
+    ? "Your own copy, resets in 24h"
+    : searchQuery
+    ? `${visibleGroupCount} of ${totalGroupCount} matches`
+    : isCompactHeader
+    ? (activeBoard?.name ?? "Board review")
+    : `${emailsQuery.data?.length ?? 0} emails`;
 
   const handleReviewStatusChange = (
     emailId: string,
@@ -232,7 +227,7 @@ export function useBoardHomeData({
     ) {
       notifications.show({
         color: "red",
-        message: "Resolve blocking comments before approval.",
+        message: "Resolve blocking comments before marking the email ready.",
         title: "Approval blocked",
       });
       return;
@@ -244,11 +239,10 @@ export function useBoardHomeData({
   return {
     activeBoard,
     activeBoardFilterCount,
-    activeHandoffFilterCount,
+    boardFilterCounts,
     boardFilterOptions,
     boards,
     boardsQuery,
-    canExportSequenceHandoff,
     columns,
     createBoardModalOpened,
     createBoardMutation,
@@ -256,20 +250,16 @@ export function useBoardHomeData({
     filteredEmailIds,
     filterEmptyHint,
     filterEmptyState,
-    handoffFilters,
     hasBoardFilters,
     headerSubtitle,
+    canManage,
     isAdmin,
     isCompactHeader,
     manageStagesModalOpened,
-    openCommentEmailCount,
     preferredBoard,
     refreshBoardData,
     resetBoardFilters,
-    sequenceHandoffEmailCount: sequenceHandoffManifest.email_count,
-    sequenceHandoffJSON,
     setCreateBoardModalOpened,
-    setHandoffFilters,
     setManageStagesModalOpened,
     setUserMenuOpened,
     updateBoardFilter,

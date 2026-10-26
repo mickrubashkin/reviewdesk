@@ -5,17 +5,18 @@ ReviewDesk is an internal tool for reviewing HTML email sequences. Go backend (C
 
 ## Repo layout
 - `apps/api/cmd/server` — HTTP API entrypoint; `main.go` loads `../../.env`.
-- `apps/api/cmd/seed` — imports your own templates from `db/seeds/emails/{stage}/{email}/{lang[-old]}.html` with a companion `meta.json` (not included in this repo).
+- `apps/api/cmd/seed` — imports your own templates from `db/seeds/emails/{stage}/{email}/{lang[-old]}.html` with a companion `meta.json` (not in the public repo).
 - `apps/api/cmd/demoseed` — synthetic demo board (`DEMO_SEED_ENABLED=true`).
+- `apps/api/cmd/syncmeta` — regenerates `meta.json`.
 - `apps/web/src/main.tsx` — frontend entrypoint.
 - `apps/web/src/App.tsx` — router. `/emails/{id}/edit` redirects to `/emails/{id}/review`.
 - `db/migrations/` — goose migrations applied sequentially.
 
 ## Commands
-- `make setup-dev` — DB up → migrations → seed.
+- `make setup-dev` — DB up → migrations → seed (`db/seeds/emails` if present, else the demo board).
 - `make dev` — DB up, API, and web in parallel.
-- `make db-migrate` / `make db-seed` / `make db-seed-demo`.
-- `cd apps/web && npm run dev|lint|build`. **build** runs `tsc -b && vite build`.
+- `make db-migrate` / `make db-seed` / `make db-seed-demo` / `make db-sync-meta`.
+- `cd apps/web && npm run dev|lint|test|build`. **build** runs `tsc -b && vite build`; **test** runs Vitest (`*.test.ts` next to the code, for pure logic).
 - `cd apps/api && go test ./...`. For a single test: `go test -run TestName ./cmd/server`.
 - `cd apps/api && go run ./cmd/server`.
 - Smoke test: `./scripts/smoke-check.sh`.
@@ -28,8 +29,10 @@ ReviewDesk is an internal tool for reviewing HTML email sequences. Go backend (C
 - **Admin roles**: `admin` (manages boards, reviews, editing) and `super_admin` (manages users, permissions, HTML). `admin` does not see all administrative pages.
 - AI streaming: SSE/EventSource on `/api/emails/{id}/ai-analysis-stream`. Not WebSocket.
 - Comments: frontend polling every 5 seconds (`refetchInterval: 5000`), not WebSocket/SSE.
+- The API accepts only the Origin in `AUTH_ALLOWED_ORIGINS` (else `CORS_ORIGIN`, `http://localhost:5173`): a second dev server on another port (e.g. to check a branch in a worktree) cannot sign in unless its Vite proxy sets that `Origin` header.
 - OTP login: `AUTH_DEV_LOGIN_ENABLED=true` locally to sign in without a code. Must be `false` in production.
 - `VITE_AUTH_*` variables mirror `AUTH_*` for the frontend (exposed by Vite).
+- Portal sync: manual from Settings → Portal sync (or `cmd/portalsync`), nightly at 03:00 UTC+2 when `PORTAL_AUTOSYNC_ENABLED=true` and the board turns it on. One running sync per board (unique index).
 - OpenAI: `OPENAI_API_KEY` enables AI review; `AI_DEBUG_ENABLED=true` enables debug endpoint.
 
 ## Product rules
@@ -44,3 +47,30 @@ ReviewDesk is an internal tool for reviewing HTML email sequences. Go backend (C
 - Keep changes focused.
 - Dependencies: prefer a good, well-maintained existing library over a hand-written solution. Priority is maximum functionality with minimum pain, not a minimal dependency list. Still prefer what the stack already uses (Mantine, TanStack, Chi, pgx) when it covers the need.
 - Approval gates: an email cannot be approved while there are open blocking comments or pending required area approvals.
+
+## Domain model (redesign in progress)
+- Slot = stage + position + timing. Each slot has an EN master (EN is always the source of truth for content).
+- Translations (DE, ES, PL, BR) link to the master revision they came from; when the master changes they become stale (outdated).
+- Market differences are a small fixed set of per-region variables (currency, contract/rules links), not copies of the email.
+- Manager adaptations are overrides of a few fields on top of the master, not full duplicates. Branches are for meaningfully different content only.
+- `old` variants may still be live. Decide per email from portal sync data, don't assume they are dead.
+- Sending is manual: HTML is pasted into a Bitrix24 CRM robot. Bitrix24 access is read-only (inbound webhook). "Live" means confirmed uploaded/sent via the portal sync or a manual mark by a super admin.
+- Target status flow is simplified to draft → ready → live (the old approval gates still exist in code).
+- `apps/api/cmd/slotplan` is the migration dry-run; re-run it on real data before any real migration.
+
+## Board views
+- Views: `cards`, `matrix`, `timeline`, `archive`; `timeline` is the default. The view is in the URL (`?view=…`) and wins over the last one kept in `sessionStorage`. `?stage=<stage>` is a one-shot reveal: BoardHome scrolls to `[data-stage]` and drops the param; the timeline also unfolds that stage. Each timeline stage has a "Copy link" for it.
+- Timeline (`features/boards/BoardHome/Timeline/`): the stages are the nodes of a trunk (a deal's way through the pipeline) and each stage's emails a branch off it. Days count per stage from a deal entering it (`timingDays`, as in the first-send estimate); stages carry no timing between them, so the trunk has no time scale. On a board with regions a stage has one branch per region (reference first), lined up slot by slot with gaps, and waits that differ from the reference are marked; otherwise there is one branch per language.
+- Timeline previews are sandboxed iframes (`sandbox=""`, no scripts), kept only within 600px of the timeline's own scroll box; the HTML comes from the React Query cache (`["emails", id, "review"]`).
+- The logic is pure (`timeline.ts`) and tested (`timeline.test.ts`, Vitest); `BoardTimeline.tsx` and `TimelineNode.tsx` only draw it.
+
+## Git workflow
+- Never commit to `main` directly. One branch per change: `feat/…`, `fix/…`, `perf/…`, `chore/…`.
+- Conventional commit subjects (`feat: …`, `fix: …`, `perf: …`, `chore: …`), lowercase, imperative.
+- Branches are merged into `main` with a merge commit (`Merge branch '…'`), no squash.
+- The repo is public: never commit secrets, `.env`, production data, or `personal-notes/` (gitignored).
+
+## Verifying changes
+- Backend: `cd apps/api && go test ./...`. Frontend: `cd apps/web && npm run lint && npm test && npm run build`.
+- For UI changes run `make dev`, open the affected page in the browser and check it as the right role: `super_admin` for users/permissions/HTML, `admin` for boards and reviews. Use `AUTH_DEV_LOGIN_ENABLED=true` to sign in locally.
+- Migrations are goose files in `db/migrations/`, applied in order. Add a new file, never edit an applied one.

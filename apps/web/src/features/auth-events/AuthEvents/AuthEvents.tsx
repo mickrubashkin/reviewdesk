@@ -87,7 +87,7 @@ export function AuthEvents() {
         <Group align="end" gap="sm">
           <TextInput
             label="Email"
-            placeholder="user@example.com"
+            placeholder="user@company.com"
             value={visibleFilters.email}
             onChange={(event) =>
               setFilters((current) => ({

@@ -36,9 +36,11 @@ const actionOptions: { value: EmailEventAction; label: string }[] = [
   { value: "email_duplicated", label: "Duplicated" },
   { value: "email_adaptation_created", label: "Adaptation created" },
   { value: "email_archived", label: "Archived" },
+  { value: "email_restored", label: "Restored" },
   { value: "email_created", label: "Created" },
   { value: "email_planning_updated", label: "Planning updated" },
-  { value: "email_review_status_updated", label: "Review status updated" },
+  { value: "slot_updated", label: "Slot edited" },
+  { value: "email_review_status_updated", label: "Status updated" },
   { value: "email_area_approval_updated", label: "Area approval updated" },
   { value: "comment_created", label: "Comment created" },
   { value: "comment_replied", label: "Comment replied" },
@@ -294,6 +296,8 @@ function getActionColor(action: EmailEventAction) {
   switch (action) {
     case "email_archived":
       return "red";
+    case "email_restored":
+      return "green";
     case "email_duplicated":
       return "blue";
     case "email_adaptation_created":
@@ -303,6 +307,7 @@ function getActionColor(action: EmailEventAction) {
     case "email_updated":
       return "yellow";
     case "email_planning_updated":
+    case "slot_updated":
       return "cyan";
     case "email_review_status_updated":
       return "violet";
@@ -345,22 +350,24 @@ function formatSummary(event: EmailEventItem) {
       return `Adaptation ${stringMetadata(event, "adaptation_label") || "created"} from ${stringMetadata(event, "source_slug") || "source email"}`;
     case "email_archived":
       return "Archived from the active board";
+    case "email_restored":
+      return "Restored from the archive";
     case "email_created":
       return "Created email";
     case "email_updated":
       return formatEmailUpdateSummary(event.changes);
     case "email_planning_updated":
       return "Updated planning fields";
+    case "slot_updated":
+      return "Edited the slot (all languages)";
     case "email_review_status_updated":
       if (isStaleApprovalEvent(event)) {
-        return "Approval became stale after edit";
+        return "Moved back to draft after an edit";
       }
       if (isReapprovalEvent(event)) {
-        return stringMetadata(event, "reason") === "reapproved_after_stale_edit"
-          ? "Re-approved after stale edit"
-          : "Re-approved email";
+        return "Marked ready again";
       }
-      return `Changed review status to ${formatChangedReviewStatus(event)}`;
+      return `Changed status to ${formatChangedReviewStatus(event)}`;
     case "email_area_approval_updated":
       return `Changed ${formatApprovalArea(event)} approval to ${formatAreaApprovalStatus(event)}`;
     case "comment_created":
@@ -396,6 +403,7 @@ function formatChangedFields(event: EmailEventItem) {
   if (
     event.action !== "email_updated" &&
     event.action !== "email_planning_updated" &&
+    event.action !== "slot_updated" &&
     event.action !== "email_review_status_updated" &&
     event.action !== "email_area_approval_updated" &&
     !event.action.startsWith("board_")

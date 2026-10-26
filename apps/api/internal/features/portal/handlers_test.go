@@ -18,7 +18,9 @@ func TestPortalRoutesRequireSuperAdmin(t *testing.T) {
 	requests := []*http.Request{
 		httptest.NewRequest(http.MethodGet, "/api/portal/categories", nil),
 		httptest.NewRequest(http.MethodPost, "/api/boards/onboarding/portal/sync", strings.NewReader(`{"category_id":10,"days":90}`)),
+		httptest.NewRequest(http.MethodPut, "/api/boards/onboarding/portal/settings", strings.NewReader(`{"auto_sync":false,"days":3}`)),
 		httptest.NewRequest(http.MethodGet, "/api/boards/onboarding/portal", nil),
+		httptest.NewRequest(http.MethodGet, "/api/portal/upload-suggestions", nil),
 		httptest.NewRequest(http.MethodGet, "/api/portal/groups/x", nil),
 		httptest.NewRequest(http.MethodPatch, "/api/portal/groups/x", strings.NewReader(`{"decision":"ignored"}`)),
 		httptest.NewRequest(http.MethodGet, "/api/portal/groups/x/reconstruct", nil),

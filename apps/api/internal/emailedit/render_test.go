@@ -101,7 +101,7 @@ func TestRenderEditableHTMLAllowsMailtoURLScheme(t *testing.T) {
 	fields := EditableFields{
 		"contact_url": {
 			Type:  FieldTypeURL,
-			Value: "mailto:partners@example.com",
+			Value: "mailto:partners@bitrix24.com",
 		},
 	}
 
@@ -110,7 +110,7 @@ func TestRenderEditableHTMLAllowsMailtoURLScheme(t *testing.T) {
 		t.Fatalf("RenderEditableHTML returned error: %v", err)
 	}
 
-	assertContains(t, rendered, `href="mailto:partners@example.com"`)
+	assertContains(t, rendered, `href="mailto:partners@bitrix24.com"`)
 }
 
 func TestRenderEditableHTMLRejectsMailtoImageURL(t *testing.T) {
@@ -118,7 +118,7 @@ func TestRenderEditableHTMLRejectsMailtoImageURL(t *testing.T) {
 	fields := EditableFields{
 		"image_url": {
 			Type:  FieldTypeImage,
-			Value: "mailto:partners@example.com",
+			Value: "mailto:partners@bitrix24.com",
 		},
 	}
 
@@ -160,7 +160,7 @@ func assertContains(t *testing.T, value string, substring string) {
 func TestRenderKeepsBitrixExpressionsAndInvisibleEntities(t *testing.T) {
 	template := `<!doctype html><html><body>` +
 		`<div style="display:none">&zwnj;&nbsp;&zwnj;&nbsp;</div>` +
-		`<td data-edit-text="footer_copyright">© {{=date('Y')}} Example.</td></body></html>`
+		`<td data-edit-text="footer_copyright">© {{=date('Y')}} Acme.</td></body></html>`
 	fields, err := ExtractEditableFields(template)
 	if err != nil {
 		t.Fatal(err)

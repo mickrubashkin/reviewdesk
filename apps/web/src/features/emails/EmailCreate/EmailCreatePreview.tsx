@@ -7,8 +7,11 @@ export function EmailCreatePreview({
   formState,
   previewHTML,
   trimmedHTML,
+  versionLabel,
 }: {
   formState: CreateEmailFormState;
+  // The region on a board with regions, else the adaptation.
+  versionLabel: string;
   previewHTML: string;
   trimmedHTML: string;
 }) {
@@ -26,7 +29,7 @@ export function EmailCreatePreview({
         <Group gap={6}>
           <Badge variant="light">{formState.language.toUpperCase() || "EN"}</Badge>
           <Badge variant="light">{formState.variant || "v1"}</Badge>
-          <Badge variant="light">{formState.adaptationLabel || "Default"}</Badge>
+          <Badge variant="light">{versionLabel}</Badge>
         </Group>
       </Group>
       <div className={styles.previewFrameWrap}>

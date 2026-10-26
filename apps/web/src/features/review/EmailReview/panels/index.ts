@@ -4,3 +4,6 @@ export { VersionHistoryPanel } from "./VersionHistoryPanel";
 export { HandoffPanel } from "./HandoffPanel";
 export { ActivityPanel } from "./ActivityPanel";
 export { ReviewPreviewSkeleton } from "./ReviewPreviewSkeleton";
+export { BlocksPanel } from "./BlocksPanel";
+export { ChecksPanel } from "./ChecksPanel";
+export { RegionField } from "./RegionField";

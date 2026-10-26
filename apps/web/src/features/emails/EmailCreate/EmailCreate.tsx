@@ -9,7 +9,7 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
-import { fetchBoards } from "../../boards/api";
+import { fetchBoards, useBoardRegions } from "../../boards/api";
 import { createEmail, fetchEmails, inspectEmailHTML } from "../api";
 import type { AuthUser, CreateEmailPayload } from "../types";
 import {
@@ -27,14 +27,14 @@ import {
   type CreateEmailFormState,
 } from "./EmailCreate.types";
 import styles from "./EmailCreate.module.css";
+import { canManageBoard, managesAnyBoard } from "../permissions";
 
 type EmailCreateProps = {
-  currentUserRole: AuthUser["role"];
+  currentUser: AuthUser;
 };
 
-export function EmailCreate({ currentUserRole }: EmailCreateProps) {
-  const canCreate =
-    currentUserRole === "admin" || currentUserRole === "super_admin";
+export function EmailCreate({ currentUser }: EmailCreateProps) {
+  const canCreate = managesAnyBoard(currentUser);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [formState, setFormState] = useState<CreateEmailFormState>(initialFormState);
@@ -77,7 +77,11 @@ export function EmailCreate({ currentUserRole }: EmailCreateProps) {
   });
 
   const emails = useMemo(() => emailsQuery.data ?? [], [emailsQuery.data]);
-  const boards = useMemo(() => boardsQuery.data ?? [], [boardsQuery.data]);
+  // Board managers create emails on their boards only.
+  const boards = useMemo(
+    () => (boardsQuery.data ?? []).filter((board) => canManageBoard(currentUser, board.key)),
+    [boardsQuery.data, currentUser]
+  );
   const boardOptions = useMemo(
     () => boards.map((board) => ({ label: board.name, value: board.key })),
     [boards]
@@ -86,6 +90,7 @@ export function EmailCreate({ currentUserRole }: EmailCreateProps) {
   const selectedBoard = boardKeys.includes(formState.sequence)
     ? formState.sequence
     : boards.find((board) => board.key === "onboarding")?.key ?? boardKeys[0] ?? "";
+  const regions = useBoardRegions(selectedBoard || undefined).data ?? [];
   const activeBoard = boards.find((board) => board.key === selectedBoard);
   const stageOptions = activeBoard?.stages ?? [];
   const selectedStage = stageOptions.includes(formState.stage)
@@ -161,7 +166,7 @@ export function EmailCreate({ currentUserRole }: EmailCreateProps) {
     stageOptions.length > 0 &&
     formState.language.trim().length > 0 &&
     formState.variant.trim().length > 0 &&
-    formState.adaptationLabel.trim().length > 0 &&
+    (regions.length > 0 || formState.adaptationLabel.trim().length > 0) &&
     trimmedHTML.length > 0 &&
     !createMutation.isPending;
   const submit = () => {
@@ -171,7 +176,11 @@ export function EmailCreate({ currentUserRole }: EmailCreateProps) {
 
     createMutation.mutate({
       language: formState.language.trim() || "en",
-      adaptation_label: formState.adaptationLabel.trim() || "Default",
+      ...(regions.length > 0
+        ? formState.regionKey
+          ? { region_key: formState.regionKey }
+          : {}
+        : { adaptation_label: formState.adaptationLabel.trim() || "Default" }),
       original_html: trimmedHTML,
       preheader: optionalString(formState.preheader),
       send_timing: optionalString(formState.sendTiming),
@@ -211,6 +220,7 @@ export function EmailCreate({ currentUserRole }: EmailCreateProps) {
       ...current,
       sequence: nextBoard,
       stage: nextStage,
+      regionKey: "",
       eventGroupKey: newEventGroupValue,
     }));
     setSortOrderAuto(true);
@@ -258,6 +268,10 @@ export function EmailCreate({ currentUserRole }: EmailCreateProps) {
   const editorPanel = (
     <EmailCreateFormPanel
       adaptationOptions={adaptationOptions}
+      regionOptions={regions.map((region) => ({
+        label: `${region.name} (${region.language.toUpperCase()})${region.reference ? " · reference" : ""}`,
+        value: region.key,
+      }))}
       boardOptions={boardOptions}
       boardsLoading={boardsQuery.isLoading}
       canSubmit={canSubmit}
@@ -291,6 +305,11 @@ export function EmailCreate({ currentUserRole }: EmailCreateProps) {
   const previewPanel = (
     <EmailCreatePreview
       formState={formState}
+      versionLabel={
+        regions.length > 0
+          ? (regions.find((region) => region.key === formState.regionKey)?.name ?? "No region")
+          : formState.adaptationLabel || "Default"
+      }
       previewHTML={previewHTML}
       trimmedHTML={trimmedHTML}
     />

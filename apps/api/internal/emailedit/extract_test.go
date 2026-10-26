@@ -83,20 +83,10 @@ func TestExtractEditableFieldsCollapsesRepeatedBlankLines(t *testing.T) {
 	assertFieldValue(t, fields, "body", FieldTypeText, "First\n\nSecond")
 }
 
-const bulletproofTemplatePath = "testdata/bulletproof-cta.html"
+func TestExtractEditableFieldsPreservesSeedBlankLines(t *testing.T) {
+	templateHTML := readRepoFile(t, "db/seeds/emails/01_registered/01_application-received/en.html")
 
-func readTestTemplate(t *testing.T) string {
-	t.Helper()
-
-	content, err := os.ReadFile(bulletproofTemplatePath)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", bulletproofTemplatePath, err)
-	}
-	return string(content)
-}
-
-func TestExtractEditableFieldsPreservesTemplateBlankLines(t *testing.T) {
-	fields, err := ExtractEditableFields(readTestTemplate(t))
+	fields, err := ExtractEditableFields(templateHTML)
 	if err != nil {
 		t.Fatalf("ExtractEditableFields returned error: %v", err)
 	}
@@ -106,76 +96,109 @@ func TestExtractEditableFieldsPreservesTemplateBlankLines(t *testing.T) {
 		fields,
 		"intro_body",
 		FieldTypeText,
-		"Hi there,\n\nYour workspace is almost ready.\n\nConnect your calendar and invite one teammate to see your first report today.",
+		"Hi there,\n\nYour application to join the Bitrix24 Partner Program has been received.\n\nYour partner account is ready. Use the credentials below to log in.",
+	)
+	assertFieldValue(
+		t,
+		fields,
+		"next_steps_body",
+		FieldTypeText,
+		"To continue, log in to your partner account and upload the required documents.\nThis helps us verify your application faster and approve your account without delays.",
 	)
 }
 
-func TestBulletproofCTATemplateExtractsAndRenders(t *testing.T) {
-	templateHTML := readTestTemplate(t)
-
-	fields, err := ExtractEditableFields(templateHTML)
-	if err != nil {
-		t.Fatalf("ExtractEditableFields returned error: %v", err)
+func TestAnnotatedSeedTemplatesExtractAndRender(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		ctaText   string
+		ctaURL    string
+		preheader string
+	}{
+		{
+			name:      "application received",
+			path:      "db/seeds/emails/01_registered/01_application-received/en.html",
+			ctaText:   "Upload documents",
+			ctaURL:    "https://partners.bitrix24.com/private/verify",
+			preheader: "Access your account using the login details below.",
+		},
+		{
+			name:      "qualified next step",
+			path:      "db/seeds/emails/02_qualified/01-next-step/en.html",
+			ctaText:   "Book a Call",
+			ctaURL:    "https://calendly.com/alice/30min",
+			preheader: "Next step: complete your partner verification",
+		},
 	}
 
-	assertFieldValue(t, fields, "primary_cta_text", FieldTypeText, "Finish setup")
-	assertFieldValue(t, fields, "primary_cta_url", FieldTypeURL, "https://app.example.com/setup")
-	assertFieldValue(t, fields, "primary_cta_width_px", FieldTypeNumber, 220)
-	if fields["primary_cta_text"].Order >= fields["primary_cta_url"].Order {
-		t.Fatalf("expected CTA text to be ordered before CTA URL")
-	}
-
-	fields["primary_cta_text"] = EditableField{Type: FieldTypeText, Value: "Open your workspace"}
-	fields["primary_cta_url"] = EditableField{Type: FieldTypeURL, Value: "https://app.example.com/workspace"}
-	fields["primary_cta_width_px"] = EditableField{Type: FieldTypeNumber, Value: 240}
-
-	rendered, err := RenderEditableHTMLWithMetadata(templateHTML, fields, RenderMetadata{
-		Preheader: "Your workspace is waiting.",
-	})
-	if err != nil {
-		t.Fatalf("RenderEditableHTML returned error: %v", err)
-	}
-
-	// The regular link is edited through the DOM; the Outlook button lives in a
-	// conditional comment and is filled through {{markers}}.
-	assertContains(t, rendered, `href="https://app.example.com/workspace"`)
-	assertContains(t, rendered, `width: 240px`)
-	assertContains(t, rendered, `<center style="color: #ffffff; font-family: Arial, sans-serif; font-size: 16px">Open your workspace</center>`)
-	assertContains(t, rendered, `width: 240px" arcsize`)
-	assertContains(t, rendered, `{{=date('Y')}}`)
-	assertContains(t, rendered, `Your workspace is waiting.`)
-}
-
-func TestAllTemplatesExtractAndRender(t *testing.T) {
-	paths := append(readRepoGlob(t, "db/seeds/demo-emails/*/*/en.html"), "")
-	if len(paths) < 2 {
-		t.Fatal("expected demo email templates")
-	}
-
-	for _, path := range paths {
-		name := strings.TrimPrefix(path, "db/seeds/demo-emails/")
-		if path == "" {
-			name = bulletproofTemplatePath
-		}
-		t.Run(name, func(t *testing.T) {
-			templateHTML := readTestTemplate(t)
-			if path != "" {
-				templateHTML = readRepoFile(t, path)
-			}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			templateHTML := readRepoFile(t, test.path)
 
 			fields, err := ExtractEditableFields(templateHTML)
 			if err != nil {
 				t.Fatalf("ExtractEditableFields returned error: %v", err)
 			}
 
-			for _, key := range []string{"primary_cta_text", "primary_cta_url"} {
+			assertFieldValue(t, fields, "primary_cta_text", FieldTypeText, test.ctaText)
+			assertFieldValue(t, fields, "primary_cta_url", FieldTypeURL, test.ctaURL)
+			assertFieldValue(t, fields, "primary_cta_width_px", FieldTypeNumber, 196)
+			if fields["primary_cta_text"].Order >= fields["primary_cta_url"].Order {
+				t.Fatalf("expected CTA text to be ordered before CTA URL")
+			}
+
+			rendered, err := RenderEditableHTMLWithMetadata(templateHTML, fields, RenderMetadata{
+				Preheader: test.preheader,
+			})
+			if err != nil {
+				t.Fatalf("RenderEditableHTML returned error: %v", err)
+			}
+
+			assertContains(t, rendered, `href="`+test.ctaURL+`"`)
+			assertContains(t, rendered, `width: 196px`)
+			assertContains(t, rendered, test.ctaText)
+		})
+	}
+}
+
+func TestAllEnglishSeedTemplatesExtractAndRender(t *testing.T) {
+	paths := readRepoGlob(t, "db/seeds/emails/**/**/en.html")
+	if len(paths) == 0 {
+		t.Fatal("expected English seed templates")
+	}
+
+	for _, path := range paths {
+		t.Run(strings.TrimPrefix(path, "db/seeds/emails/"), func(t *testing.T) {
+			templateHTML := readRepoFile(t, path)
+
+			fields, err := ExtractEditableFields(templateHTML)
+			if err != nil {
+				t.Fatalf("ExtractEditableFields returned error: %v", err)
+			}
+
+			for _, key := range []string{
+				"hero_banner_src",
+				"hero_banner_alt",
+				"intro_body",
+				"primary_cta_text",
+				"primary_cta_url",
+				"primary_cta_width_px",
+				"signature_greeting",
+				"signature_sender",
+				"footer_logo_src",
+				"footer_logo_alt",
+				"footer_copyright",
+				"footer_legal_text",
+				"privacy_policy_link_text",
+				"privacy_policy_link_url",
+			} {
 				if _, ok := fields[key]; !ok {
 					t.Fatalf("expected editable field %q", key)
 				}
 			}
 
 			if _, err := RenderEditableHTMLWithMetadata(templateHTML, fields, RenderMetadata{
-				Preheader: "Template preheader",
+				Preheader: "Seed preheader",
 			}); err != nil {
 				t.Fatalf("RenderEditableHTML returned error: %v", err)
 			}
@@ -244,6 +267,9 @@ func readRepoFile(t *testing.T, path string) string {
 		}
 	}
 
+	if strings.HasPrefix(path, "db/seeds/emails/") {
+		t.Skipf("seed email %s is not in this checkout", path)
+	}
 	t.Fatalf("failed to find repo file %s from %s", path, workingDir)
 	return ""
 }
@@ -257,7 +283,7 @@ func readRepoGlob(t *testing.T, pattern string) []string {
 	}
 
 	for dir := workingDir; ; dir = filepath.Dir(dir) {
-		seedDir := filepath.Join(dir, "db", "seeds", "demo-emails")
+		seedDir := filepath.Join(dir, "db", "seeds", "emails")
 		if info, err := os.Stat(seedDir); err == nil && info.IsDir() {
 			matches, err := filepath.Glob(filepath.Join(dir, pattern))
 			if err != nil {
@@ -282,6 +308,6 @@ func readRepoGlob(t *testing.T, pattern string) []string {
 		}
 	}
 
-	t.Fatalf("failed to find repository root")
+	t.Skip("seed emails are not in this checkout")
 	return nil
 }

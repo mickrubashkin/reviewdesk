@@ -7,6 +7,7 @@ require (
 	github.com/go-chi/httprate v0.16.1
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joho/godotenv v1.5.1
+	github.com/yuin/goldmark v1.7.13
 	golang.org/x/net v0.53.0
 )
 

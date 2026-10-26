@@ -3,6 +3,7 @@ package emails
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -40,8 +41,7 @@ func listEmailVersionsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -113,8 +113,7 @@ func getEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -138,8 +137,7 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 
@@ -158,13 +156,19 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		var currentTemplateHTML string
 		var currentEditableFieldsJSON []byte
 		var currentReviewStatus string
+		var language string
+		var board string
+		var currentLayoutJSON []byte
+		var translationOf *string
 		err = tx.QueryRow(r.Context(), `
-			SELECT slug, title, subject, preheader, original_html, template_html, editable_fields, review_status
+			SELECT slug, lower(language), coalesce(sequence, ''), title, subject, preheader, original_html, template_html, editable_fields, review_status,
+				layout, translation_of
 			FROM emails
 			WHERE id = $1
 				AND archived_at IS NULL
 			FOR UPDATE;
-		`, id).Scan(&slug, &currentTitle, &currentSubject, &currentPreheader, &currentOriginalHTML, &currentTemplateHTML, &currentEditableFieldsJSON, &currentReviewStatus)
+		`, id).Scan(&slug, &language, &board, &currentTitle, &currentSubject, &currentPreheader, &currentOriginalHTML, &currentTemplateHTML, &currentEditableFieldsJSON, &currentReviewStatus,
+			&currentLayoutJSON, &translationOf)
 		if err != nil {
 			http.Error(w, "email not found", http.StatusNotFound)
 			return
@@ -177,22 +181,82 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		var originalHTML string
 		var templateHTML string
 		var editableFieldsJSON []byte
+		var snapshotLayoutJSON []byte
 		err = tx.QueryRow(r.Context(), `
-			SELECT version_number, title, subject, preheader, original_html, template_html, editable_fields
+			SELECT version_number, title, subject, preheader, original_html, template_html, editable_fields, layout
 			FROM email_versions
 			WHERE id = $1
 				AND email_id = $2;
-		`, versionID, id).Scan(&snapshotVersionNumber, &title, &subject, &preheader, &originalHTML, &templateHTML, &editableFieldsJSON)
+		`, versionID, id).Scan(&snapshotVersionNumber, &title, &subject, &preheader, &originalHTML, &templateHTML, &editableFieldsJSON, &snapshotLayoutJSON)
 		if err != nil {
 			http.Error(w, "email version not found", http.StatusNotFound)
 			return
 		}
+
+		// A version built from blocks comes back with its blocks and the
+		// library as it is now; a translation keeps its master's blocks.
+		currentLayout, errCurrent := parseLayout(currentLayoutJSON)
+		layout, errSnapshot := parseLayout(snapshotLayoutJSON)
+		if errCurrent != nil || errSnapshot != nil {
+			http.Error(w, "invalid email version", http.StatusInternalServerError)
+			return
+		}
+		if layout != nil && translationOf != nil {
+			var masterLayoutJSON []byte
+			if err := tx.QueryRow(r.Context(), `SELECT layout FROM emails WHERE id = $1;`, *translationOf).Scan(&masterLayoutJSON); err != nil {
+				http.Error(w, "failed to restore email version", http.StatusInternalServerError)
+				return
+			}
+			if masterLayout, err := parseLayout(masterLayoutJSON); err == nil && masterLayout != nil {
+				layout = masterLayout
+			}
+		}
+		if layout != nil {
+			var snapshotFields emailedit.EditableFields
+			if err := json.Unmarshal(editableFieldsJSON, &snapshotFields); err != nil {
+				http.Error(w, "invalid email version", http.StatusInternalServerError)
+				return
+			}
+			var builtFields emailedit.EditableFields
+			templateHTML, builtFields, err = buildFromLayout(r.Context(), tx, layout, language, snapshotFields)
+			var contentErr emailContentError
+			if errors.As(err, &contentErr) {
+				http.Error(w, contentErr.message, contentErr.status)
+				return
+			}
+			if err != nil {
+				http.Error(w, "failed to restore email version", http.StatusInternalServerError)
+				return
+			}
+			originalHTML = templateHTML
+			if editableFieldsJSON, err = builtFields.JSON(); err != nil {
+				http.Error(w, "failed to restore email version", http.StatusInternalServerError)
+				return
+			}
+		}
+		layoutChanged := !sameLayout(currentLayout, layout)
+		nextLayoutJSON, err := layoutJSON(layout)
+		if err != nil {
+			http.Error(w, "failed to restore email version", http.StatusInternalServerError)
+			return
+		}
+
 		htmlChanged := originalHTML != currentOriginalHTML || templateHTML != currentTemplateHTML
-		if htmlChanged && !auth.IsSuperAdmin(user) {
+		// Blocks are for whoever manages the board; the email's own HTML is
+		// for super admins.
+		builtFromBlocks := layout != nil && currentLayout != nil
+		if htmlChanged && !builtFromBlocks && !auth.IsSuperAdmin(user) {
 			http.Error(w, "restoring HTML changes requires super admin", http.StatusForbidden)
 			return
 		}
 
+		// A restored field stays shared only while its value still matches
+		// the shared text.
+		editableFieldsJSON, err = linkSharedFieldsJSON(r.Context(), tx, language, board, editableFieldsJSON, false)
+		if err != nil {
+			http.Error(w, "failed to restore email version", http.StatusInternalServerError)
+			return
+		}
 		var editableFields emailedit.EditableFields
 		if err := json.Unmarshal(editableFieldsJSON, &editableFields); err != nil {
 			http.Error(w, "invalid email version", http.StatusInternalServerError)
@@ -200,6 +264,7 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		renderedHTML, err := emailedit.RenderEditableHTMLWithMetadata(templateHTML, editableFields, emailedit.RenderMetadata{
 			Preheader: stringFromPointer(preheader),
+			Subject:   stringFromPointer(subject),
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "invalid editable fields for email version %s: %v\n", versionID, err)
@@ -238,11 +303,14 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "failed to restore email version", http.StatusInternalServerError)
 			return
 		}
-		if htmlChanged {
+		if htmlChanged && layout == nil {
 			changes["original_html"] = map[string]any{
 				"before": currentOriginalHTML,
 				"after":  originalHTML,
 			}
+		}
+		if layoutChanged {
+			changes["layout"] = layoutChange(currentLayout, layout)
 		}
 		if len(changes) == 0 {
 			if err := insertEmailVersion(r.Context(), tx, emailVersionSnapshot{
@@ -309,7 +377,7 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		nextReviewStatus := currentReviewStatus
 		approvalBecameStale := isApprovedEmailReviewStatus(currentReviewStatus)
 		if approvalBecameStale {
-			nextReviewStatus = "changes_requested"
+			nextReviewStatus = "draft"
 		}
 
 		result, err := tx.Exec(r.Context(), `
@@ -324,10 +392,11 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				original_html = $9,
 				template_html = $10,
 				review_status = $11,
+				layout = $12::jsonb,
 				updated_at = now()
 			WHERE id = $1
 				AND archived_at IS NULL;
-		`, id, title, subject, preheader, editableFieldsJSON, contentPartsJSON, reviewHTML, renderedBodyText, originalHTML, templateHTML, nextReviewStatus)
+		`, id, title, subject, preheader, editableFieldsJSON, contentPartsJSON, reviewHTML, renderedBodyText, originalHTML, templateHTML, nextReviewStatus, nextLayoutJSON)
 		if err != nil {
 			http.Error(w, "failed to restore email version", http.StatusInternalServerError)
 			return
@@ -414,6 +483,18 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			}
 		}
 
+		if layoutChanged && translationOf == nil {
+			if err := syncTranslationLayouts(r.Context(), tx, user, id); err != nil {
+				var contentErr emailContentError
+				if errors.As(err, &contentErr) {
+					http.Error(w, contentErr.message, contentErr.status)
+					return
+				}
+				http.Error(w, "failed to update translations", http.StatusInternalServerError)
+				return
+			}
+		}
+
 		if err := tx.Commit(r.Context()); err != nil {
 			http.Error(w, "failed to restore email version", http.StatusInternalServerError)
 			return
@@ -425,7 +506,7 @@ func restoreEmailVersionHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 func loadEmailVersionDetail(r *http.Request, dbpool *pgxpool.Pool, emailID string, versionID string) (EmailVersionDetail, error) {
 	var version EmailVersionDetail
-	var editableFieldsJSON []byte
+	var editableFieldsJSON, layoutRaw []byte
 	err := dbpool.QueryRow(r.Context(), `
 		SELECT
 			email_versions.id,
@@ -445,7 +526,8 @@ func loadEmailVersionDetail(r *http.Request, dbpool *pgxpool.Pool, emailID strin
 			email_versions.preheader,
 			email_versions.original_html,
 			email_versions.template_html,
-			email_versions.editable_fields
+			email_versions.editable_fields,
+			email_versions.layout
 		FROM email_versions
 		JOIN emails ON emails.id = email_versions.email_id
 			AND emails.archived_at IS NULL
@@ -471,8 +553,12 @@ func loadEmailVersionDetail(r *http.Request, dbpool *pgxpool.Pool, emailID strin
 		&version.OriginalHTML,
 		&version.TemplateHTML,
 		&editableFieldsJSON,
+		&layoutRaw,
 	)
 	if err != nil {
+		return EmailVersionDetail{}, err
+	}
+	if version.Layout, err = parseLayout(layoutRaw); err != nil {
 		return EmailVersionDetail{}, err
 	}
 
@@ -482,6 +568,7 @@ func loadEmailVersionDetail(r *http.Request, dbpool *pgxpool.Pool, emailID strin
 	}
 	renderedHTML, err := emailedit.RenderEditableHTMLWithMetadata(version.TemplateHTML, editableFields, emailedit.RenderMetadata{
 		Preheader: stringFromPointer(version.Preheader),
+		Subject:   stringFromPointer(version.Subject),
 	})
 	if err != nil {
 		return EmailVersionDetail{}, err
@@ -513,7 +600,8 @@ func insertEmailVersion(ctx context.Context, db emailEventExecutor, snapshot ema
 			editable_fields,
 			changed_field_count,
 			changed_metadata_count,
-			html_changed
+			html_changed,
+			layout
 		)
 		SELECT
 			$1,
@@ -530,7 +618,9 @@ func insertEmailVersion(ctx context.Context, db emailEventExecutor, snapshot ema
 			$11::jsonb,
 			$12,
 			$13,
-			$14
+			$14,
+			-- The version keeps the blocks the email has now.
+			(SELECT layout FROM emails WHERE id = $1)
 		FROM email_versions
 		WHERE email_id = $1;
 	`,

@@ -22,10 +22,13 @@ type createEmailCommentRequest struct {
 	EndOffset    int    `json:"end_offset"`
 	Body         string `json:"body"`
 	Severity     string `json:"severity"`
+	// MentionUserIDs are the people @mentioned in body.
+	MentionUserIDs []string `json:"mention_user_ids"`
 }
 
 type createCommentMessageRequest struct {
-	Body string `json:"body"`
+	Body           string   `json:"body"`
+	MentionUserIDs []string `json:"mention_user_ids"`
 }
 
 func RegisterCommentRoutes(r chi.Router, dbpool *pgxpool.Pool) {
@@ -33,6 +36,7 @@ func RegisterCommentRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Post("/api/emails/{id}/comments", createEmailCommentHandler(dbpool))
 	r.Post("/api/comments/{id}/messages", createCommentMessageHandler(dbpool))
 	r.Patch("/api/comments/{id}/resolve", resolveCommentHandler(dbpool))
+	registerNotificationRoutes(r, dbpool)
 }
 
 func listEmailCommentsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
@@ -142,6 +146,11 @@ func createEmailCommentHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid comment payload", http.StatusBadRequest)
 			return
 		}
+		mentionIDs, err := normalizeMentionIDs(payload.MentionUserIDs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		tx, err := dbpool.Begin(r.Context())
 		if err != nil {
@@ -150,13 +159,17 @@ func createEmailCommentHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(r.Context())
 
-		emailSlug, emailTitle, err := loadEmailEventTarget(r.Context(), tx, emailID)
+		emailSlug, emailTitle, archived, err := loadCommentTarget(r.Context(), tx, emailID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "email not found", http.StatusNotFound)
 			return
 		}
 		if err != nil {
 			http.Error(w, "failed to create comment", http.StatusInternalServerError)
+			return
+		}
+		if archived {
+			http.Error(w, errArchivedEmail, http.StatusConflict)
 			return
 		}
 
@@ -234,22 +247,32 @@ func createEmailCommentHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		mentionEmails, notificationIDs, err := saveMentions(r.Context(), tx, user, emailID, comment.ID, message.ID, message.Body, mentionIDs)
+		if err != nil {
+			http.Error(w, "failed to save mentions", http.StatusInternalServerError)
+			return
+		}
+		message.MentionEmails = mentionEmails
+
 		if Logger != nil {
 			if err := Logger.LogEvent(r.Context(), tx, user, "comment_created", emailID, emailSlug, emailTitle, map[string]any{
 				"comment_id":    comment.ID,
 				"review_block":  comment.ReviewBlock,
 				"selected_text": comment.SelectedText,
 				"severity":      comment.Severity,
+				"mentions":      mentionEmails,
 			}); err != nil {
-			http.Error(w, "failed to record comment event", http.StatusInternalServerError)
-			return
-		}
+				http.Error(w, "failed to record comment event", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		if err := tx.Commit(r.Context()); err != nil {
 			http.Error(w, "failed to create comment", http.StatusInternalServerError)
 			return
 		}
+
+		sendMentionEmails(dbpool, r, notificationIDs)
 
 		comment.AuthorEmail = &user.Email
 		message.AuthorEmail = &user.Email
@@ -280,6 +303,11 @@ func createCommentMessageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid comment message payload", http.StatusBadRequest)
 			return
 		}
+		mentionIDs, err := normalizeMentionIDs(payload.MentionUserIDs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		tx, err := dbpool.Begin(r.Context())
 		if err != nil {
@@ -293,12 +321,14 @@ func createCommentMessageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		var emailSlug string
 		var emailTitle string
 		var reviewBlock string
+		var archived bool
 		err = tx.QueryRow(r.Context(), `
-			SELECT comments.status, comments.email_id, emails.slug, emails.title, comments.review_block
+			SELECT comments.status, comments.email_id, emails.slug, emails.title, comments.review_block,
+				emails.archived_at IS NOT NULL
 			FROM comments
 			INNER JOIN emails ON emails.id = comments.email_id
 			WHERE comments.id = $1;
-		`, commentID).Scan(&status, &emailID, &emailSlug, &emailTitle, &reviewBlock)
+		`, commentID).Scan(&status, &emailID, &emailSlug, &emailTitle, &reviewBlock, &archived)
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "comment not found", http.StatusNotFound)
 			return
@@ -309,6 +339,10 @@ func createCommentMessageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		if status != "open" {
 			http.Error(w, "comment is resolved", http.StatusConflict)
+			return
+		}
+		if archived {
+			http.Error(w, errArchivedEmail, http.StatusConflict)
 			return
 		}
 
@@ -334,21 +368,31 @@ func createCommentMessageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		mentionEmails, notificationIDs, err := saveMentions(r.Context(), tx, user, emailID, commentID, message.ID, message.Body, mentionIDs)
+		if err != nil {
+			http.Error(w, "failed to save mentions", http.StatusInternalServerError)
+			return
+		}
+		message.MentionEmails = mentionEmails
+
 		if Logger != nil {
 			if err := Logger.LogEvent(r.Context(), tx, user, "comment_replied", emailID, emailSlug, emailTitle, map[string]any{
 				"comment_id":   commentID,
 				"message_id":   message.ID,
 				"review_block": reviewBlock,
 				"body":         message.Body,
+				"mentions":     mentionEmails,
 			}); err != nil {
-			http.Error(w, "failed to record comment event", http.StatusInternalServerError)
-			return
-		}
+				http.Error(w, "failed to record comment event", http.StatusInternalServerError)
+				return
+			}
 		}
 		if err := tx.Commit(r.Context()); err != nil {
 			http.Error(w, "failed to create comment message", http.StatusInternalServerError)
 			return
 		}
+
+		sendMentionEmails(dbpool, r, notificationIDs)
 
 		message.AuthorEmail = &user.Email
 		w.Header().Set("Content-Type", "application/json")
@@ -375,12 +419,13 @@ func resolveCommentHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		defer tx.Rollback(r.Context())
 
 		var authorID *string
+		var emailID string
 		err = tx.QueryRow(r.Context(), `
-			SELECT user_id
+			SELECT user_id, email_id::text
 			FROM comments
 			WHERE id = $1
 			FOR UPDATE;
-		`, commentID).Scan(&authorID)
+		`, commentID).Scan(&authorID, &emailID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Error(w, "comment not found", http.StatusNotFound)
@@ -389,8 +434,16 @@ func resolveCommentHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "failed to resolve comment", http.StatusInternalServerError)
 			return
 		}
-		if !canResolveComment(user, authorID) {
-			http.Error(w, "only the comment author or an admin can resolve this comment", http.StatusForbidden)
+		allowed := canResolveComment(user, authorID)
+		if !allowed {
+			allowed, err = coreauth.CanManageEmail(r.Context(), tx, user, emailID)
+			if err != nil {
+				http.Error(w, "failed to resolve comment", http.StatusInternalServerError)
+				return
+			}
+		}
+		if !allowed {
+			http.Error(w, "only the comment author or a board admin can resolve this comment", http.StatusForbidden)
 			return
 		}
 
@@ -463,9 +516,9 @@ func resolveCommentHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				"review_block": comment.ReviewBlock,
 				"severity":     comment.Severity,
 			}); err != nil {
-			http.Error(w, "failed to record comment event", http.StatusInternalServerError)
-			return
-		}
+				http.Error(w, "failed to record comment event", http.StatusInternalServerError)
+				return
+			}
 		}
 		if err := tx.Commit(r.Context()); err != nil {
 			http.Error(w, "failed to resolve comment", http.StatusInternalServerError)
@@ -525,7 +578,13 @@ func attachCommentMessages(ctx context.Context, dbpool *pgxpool.Pool, comments [
 			authors.email AS author_email,
 			comment_messages.body,
 			comment_messages.created_at,
-			comment_messages.updated_at
+			comment_messages.updated_at,
+			COALESCE((
+				SELECT array_agg(lower(mentioned.email) ORDER BY lower(mentioned.email))
+				FROM comment_mentions
+				INNER JOIN users AS mentioned ON mentioned.id = comment_mentions.user_id
+				WHERE comment_mentions.message_id = comment_messages.id
+			), '{}') AS mention_emails
 		FROM comment_messages
 		LEFT JOIN users AS authors ON authors.id = comment_messages.user_id
 		WHERE comment_messages.comment_id::text = ANY($1)
@@ -546,6 +605,7 @@ func attachCommentMessages(ctx context.Context, dbpool *pgxpool.Pool, comments [
 			&message.Body,
 			&message.CreatedAt,
 			&message.UpdatedAt,
+			&message.MentionEmails,
 		); err != nil {
 			return err
 		}
@@ -559,14 +619,26 @@ func attachCommentMessages(ctx context.Context, dbpool *pgxpool.Pool, comments [
 	return rows.Err()
 }
 
-func loadEmailEventTarget(ctx context.Context, db EmailEventExecutor, emailID string) (slug string, title string, err error) {
+// errArchivedEmail refuses a new comment or reply on an archived email: it
+// is history, read-only until restored.
+const errArchivedEmail = "the email is archived: restore it to comment"
+
+// loadCommentTarget reads what the comment events name the email by, and
+// whether it is archived.
+func loadCommentTarget(ctx context.Context, db EmailEventExecutor, emailID string) (slug string, title string, archived bool, err error) {
 	err = db.QueryRow(ctx, `
-		SELECT slug, title
+		SELECT slug, title, archived_at IS NOT NULL
 		FROM emails
 		WHERE id = $1;
-	`, emailID).Scan(&slug, &title)
-	if err != nil {
-		return "", "", err
+	`, emailID).Scan(&slug, &title, &archived)
+	return slug, title, archived, err
+}
+
+// sendMentionEmails emails the new mention notifications in the background,
+// after the request's transaction is committed.
+func sendMentionEmails(dbpool *pgxpool.Pool, r *http.Request, notificationIDs []string) {
+	if len(notificationIDs) == 0 {
+		return
 	}
-	return slug, title, err
+	go deliverMentionEmails(context.WithoutCancel(r.Context()), dbpool, notificationIDs)
 }

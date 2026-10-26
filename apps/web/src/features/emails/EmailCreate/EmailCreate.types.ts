@@ -12,6 +12,9 @@ export type CreateEmailFormState = {
   language: string;
   variant: EmailVariant;
   adaptationLabel: string;
+  // A region of the board; on a board with regions it replaces the
+  // adaptation.
+  regionKey: string;
   originalHTML: string;
 };
 
@@ -38,5 +41,6 @@ export const initialFormState: CreateEmailFormState = {
   language: "en",
   variant: "v1",
   adaptationLabel: "Default",
+  regionKey: "",
   originalHTML: "",
 };

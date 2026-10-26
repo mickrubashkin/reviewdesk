@@ -8,8 +8,8 @@ import (
 const robotHTML = `<!doctype html><html lang="pt-BR"><head><title>Bitrix24: Follow-up da sua candidatura</title></head><body>
 <div style="display:none"><span data-email-preheader="">Veja os próximos passos</span></div>
 <table><tr><td data-edit-text="intro_body">Olá!<br>Fique à vontade para <strong><a href="https://calendly.com/x">agendar</a></strong>.</td></tr>
-<tr><td><strong data-edit-text="signature_sender">Gustavo</strong></td></tr>
-<tr><td data-edit-text="footer_copyright">© {{=date('Y')}} Example.</td></tr></table></body></html>`
+<tr><td><strong data-edit-text="signature_sender">Diego</strong></td></tr>
+<tr><td data-edit-text="footer_copyright">© {{=date('Y')}} Acme.</td></tr></table></body></html>`
 
 func TestDetectImportedHTML(t *testing.T) {
 	detection, err := detectImportedHTML(robotHTML)

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { Alert, Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 
 import { ApiError } from "../../../shared/api";
 import type { Board, CreateBoardPayload } from "../../emails/types";
@@ -21,6 +21,7 @@ export function CreateBoardModal({
 }) {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
+  const [copyEmails, setCopyEmails] = useState(true);
   const [nameError, setNameError] = useState<string | null>(null);
   const isConflict = error instanceof ApiError && error.status === 409;
 
@@ -38,6 +39,7 @@ export function CreateBoardModal({
         key: key.trim() || undefined,
         name: trimmedName,
         source_board_key: sourceBoard.key,
+        copy_emails: copyEmails,
       });
     } catch {
       // React Query stores the error; keep the modal open and show it inline.
@@ -82,6 +84,13 @@ export function CreateBoardModal({
               onResetError();
               setKey(event.currentTarget.value);
             }}
+          />
+          <Checkbox
+            checked={copyEmails}
+            description="Same slots, timing and conditions. Translations, old versions, branches, portal and upload marks and comments are not copied."
+            disabled={isSubmitting}
+            label={`Copy the EN emails of ${sourceBoard.name} as drafts`}
+            onChange={(event) => setCopyEmails(event.currentTarget.checked)}
           />
           <Group justify="flex-end" mt="xs">
             <Button

@@ -8,6 +8,7 @@ import {
   Group,
   List,
   NumberInput,
+  SegmentedControl,
   Select,
   Stack,
   Switch,
@@ -23,11 +24,12 @@ import { HouseIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
+import { useBlockCatalog, useDefaultLayout } from "../../blocks/api";
 import { fetchBoards } from "../../boards/api";
 import { createSlot, fetchEmails, inspectEmailHTML } from "../../emails/api";
 import { formatStageName } from "../../emails/stages";
 import { decidePortalGroup, reconstructPortalGroup, type PortalReconstruction } from "../../portal/api";
-import type { AuthUser, EmailHTMLInspection } from "../../emails/types";
+import type { AuthUser, EmailHTMLInspection, LayoutItem } from "../../emails/types";
 
 import {
   effectivePreheader,
@@ -39,12 +41,14 @@ import {
   type SlotLanguage,
 } from "./slotLanguages";
 import styles from "./SlotCreate.module.css";
+import { BlocksSlotPanel, type BlocksDraft } from "./BlocksSlotPanel";
+import { canManageBoard, managesAnyBoard } from "../../emails/permissions";
 
 type PortalSource = { groupID: string; language: SlotLanguage | null; reconstruction: PortalReconstruction };
 
 // SlotCreate optionally starts from emails sent on the portal
 // (?portal_group=…): they are rebuilt on the board template first.
-export function SlotCreate({ currentUserRole }: { currentUserRole: AuthUser["role"] }) {
+export function SlotCreate({ currentUser }: { currentUser: AuthUser }) {
   const [searchParams] = useSearchParams();
   const [groupIDs] = useState(() => searchParams.getAll("portal_group"));
   const queries = useQueries({
@@ -83,7 +87,7 @@ export function SlotCreate({ currentUserRole }: { currentUserRole: AuthUser["rol
 
   return (
     <SlotCreateForm
-      currentUserRole={currentUserRole}
+      currentUser={currentUser}
       failedSources={queries.filter((q) => q.isError).length}
       initialDrafts={initialDrafts}
       portalSources={sources}
@@ -92,17 +96,17 @@ export function SlotCreate({ currentUserRole }: { currentUserRole: AuthUser["rol
 }
 
 function SlotCreateForm({
-  currentUserRole,
+  currentUser,
   failedSources,
   initialDrafts,
   portalSources,
 }: {
-  currentUserRole: AuthUser["role"];
+  currentUser: AuthUser;
   failedSources: number;
   initialDrafts: Record<SlotLanguage, LanguageDraft>;
   portalSources: PortalSource[];
 }) {
-  const canCreate = currentUserRole === "admin" || currentUserRole === "super_admin";
+  const canCreate = managesAnyBoard(currentUser);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -118,11 +122,24 @@ function SlotCreateForm({
   const [drafts, setDrafts] = useState<Record<SlotLanguage, LanguageDraft>>(initialDrafts);
   const [activeTab, setActiveTab] = useState<string | null>("en");
   const [error, setError] = useState<string | null>(null);
+  // A new slot is built from blocks; pasted HTML is for exceptions and for
+  // emails rebuilt from the portal.
+  const [mode, setMode] = useState<"blocks" | "html">(portalSources.length > 0 ? "html" : "blocks");
+  // null follows the usual blocks of the selected stage.
+  const [editedLayout, setEditedLayout] = useState<LayoutItem[] | null>(null);
+  const [blockLanguages, setBlockLanguages] = useState<SlotLanguage[]>(["en"]);
+  const [blockDrafts, setBlockDrafts] = useState(
+    () => Object.fromEntries(slotLanguages.map((l) => [l, { subject: "", preheader: "" }])) as Record<SlotLanguage, BlocksDraft>
+  );
 
   const boardsQuery = useQuery({ queryKey: ["boards"], queryFn: fetchBoards, enabled: canCreate });
   const emailsQuery = useQuery({ queryKey: ["emails"], queryFn: () => fetchEmails(), enabled: canCreate });
 
-  const boards = boardsQuery.data ?? [];
+  // Board managers create slots on their boards only.
+  const boards = useMemo(
+    () => (boardsQuery.data ?? []).filter((b) => canManageBoard(currentUser, b.key)),
+    [boardsQuery.data, currentUser]
+  );
   const selectedBoard =
     boards.find((b) => b.key === boardKey) ?? boards.find((b) => b.key === "onboarding") ?? boards[0];
   const selectedStage =
@@ -147,6 +164,9 @@ function SlotCreateForm({
     () => [...new Set(emails.map((e) => e.send_timing).filter((t): t is string => Boolean(t)))].sort(),
     [emails]
   );
+  const blockCatalogQuery = useBlockCatalog(canCreate && mode === "blocks");
+  const defaultLayoutQuery = useDefaultLayout(selectedBoard?.key, selectedStage, canCreate && mode === "blocks");
+  const layout = editedLayout ?? defaultLayoutQuery.data;
   const positionTaken =
     !autoPosition && typeof sortOrder === "number" && stageSlots.some(([order]) => order === sortOrder);
 
@@ -211,12 +231,15 @@ function SlotCreateForm({
     );
   }
 
-  const filledLanguages = slotLanguages.filter((l) => htmlByLanguage[l]);
+  const filledLanguages = mode === "blocks" ? blockLanguages : slotLanguages.filter((l) => htmlByLanguage[l]);
+  const contentReady =
+    mode === "blocks"
+      ? Boolean(layout && layout.length > 0)
+      : htmlByLanguage.en.length > 0 && !filledLanguages.some((l) => inspectionFailed[l]);
   const canSubmit =
     Boolean(selectedBoard && selectedStage) &&
     title.trim().length > 0 &&
-    htmlByLanguage.en.length > 0 &&
-    !filledLanguages.some((l) => inspectionFailed[l]) &&
+    contentReady &&
     !positionTaken &&
     (autoPosition || typeof sortOrder === "number") &&
     !createMutation.isPending;
@@ -227,13 +250,28 @@ function SlotCreateForm({
   const submit = () => {
     if (!canSubmit || !selectedBoard || !selectedStage) return;
     setError(null);
-    createMutation.mutate({
+    const slot = {
       sequence: selectedBoard.key,
       stage: selectedStage,
       title: title.trim(),
       sort_order: autoPosition ? undefined : (sortOrder as number),
       send_timing: sendTiming.trim() || undefined,
       send_condition: sendCondition.trim() || undefined,
+    };
+    if (mode === "blocks") {
+      createMutation.mutate({
+        ...slot,
+        layout,
+        emails: blockLanguages.map((language) => ({
+          language,
+          subject: blockDrafts[language].subject.trim() || undefined,
+          preheader: blockDrafts[language].preheader.trim() || undefined,
+        })),
+      });
+      return;
+    }
+    createMutation.mutate({
+      ...slot,
       emails: filledLanguages.map((language) => ({
         language,
         original_html: htmlByLanguage[language],
@@ -366,32 +404,60 @@ function SlotCreateForm({
         </section>
 
         <section className={styles.panel}>
-          <Tabs value={activeTab} onChange={setActiveTab}>
-            <Tabs.List>
+          <SegmentedControl
+            data={[
+              { label: "From blocks", value: "blocks" },
+              { label: "Paste HTML", value: "html" },
+            ]}
+            mb="md"
+            value={mode}
+            onChange={(value) => setMode(value as "blocks" | "html")}
+          />
+          {mode === "blocks" && selectedBoard ? (
+            <BlocksSlotPanel
+              board={selectedBoard.key}
+              catalog={blockCatalogQuery.data ?? []}
+              drafts={blockDrafts}
+              isDefault={editedLayout === null}
+              languages={blockLanguages}
+              layout={layout}
+              layoutError={defaultLayoutQuery.isError}
+              onDraftChange={(language, patch) =>
+                setBlockDrafts((current) => ({ ...current, [language]: { ...current[language], ...patch } }))
+              }
+              onLanguagesChange={setBlockLanguages}
+              onLayoutChange={setEditedLayout}
+              onLayoutReset={() => setEditedLayout(null)}
+            />
+          ) : null}
+          {mode === "html" ? (
+            <Tabs value={activeTab} onChange={setActiveTab}>
+              <Tabs.List>
+                {slotLanguages.map((language) => (
+                  <Tabs.Tab
+                    key={language}
+                    rightSection={<LanguageStatus filled={Boolean(htmlByLanguage[language])} warnings={tabWarningCount(language)} failed={inspectionFailed[language]} />}
+                    value={language}
+                  >
+                    {language.toUpperCase()}
+                    {language === "en" ? " *" : ""}
+                  </Tabs.Tab>
+                ))}
+              </Tabs.List>
               {slotLanguages.map((language) => (
-                <Tabs.Tab
-                  key={language}
-                  rightSection={<LanguageStatus filled={Boolean(htmlByLanguage[language])} warnings={tabWarningCount(language)} failed={inspectionFailed[language]} />}
-                  value={language}
-                >
-                  {language.toUpperCase()}
-                  {language === "en" ? " *" : ""}
-                </Tabs.Tab>
+                <Tabs.Panel key={language} pt="md" value={language}>
+                  <LanguagePanel
+                    draft={drafts[language]}
+                    failed={inspectionFailed[language]}
+                    inspection={inspections[language]}
+                    language={language}
+                    slotWarnings={slotWarnings(language, inspections[language], inspections.en)}
+                    onChange={(patch) => updateDraft(language, patch)}
+                  />
+                </Tabs.Panel>
               ))}
-            </Tabs.List>
-            {slotLanguages.map((language) => (
-              <Tabs.Panel key={language} pt="md" value={language}>
-                <LanguagePanel
-                  draft={drafts[language]}
-                  failed={inspectionFailed[language]}
-                  inspection={inspections[language]}
-                  language={language}
-                  slotWarnings={slotWarnings(language, inspections[language], inspections.en)}
-                  onChange={(patch) => updateDraft(language, patch)}
-                />
-              </Tabs.Panel>
-            ))}
-          </Tabs>
+            </Tabs>
+          ) : null}
         </section>
       </main>
     </div>

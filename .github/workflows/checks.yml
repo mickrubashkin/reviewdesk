@@ -13,6 +13,22 @@ jobs:
     defaults:
       run:
         working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: email_review_tool_test
+          POSTGRES_USER: email_review
+          POSTGRES_PASSWORD: email_review
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U email_review -d email_review_tool_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://email_review:email_review@localhost:5432/email_review_tool_test?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,6 +38,11 @@ jobs:
         with:
           go-version-file: apps/api/go.mod
           cache-dependency-path: apps/api/go.sum
+
+      - name: Migrate test database
+        run: |
+          go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
+          goose -dir ../../db/migrations postgres "$TEST_DATABASE_URL" up
 
       - name: Test
         run: go test ./...

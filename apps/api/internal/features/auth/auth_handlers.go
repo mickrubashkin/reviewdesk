@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -18,13 +19,14 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	coreauth "github.com/mickrubashkin/reviewdesk/apps/api/internal/core/auth"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/demo"
 )
 
 const sessionCookieName = "email_review_session"
-const demoLoginEmail = "demo-reviewer@example.com"
 
 // Context key moved to core/auth
 
@@ -41,13 +43,21 @@ func RegisterAuthRoutes(r chi.Router, dbpool *pgxpool.Pool, emailSender EmailSen
 	r.Post("/api/auth/request-code", requestOTPCodeHandler(dbpool, emailSender, newOTPRequestLimiter()))
 	r.Post("/api/auth/verify-code", verifyOTPCodeHandler(dbpool))
 	r.Post("/api/auth/dev-login", devLoginHandler(dbpool))
-	r.Post("/api/auth/demo-login", demoLoginHandler(dbpool))
+	r.Post("/api/auth/demo-login", demoLoginHandler(dbpool, newDemoLoginLimiter()))
 	r.Get("/api/auth/events", listAuthEventsHandler(dbpool))
 	r.Get("/api/auth/me", meHandler(dbpool))
 	r.Post("/api/auth/logout", logoutHandler(dbpool))
+	r.Get("/api/users/names", listUserNamesHandler(dbpool))
 	r.Get("/api/admin/users", listAdminUsersHandler(dbpool))
 	r.Post("/api/admin/users", createAdminUserHandler(dbpool))
 	r.Patch("/api/admin/users/{id}/role", updateAdminUserRoleHandler(dbpool))
+	r.Patch("/api/admin/users/{id}/languages", updateAdminUserLanguagesHandler(dbpool))
+	r.Patch("/api/admin/users/{id}/boards", updateAdminUserBoardsHandler(dbpool))
+	r.Patch("/api/admin/users/{id}/name", updateAdminUserNameHandler(dbpool))
+	r.Post("/api/admin/users/{id}/merge", mergeUsersHandler(dbpool))
+	r.Delete("/api/admin/users/{id}", deleteUserHandler(dbpool))
+	r.Post("/api/admin/users/{id}/aliases", addUserAliasHandler(dbpool))
+	r.Delete("/api/admin/users/{id}/aliases/{email}", removeUserAliasHandler(dbpool))
 }
 
 func Middleware(dbpool *pgxpool.Pool) func(http.Handler) http.Handler {
@@ -319,19 +329,52 @@ func devLoginHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func demoLoginHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
+// demoLoginHandler lets a visitor of the public demo in without a code:
+// each visitor gets a sandbox, their own user and copy of the demo board,
+// and a session that ends with it.
+func demoLoginHandler(dbpool *pgxpool.Pool, limiter *httprate.RateLimiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !demoLoginEnabled() {
 			http.NotFound(w, r)
 			return
 		}
+		// Every entry seeds a board; one address cannot flood the demo.
+		if limiter.OnLimit(w, r, "demo:"+RequestIPAddress(r)) {
+			http.Error(w, "too many demo visits from this address, try again later", http.StatusTooManyRequests)
+			return
+		}
 
-		user, err := upsertDemoAuthUser(r.Context(), dbpool)
+		// Where the visitor came from, for the demo visit stats. Optional.
+		var payload struct {
+			Referrer  string `json:"referrer"`
+			UTMSource string `json:"utm_source"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload)
+
+		tx, err := dbpool.Begin(r.Context())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to upsert demo auth user %s: %v\n", demoLoginEmail, err)
 			http.Error(w, "failed to sign in", http.StatusInternalServerError)
 			return
 		}
+		defer tx.Rollback(r.Context())
+		visitor, err := demo.CreateSandbox(r.Context(), tx)
+		if err == nil {
+			err = demo.RecordVisit(r.Context(), tx, visitor, demo.VisitEntry{
+				Referrer:  payload.Referrer,
+				UTMSource: payload.UTMSource,
+				UserAgent: r.UserAgent(),
+			})
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create demo sandbox: %v\n", err)
+			http.Error(w, "failed to sign in", http.StatusInternalServerError)
+			return
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			http.Error(w, "failed to sign in", http.StatusInternalServerError)
+			return
+		}
+		user := AuthUser{ID: visitor.ID, Email: visitor.Email, Role: visitor.Role}
 		logAuthEvent(r.Context(), dbpool, r, AuthEvent{
 			UserID:    &user.ID,
 			Email:     user.Email,
@@ -339,7 +382,7 @@ func demoLoginHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			Success:   true,
 		})
 
-		if err := createSessionCookie(r.Context(), dbpool, w, user); err != nil {
+		if err := createSessionCookieUntil(r.Context(), dbpool, w, user, time.Now().Add(demo.SandboxLifetime)); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create demo session for %s: %v\n", user.Email, err)
 			http.Error(w, "failed to sign in", http.StatusInternalServerError)
 			return
@@ -358,8 +401,16 @@ func meHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		touchUserLastSeen(r.Context(), dbpool, user)
 
+		response := meResponse{AuthUser: user}
+		if err := dbpool.QueryRow(r.Context(), `
+			SELECT languages, managed_boards FROM users WHERE id = $1;
+		`, user.ID).Scan(&response.Languages, &response.ManagedBoards); err != nil {
+			http.Error(w, "failed to load user", http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(user)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -452,17 +503,24 @@ func currentUserFromRequest(ctx context.Context, dbpool *pgxpool.Pool, r *http.R
 	if err != nil {
 		return AuthUser{}, err
 	}
+	// Shared mailboxes lose access even if they signed in before the ban.
+	if isGenericAddress(user.Email) {
+		return AuthUser{}, errGenericAddress
+	}
 
 	return user, nil
 }
 
 func createSessionCookie(ctx context.Context, dbpool *pgxpool.Pool, w http.ResponseWriter, user AuthUser) error {
+	return createSessionCookieUntil(ctx, dbpool, w, user, time.Now().Add(30*24*time.Hour))
+}
+
+func createSessionCookieUntil(ctx context.Context, dbpool *pgxpool.Pool, w http.ResponseWriter, user AuthUser, expiresAt time.Time) error {
 	sessionToken, err := randomToken()
 	if err != nil {
 		return err
 	}
 
-	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 	_, err = dbpool.Exec(ctx, `
 		INSERT INTO sessions (session_hash, user_id, expires_at)
 		VALUES ($1, $2, $3);
@@ -476,6 +534,10 @@ func createSessionCookie(ctx context.Context, dbpool *pgxpool.Pool, w http.Respo
 }
 
 func upsertAuthUser(ctx context.Context, dbpool *pgxpool.Pool, email string) (AuthUser, error) {
+	if user, ok, err := resolveAliasUser(ctx, dbpool, email); err != nil || ok {
+		return user, err
+	}
+
 	role := "reviewer"
 	if email == bootstrapSuperAdminEmail() {
 		role = "super_admin"
@@ -497,23 +559,6 @@ func upsertAuthUser(ctx context.Context, dbpool *pgxpool.Pool, email string) (Au
 	return user, err
 }
 
-func upsertDemoAuthUser(ctx context.Context, dbpool *pgxpool.Pool) (AuthUser, error) {
-	var user AuthUser
-	err := dbpool.QueryRow(ctx, `
-		INSERT INTO users (email, role)
-		VALUES ($1, 'reviewer')
-		ON CONFLICT (email) DO UPDATE SET
-			role = CASE
-				WHEN users.role = 'super_admin' THEN users.role
-				ELSE 'reviewer'
-			END,
-			updated_at = now()
-		RETURNING id, email, role;
-	`, demoLoginEmail).Scan(&user.ID, &user.Email, &user.Role)
-
-	return user, err
-}
-
 type updateUserRoleRequest struct {
 	Role string `json:"role"`
 }
@@ -530,13 +575,14 @@ func listAdminUsersHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !isAdminUser(user) {
+		// Board managers read the list too: owner pickers on their board use it.
+		if manages, err := coreauth.ManagesAnyBoard(r.Context(), dbpool, user); err != nil || !manages {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
 		rows, err := dbpool.Query(r.Context(), `
-			SELECT id, email, role, created_at, updated_at, last_seen_at
+			SELECT `+userAdminColumns+`
 			FROM users
 			ORDER BY email;
 		`)
@@ -549,13 +595,17 @@ func listAdminUsersHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		users := []UserAdminItem{}
 		for rows.Next() {
 			var item UserAdminItem
-			if err := rows.Scan(&item.ID, &item.Email, &item.Role, &item.CreatedAt, &item.UpdatedAt, &item.LastSeenAt); err != nil {
+			if err := rows.Scan(item.scanTargets()...); err != nil {
 				http.Error(w, "failed to read users", http.StatusInternalServerError)
 				return
 			}
 			users = append(users, item)
 		}
 		if err := rows.Err(); err != nil {
+			http.Error(w, "failed to read users", http.StatusInternalServerError)
+			return
+		}
+		if err := attachAliases(r.Context(), dbpool, users); err != nil {
 			http.Error(w, "failed to read users", http.StatusInternalServerError)
 			return
 		}
@@ -588,6 +638,10 @@ func createAdminUserHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid email", http.StatusBadRequest)
 			return
 		}
+		if isGenericAddress(email) {
+			http.Error(w, errGenericAddress.Error(), http.StatusBadRequest)
+			return
+		}
 		role := strings.ToLower(strings.TrimSpace(request.Role))
 		if !isValidUserRole(role) {
 			http.Error(w, "invalid role", http.StatusBadRequest)
@@ -598,20 +652,23 @@ func createAdminUserHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		_, isAlias, err := resolveAliasUser(r.Context(), dbpool, email)
+		if err != nil {
+			http.Error(w, "failed to create user", http.StatusInternalServerError)
+			return
+		}
+		if isAlias {
+			http.Error(w, "this address is an alias of another user", http.StatusConflict)
+			return
+		}
+
 		var createdUser UserAdminItem
-		err := dbpool.QueryRow(r.Context(), `
+		err = dbpool.QueryRow(r.Context(), `
 			INSERT INTO users (email, role)
 			VALUES ($1, $2)
 			ON CONFLICT (email) DO NOTHING
-			RETURNING id, email, role, created_at, updated_at, last_seen_at;
-		`, email, role).Scan(
-			&createdUser.ID,
-			&createdUser.Email,
-			&createdUser.Role,
-			&createdUser.CreatedAt,
-			&createdUser.UpdatedAt,
-			&createdUser.LastSeenAt,
-		)
+			RETURNING `+userAdminColumns+`;
+		`, email, role).Scan(createdUser.scanTargets()...)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Error(w, "user already exists", http.StatusConflict)
@@ -669,15 +726,8 @@ func updateAdminUserRoleHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			SET role = $2,
 				updated_at = now()
 			WHERE id = $1
-			RETURNING id, email, role, created_at, updated_at, last_seen_at;
-		`, targetUserID, role).Scan(
-			&updatedUser.ID,
-			&updatedUser.Email,
-			&updatedUser.Role,
-			&updatedUser.CreatedAt,
-			&updatedUser.UpdatedAt,
-			&updatedUser.LastSeenAt,
-		)
+			RETURNING `+userAdminColumns+`;
+		`, targetUserID, role).Scan(updatedUser.scanTargets()...)
 		if err != nil {
 			http.Error(w, "user not found", http.StatusNotFound)
 			return
@@ -790,7 +840,7 @@ func consumeOTPCode(ctx context.Context, dbpool *pgxpool.Pool, email string, cod
 
 func isAllowedAuthEmail(email string) bool {
 	allowedDomains := allowedAuthDomains()
-	if len(allowedDomains) == 0 || email == "" {
+	if len(allowedDomains) == 0 || email == "" || isGenericAddress(email) {
 		return false
 	}
 

@@ -14,7 +14,11 @@ export function installReviewSelectionMenu(
     return;
   }
 
+  // A block click leaves a collapsed selection behind, and the selectionchange
+  // that follows it must not close the composer the click just opened.
+  let blockComposerOpen = false;
   const updateSelectionMenu = () => {
+    blockComposerOpen = false;
     const selection = frameWindow.getSelection();
     const reviewSelection = getReviewSelection(selection);
     if (!reviewSelection) {
@@ -64,6 +68,7 @@ export function installReviewSelectionMenu(
 
     const frameRect = frame.getBoundingClientRect();
     const blockRect = block.getBoundingClientRect();
+    blockComposerOpen = true;
     setSelectionMenu({
       ...reviewSelection,
       editableTarget:
@@ -80,7 +85,7 @@ export function installReviewSelectionMenu(
   frameDocument.addEventListener("keyup", updateSelectionMenu);
   frameDocument.addEventListener("selectionchange", () => {
     const selection = frameWindow.getSelection();
-    if (!selection || selection.isCollapsed) {
+    if ((!selection || selection.isCollapsed) && !blockComposerOpen) {
       setSelectionMenu(null);
     }
   });
@@ -282,6 +287,9 @@ const editableSelector = [
   "[data-edit-style-width-px]",
 ].join(",");
 
+// Mirrors emailedit.CanFormat: headings and lists need a block element.
+const formattableTags = new Set(["td", "th", "div"]);
+
 function appendInlineEditInput(
   inputs: InlineEditInput[],
   element: Element,
@@ -300,6 +308,10 @@ function appendInlineEditInput(
 
   inputs.push({
     field,
+    formattable:
+      attribute === "data-edit-text" &&
+      field.type === "text" &&
+      formattableTags.has(element.tagName.toLowerCase()),
     key,
     label: formatInlineEditLabel(getInlineEditFieldLabel(key)),
     type: inlineInputTypeForField(field),
@@ -318,6 +330,9 @@ function inlineInputTypeForField(field: EditableField) {
 }
 
 export function shouldUseInlineTextarea(input: InlineEditInput) {
+  if (input.formattable) {
+    return true;
+  }
   const value = String(input.value ?? "");
   return value.includes("\n") || value.length > 100;
 }

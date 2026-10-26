@@ -64,7 +64,6 @@
 }
 
 .cardMenuDropdown {
-  max-height: min(260px, calc(100dvh - 96px));
   overflow: visible;
   padding: 6px;
 }
@@ -283,4 +282,22 @@
 .reviewLink:hover {
   color: var(--mantine-color-blue-9);
   text-decoration: underline;
+}
+
+.cardMenuReadonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  color: var(--mantine-color-gray-7);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+/* Phones show one column, so cards no longer need equal heights. */
+@media (max-width: 40em) {
+  .emailCard {
+    height: auto;
+  }
 }

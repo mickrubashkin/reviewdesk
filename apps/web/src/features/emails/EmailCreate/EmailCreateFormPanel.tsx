@@ -27,6 +27,7 @@ import styles from "./EmailCreate.module.css";
 
 export function EmailCreateFormPanel({
   adaptationOptions,
+  regionOptions,
   boardOptions,
   boardsLoading,
   canSubmit,
@@ -56,6 +57,8 @@ export function EmailCreateFormPanel({
   onUpdateField,
 }: {
   adaptationOptions: string[];
+  // The board's regions; when there are any they replace the adaptation.
+  regionOptions: Array<{ label: string; value: string }>;
   boardOptions: Array<{ label: string; value: string }>;
   boardsLoading: boolean;
   canSubmit: boolean;
@@ -192,13 +195,24 @@ export function EmailCreateFormPanel({
           value={formState.variant}
           onChange={(value) => onUpdateField("variant", value)}
         />
-        <Autocomplete
-          data={adaptationOptions}
-          label="Adaptation"
-          placeholder="Default"
-          value={formState.adaptationLabel}
-          onChange={(value) => onUpdateField("adaptationLabel", value)}
-        />
+        {regionOptions.length > 0 ? (
+          <Select
+            clearable
+            data={regionOptions}
+            label="Region"
+            placeholder="No region"
+            value={formState.regionKey || null}
+            onChange={(value) => onUpdateField("regionKey", value ?? "")}
+          />
+        ) : (
+          <Autocomplete
+            data={adaptationOptions}
+            label="Adaptation"
+            placeholder="Default"
+            value={formState.adaptationLabel}
+            onChange={(value) => onUpdateField("adaptationLabel", value)}
+          />
+        )}
       </Group>
 
       <Group grow>

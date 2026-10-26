@@ -4,7 +4,7 @@ import "testing"
 
 func TestImportTitle(t *testing.T) {
 	cases := map[string]string{
-		"Partner Program | Welcome Bonus Activated":     "Welcome Bonus Activated",
+		"Bitrix24 Partner Program | Kickstart Bonus Activated":     "Kickstart Bonus Activated",
 		"Bitrix24: You haven’t started yet":                        "You haven’t started yet",
 		"Programa de Parceiros Bitrix24 | Bem-vindo a bordo!":      "Bem-vindo a bordo!",
 		"Next steps for your Bitrix24 Partnership":                 "Next steps for your Bitrix24 Partnership",
@@ -31,13 +31,13 @@ func TestStageKeyAndTopStage(t *testing.T) {
 
 func TestIsManualOrTestSubject(t *testing.T) {
 	for subject, want := range map[string]bool{
-		"RE: Your partner application received": true,
+		"RE: Bitrix24: Your partner application received": true,
 		"Re: Request to Pause Remaining Subscription":     true,
 		"Fwd: Contract":        true,
 		"teste":                true,
-		"Test form example":      true,
+		"Test form acme":       true,
 		"Тест отправки письма": true,
-		"Partner Program | Welcome Bonus": false,
+		"Bitrix24 Partner Program | Kickstart Bonus": false,
 		"Testimonials from partners":                 false,
 	} {
 		if got := IsManualOrTestSubject(subject); got != want {

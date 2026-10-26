@@ -21,6 +21,11 @@ func RegisterAIRoutes(r chi.Router, dbpool *pgxpool.Pool, aiService AIAnalysisSe
 	r.Post("/api/emails/{id}/ai-analysis", analyzeEmailHandler(dbpool, aiService))
 	r.Get("/api/emails/{id}/ai-analysis-stream", analyzeEmailStreamHandler(dbpool, aiService))
 	r.Get("/api/emails/{id}/ai-analysis-debug", debugAIAnalysisHandler(dbpool, aiService))
+	r.Get("/api/translation-glossary", getGlossaryHandler(dbpool))
+	r.Put("/api/translation-glossary", putGlossaryHandler(dbpool))
+	translator := newOpenAITranslationSuggester(aiService.APIKey)
+	r.Post("/api/emails/{id}/translation/suggestions", suggestTranslationHandler(dbpool, translator, aiService.APIKey != ""))
+	r.Post("/api/emails/{id}/translations", createTranslationHandler(dbpool, translator, aiService.APIKey != ""))
 }
 
 func getCachedEmailAnalysisHandler(dbpool *pgxpool.Pool, aiService AIAnalysisService) http.HandlerFunc {
@@ -171,6 +176,11 @@ func analyzeEmailHandler(dbpool *pgxpool.Pool, aiService AIAnalysisService) http
 			return
 		}
 
+		if refusal, status := demoAIQuotaRefusal(r, dbpool); refusal != "" {
+			http.Error(w, refusal, status)
+			return
+		}
+
 		result, err := aiService.AnalyzeEmail(r.Context(), email)
 		logAIAnalysisResult(r, dbpool, email.ID, result.Metrics, err, false)
 		if err != nil {
@@ -243,6 +253,11 @@ func analyzeEmailStreamHandler(dbpool *pgxpool.Pool, aiService AIAnalysisService
 				writeAIStreamResult(w, flusher, cachedAnalysis)
 				return
 			}
+		}
+
+		if refusal, _ := demoAIQuotaRefusal(r, dbpool); refusal != "" {
+			writeAIStreamError(w, flusher, refusal)
+			return
 		}
 
 		result, err := aiService.AnalyzeEmailStream(r.Context(), email, func(delta string) error {

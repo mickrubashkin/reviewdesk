@@ -30,13 +30,14 @@
 
 .boardControls {
   flex: 1 1 auto;
-  min-width: 360px;
+  min-width: 0;
   justify-content: center;
 }
 
+/* Wide enough for the longest board name (set inline), up to a cap. */
 .boardSelect {
-  flex: 0 1 260px;
-  min-width: 150px;
+  flex: 0 0 auto;
+  max-width: 260px;
 }
 
 .boardFilter {
@@ -45,6 +46,44 @@
 
 .myEmailsToggle {
   flex: 0 0 auto;
+}
+
+/* Header button labels give way to the icon on narrower screens: first
+   My tasks, My emails, New, Settings and the account; then the view
+   switcher turns into a menu. Below 70em the compact header takes over.
+   A collapsed button keeps its tooltip or label for screen readers. */
+@media (max-width: 1699px) {
+  .collapsibleLabel {
+    display: none;
+  }
+
+  .collapsibleButton:has(.collapsibleLabel) {
+    min-width: 0;
+    padding-inline: 10px;
+  }
+
+  .collapsibleButton:has(.collapsibleLabel) :global(.mantine-Button-section[data-position="left"]) {
+    margin-inline-end: 0;
+  }
+
+  .collapsibleButton:has(.collapsibleLabel) :global(.mantine-Button-section[data-position="right"]) {
+    margin-inline-start: 4px;
+  }
+}
+
+.boardViewMenu {
+  display: none;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1240px) {
+  .boardViewToggle {
+    display: none;
+  }
+
+  .boardViewMenu {
+    display: block;
+  }
 }
 
 .boardViewToggle {
@@ -75,7 +114,7 @@
 
 .boardSearch {
   flex: 1 1 220px;
-  min-width: 180px;
+  min-width: 112px;
   max-width: 320px;
 }
 
@@ -124,6 +163,10 @@
   padding: 0 var(--mantine-spacing-xs) var(--mantine-spacing-xs);
 }
 
+.compactFilterControls {
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+}
+
 .compactHeaderDropdown {
   overflow: hidden;
 }
@@ -134,6 +177,33 @@
   color: var(--mantine-color-white);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.boardContent {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.activeBoardFilters {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md) 0;
+}
+
+.activeBoardFilterPill {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--mantine-color-dark-7);
+}
+
+.activeBoardFiltersClear {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.boardFilterControls {
+  min-width: 0;
 }
 
 .boardPage::before {
@@ -164,7 +234,7 @@
   min-width: 0;
 }
 
-@media (max-width: 64em) {
+@media (max-width: 70em) {
   .headerInner {
     gap: 12px;
   }

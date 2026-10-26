@@ -1,97 +1,93 @@
+import { useEffect } from "react";
 import {
   ActionIcon,
+  Anchor,
   Button,
   Group,
-  Menu,
   Skeleton,
   Text,
+  Tooltip,
 } from "@mantine/core";
+import { Link } from "react-router-dom";
 
 import {
-  ArchiveIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
-  ArrowsClockwiseIcon,
-  CaretDownIcon,
-  ChecksIcon,
-  ClockCounterClockwiseIcon,
-  EnvelopeSimpleIcon,
-  HandshakeIcon,
+  ChatTextIcon,
   HouseIcon,
-  ListChecksIcon,
-  SparkleIcon,
-  StackPlusIcon,
 } from "@phosphor-icons/react";
 
 import type { EmailDetail, EmailListItem, EmailVariant } from "../../emails/types";
 
-import type { ReviewUtilityPanel, ReviewViewport } from "./EmailReview.types";
 import { formatEmailTitle } from "./EmailReview.helpers";
+import { ProductionBadge } from "../../emails/ProductionBadge";
+import { UploadBadge } from "../../emails/UploadBadge";
 
 import styles from "./EmailReview.module.css";
 import { ReviewStatusControl } from "./header/ReviewStatusControl";
-import {
-  AdaptationSelect,
-  LanguageSelect,
-  ReadOnlyVersionValue,
-  VariantSelect,
-} from "./header/VariantSelectors";
-import { ViewportSwitch } from "./header/ViewportSwitch";
+import { ReviewMoreMenu } from "./header/ReviewMoreMenu";
+import { LanguagePills, type LanguagePillVersion } from "./header/LanguagePills";
+import { AdaptationSelect, VariantSelect } from "./header/VariantSelectors";
 
 type ReviewHeaderProps = {
   actionMenuOpened: boolean;
-  activeUtilityPanel: ReviewUtilityPanel | null;
   approvalBlockedCount: number;
   approvalBlockedMessage: string;
   archiveEmailIsPending: boolean;
   availableAdaptations: Array<{ adaptation_key: string; adaptation_label: string }>;
+  hasRegions: boolean;
   availableVariants: EmailVariant[];
+  boardGroupCount: number;
+  boardGroupPosition: number | null;
+  boardName: string | undefined;
   canManageEmail: boolean;
+  currentListEmail: EmailListItem | undefined;
+  currentStageKey: string | undefined;
   currentStageTitle: string | undefined;
+  groupVersions: EmailListItem[];
   email: EmailDetail | undefined;
   hasAdaptationOptions: boolean;
-  hasLanguageOptions: boolean;
   hasVariantOptions: boolean;
-  isAnalyzingCurrentEmail: boolean;
+  isSuperAdmin: boolean;
+  renderedHTML: string;
   isCompactReview: boolean;
-  languageVersions: Array<{ id: string; language: string }>;
+  languageVersions: LanguagePillVersion[];
   nextBoardEmail: EmailListItem | undefined;
   nextEmailWithOpenComments: EmailListItem | null;
   previousBoardEmail: EmailListItem | undefined;
   reviewStatusIsPending: boolean;
   selectedAdaptation: string;
   selectedVariant: EmailVariant;
-  viewport: ReviewViewport;
   onActionMenuChange: (opened: boolean) => void;
   onAdaptationSelect: (adaptationKey: string) => void;
-  onAnalyze: () => void;
   onArchiveClick: () => void;
-  onBackToBoard: () => void;
   onDuplicateClick: () => void;
-  onEmailPanelSelect: () => void;
   onNavigateToReview: (emailId: string) => void;
-  onReanalyze: () => void;
   onReviewStatusChange: (value: string | null) => void;
-  onUtilityPanelSelect: (panel: ReviewUtilityPanel) => void;
   onVariantSelect: (variant: EmailVariant) => void;
-  onViewportChange: (viewport: ReviewViewport) => void;
 };
 
 export function ReviewHeader({
   actionMenuOpened,
-  activeUtilityPanel,
   approvalBlockedCount,
   approvalBlockedMessage,
   archiveEmailIsPending,
   availableAdaptations,
+  hasRegions,
   availableVariants,
+  boardGroupCount,
+  boardGroupPosition,
+  boardName,
   canManageEmail,
+  currentListEmail,
+  currentStageKey,
   currentStageTitle,
   email,
+  groupVersions,
   hasAdaptationOptions,
-  hasLanguageOptions,
   hasVariantOptions,
-  isAnalyzingCurrentEmail,
+  isSuperAdmin,
+  renderedHTML,
   isCompactReview,
   languageVersions,
   nextBoardEmail,
@@ -100,79 +96,171 @@ export function ReviewHeader({
   reviewStatusIsPending,
   selectedAdaptation,
   selectedVariant,
-  viewport,
   onActionMenuChange,
   onAdaptationSelect,
-  onAnalyze,
   onArchiveClick,
-  onBackToBoard,
   onDuplicateClick,
-  onEmailPanelSelect,
   onNavigateToReview,
-  onReanalyze,
   onReviewStatusChange,
-  onUtilityPanelSelect,
   onVariantSelect,
-  onViewportChange,
 }: ReviewHeaderProps) {
+  const boardPath = email?.sequence
+    ? `/boards/${encodeURIComponent(email.sequence)}`
+    : "/";
+  const goToPrevious = () => {
+    if (previousBoardEmail) {
+      onNavigateToReview(previousBoardEmail.id);
+    }
+  };
+  const goToNext = () => {
+    if (nextBoardEmail) {
+      onNavigateToReview(nextBoardEmail.id);
+    }
+  };
+
+  // ← and → step through the board, except while typing or with a modifier.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        (event.key !== "ArrowLeft" && event.key !== "ArrowRight")
+      ) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select, [role='textbox'], [role='menu'], [role='dialog']"))
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        goToPrevious();
+      } else {
+        goToNext();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
   return (
     <header className={styles.header}>
       <div className={styles.headerInner}>
         <Group className={styles.headerMain} gap="sm" wrap="nowrap">
-          <ActionIcon
-            aria-label="Back to board"
-            className={styles.headerIconButton}
-            onClick={onBackToBoard}
-            radius="md"
-            size="lg"
-            variant="subtle"
-          >
-            <HouseIcon aria-hidden="true" size={18} />
-          </ActionIcon>
-
           <Group className={styles.boardNavigation} gap={4} wrap="nowrap">
-            <ActionIcon
-              aria-label="Previous email on board"
-              className={styles.headerIconButton}
+            <Tooltip label="Back to board">
+              <ActionIcon
+                aria-label="Back to board"
+                className={styles.headerIconButton}
+                component={Link}
+                radius="md"
+                size="lg"
+                to={
+                  email && currentStageKey
+                    ? `${boardPath}?stage=${encodeURIComponent(currentStageKey)}`
+                    : boardPath
+                }
+                variant="subtle"
+              >
+                <HouseIcon aria-hidden="true" size={17} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip
               disabled={!previousBoardEmail}
-              onClick={() => {
-                if (previousBoardEmail) {
-                  onNavigateToReview(previousBoardEmail.id);
-                }
-              }}
-              radius="md"
-              size="lg"
-              variant="subtle"
+              label={previousBoardEmail ? formatEmailTitle(previousBoardEmail.title) : ""}
             >
-              <ArrowLeftIcon aria-hidden="true" size={17} />
-            </ActionIcon>
-            <ActionIcon
-              aria-label="Next email on board"
-              className={styles.headerIconButton}
+              <ActionIcon
+                aria-keyshortcuts="ArrowLeft"
+                aria-label="Previous email on board"
+                className={styles.headerIconButton}
+                disabled={!previousBoardEmail}
+                onClick={goToPrevious}
+                radius="md"
+                size="lg"
+                variant="subtle"
+              >
+                <ArrowLeftIcon aria-hidden="true" size={17} />
+              </ActionIcon>
+            </Tooltip>
+            {boardGroupPosition ? (
+              <Text className={styles.boardCounter} c="dimmed" size="xs">
+                {boardGroupPosition} / {boardGroupCount}
+              </Text>
+            ) : null}
+            <Tooltip
               disabled={!nextBoardEmail}
-              onClick={() => {
-                if (nextBoardEmail) {
-                  onNavigateToReview(nextBoardEmail.id);
-                }
-              }}
-              radius="md"
-              size="lg"
-              variant="subtle"
+              label={nextBoardEmail ? formatEmailTitle(nextBoardEmail.title) : ""}
             >
-              <ArrowRightIcon aria-hidden="true" size={17} />
-            </ActionIcon>
+              <ActionIcon
+                aria-keyshortcuts="ArrowRight"
+                aria-label="Next email on board"
+                className={styles.headerIconButton}
+                disabled={!nextBoardEmail}
+                onClick={goToNext}
+                radius="md"
+                size="lg"
+                variant="subtle"
+              >
+                <ArrowRightIcon aria-hidden="true" size={17} />
+              </ActionIcon>
+            </Tooltip>
+            {!isCompactReview ? (
+              <Button
+                disabled={!nextEmailWithOpenComments}
+                leftSection={<ChatTextIcon aria-hidden="true" size={14} />}
+                size="compact-xs"
+                variant="light"
+                onClick={() => {
+                  if (nextEmailWithOpenComments) {
+                    onNavigateToReview(nextEmailWithOpenComments.id);
+                  }
+                }}
+              >
+                Next with open comments
+              </Button>
+            ) : null}
           </Group>
 
           <Group className={styles.breadcrumbs} gap={6} wrap="nowrap">
-            {currentStageTitle ? (
-              <Text className={styles.breadcrumbText} size="sm" fw={650}>
+            {email ? (
+              <Anchor
+                className={styles.breadcrumbText}
+                component={Link}
+                size="sm"
+                to={boardPath}
+              >
+                {boardName ?? email.sequence}
+              </Anchor>
+            ) : (
+              <Skeleton className={styles.breadcrumbText} h={14} w={70} />
+            )}
+            <Text c="dimmed" size="sm">
+              ›
+            </Text>
+            {email && currentStageTitle ? (
+              <Anchor
+                className={styles.breadcrumbText}
+                component={Link}
+                size="sm"
+                to={
+                  currentStageKey
+                    ? `${boardPath}?stage=${encodeURIComponent(currentStageKey)}`
+                    : boardPath
+                }
+              >
                 {currentStageTitle}
-              </Text>
+              </Anchor>
             ) : (
               <Skeleton className={styles.breadcrumbText} h={14} w={84} />
             )}
             <Text c="dimmed" size="sm">
-              /
+              ›
             </Text>
             {email ? (
               <Text className={styles.titleText} size="sm" fw={650}>
@@ -188,396 +276,89 @@ export function ReviewHeader({
               <div className={styles.actionDivider} aria-hidden="true" />
 
               <Group className={styles.actionGroup} gap="xs" wrap="nowrap">
-                <ViewportSwitch viewport={viewport} onChange={onViewportChange} />
-              </Group>
-
-              <div className={styles.actionDivider} aria-hidden="true" />
-
-              <Group className={styles.actionGroup} gap="xs" wrap="nowrap">
-                {hasLanguageOptions ? (
-                  <LanguageSelect
-                    selectedEmailId={email?.id ?? ""}
-                    versions={languageVersions}
-                    onSelect={onNavigateToReview}
-                  />
-                ) : (
-                  <ReadOnlyVersionValue
-                    label="Email language"
-                    value={email?.language.toUpperCase() ?? ""}
-                  />
-                )}
-
+                <LanguagePills
+                  selectedEmailId={email?.id ?? ""}
+                  versions={languageVersions}
+                  onSelect={onNavigateToReview}
+                />
                 {hasVariantOptions ? (
                   <VariantSelect
                     availableVariants={availableVariants}
                     selectedVariant={selectedVariant}
                     onSelect={onVariantSelect}
                   />
-                ) : (
-                  <ReadOnlyVersionValue
-                    label="Email version"
-                    value={selectedVariant}
-                  />
-                )}
+                ) : null}
                 {hasAdaptationOptions ? (
                   <AdaptationSelect
                     adaptations={availableAdaptations}
+                    hasRegions={hasRegions}
                     selectedAdaptation={selectedAdaptation}
                     onSelect={onAdaptationSelect}
                   />
-                ) : (
-                  <ReadOnlyVersionValue
-                    label="Email adaptation"
-                    value={email?.adaptation_label ?? ""}
-                  />
-                )}
+                ) : null}
               </Group>
             </>
           ) : null}
         </Group>
 
         <Group className={styles.headerActions} gap="xs" wrap="nowrap">
-          {isCompactReview ? (
-            <Menu
-              opened={actionMenuOpened}
-              position="bottom-end"
-              width={260}
-              withinPortal
-              onChange={onActionMenuChange}
-            >
-              <Menu.Target>
-                <Button
-                  aria-label="Open actions menu"
-                  className={styles.moreMenuButton}
-                  data-expanded={actionMenuOpened || undefined}
-                  rightSection={<CaretDownIcon aria-hidden="true" size={12} />}
-                  size="xs"
-                  variant="subtle"
-                >
-                  More
-                </Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                {email ? (
-                  <>
-                    <Menu.Label>Review status</Menu.Label>
-                    <div className={styles.menuControls}>
-                      <ReviewStatusControl
-                        approvalBlockedCount={approvalBlockedCount}
-                        approvalBlockedMessage={approvalBlockedMessage}
-                        canManage={canManageEmail}
-                        isUpdating={reviewStatusIsPending}
-                        status={email.review_status}
-                        onChange={onReviewStatusChange}
-                      />
-                    </div>
-                    <Menu.Divider />
-                  </>
+          {email ? (
+            <Group gap={6} wrap="nowrap">
+              <ReviewStatusControl
+                approvalBlockedCount={approvalBlockedCount}
+                approvalBlockedMessage={approvalBlockedMessage}
+                canManage={canManageEmail}
+                isUpdating={reviewStatusIsPending}
+                status={email.review_status}
+                onChange={onReviewStatusChange}
+              />
+              {!isCompactReview && currentListEmail ? (
+                <>
+                  <ProductionBadge email={currentListEmail} versions={groupVersions} />
+                  <UploadBadge email={currentListEmail} />
+                </>
+              ) : null}
+            </Group>
+          ) : null}
+          <ReviewMoreMenu
+            archiveIsPending={archiveEmailIsPending}
+            canManage={canManageEmail}
+            currentListEmail={currentListEmail}
+            email={email}
+            isCompactReview={isCompactReview}
+            isSuperAdmin={isSuperAdmin}
+            nextEmailWithOpenComments={nextEmailWithOpenComments}
+            opened={actionMenuOpened}
+            renderedHTML={renderedHTML}
+            selectors={
+              <>
+                <LanguagePills
+                  selectedEmailId={email?.id ?? ""}
+                  versions={languageVersions}
+                  onSelect={onNavigateToReview}
+                />
+                {hasVariantOptions ? (
+                  <VariantSelect
+                    availableVariants={availableVariants}
+                    selectedVariant={selectedVariant}
+                    onSelect={onVariantSelect}
+                  />
                 ) : null}
-                <Menu.Label>Email version</Menu.Label>
-                <div className={styles.menuControls}>
-                  {hasLanguageOptions ? (
-                    <LanguageSelect
-                      selectedEmailId={email?.id ?? ""}
-                      versions={languageVersions}
-                      onSelect={onNavigateToReview}
-                    />
-                  ) : (
-                    <ReadOnlyVersionValue
-                      label="Email language"
-                      value={email?.language.toUpperCase() ?? ""}
-                    />
-                  )}
-
-                  {hasVariantOptions ? (
-                    <VariantSelect
-                      availableVariants={availableVariants}
-                      selectedVariant={selectedVariant}
-                      onSelect={onVariantSelect}
-                    />
-                  ) : (
-                    <ReadOnlyVersionValue
-                      label="Email version"
-                      value={selectedVariant}
-                    />
-                  )}
-                  {hasAdaptationOptions ? (
-                    <AdaptationSelect
-                      adaptations={availableAdaptations}
-                      selectedAdaptation={selectedAdaptation}
-                      onSelect={onAdaptationSelect}
-                    />
-                  ) : (
-                    <ReadOnlyVersionValue
-                      label="Email adaptation"
-                      value={email?.adaptation_label ?? ""}
-                    />
-                  )}
-                </div>
-                <Menu.Divider />
-
-                <Menu.Label>Sections</Menu.Label>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={!activeUtilityPanel || undefined}
-                  leftSection={<EnvelopeSimpleIcon aria-hidden="true" size={15} />}
-                  onClick={onEmailPanelSelect}
-                >
-                  Email
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "planning" || undefined}
-                  leftSection={<ListChecksIcon aria-hidden="true" size={15} />}
-                  onClick={() => onUtilityPanelSelect("planning")}
-                >
-                  Plan
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "approvals" || undefined}
-                  leftSection={<ChecksIcon aria-hidden="true" size={15} />}
-                  onClick={() => onUtilityPanelSelect("approvals")}
-                >
-                  Approvals
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "handoff" || undefined}
-                  leftSection={<HandshakeIcon aria-hidden="true" size={15} />}
-                  onClick={() => onUtilityPanelSelect("handoff")}
-                >
-                  Handoff
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "history" || undefined}
-                  leftSection={
-                    <ClockCounterClockwiseIcon aria-hidden="true" size={15} />
-                  }
-                  onClick={() => onUtilityPanelSelect("history")}
-                >
-                  History
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "activity" || undefined}
-                  leftSection={
-                    <ClockCounterClockwiseIcon aria-hidden="true" size={15} />
-                  }
-                  onClick={() => onUtilityPanelSelect("activity")}
-                >
-                  Activity
-                </Menu.Item>
-                <Menu.Divider />
-
-                {canManageEmail ? (
-                  <>
-                    <Menu.Item
-                      disabled={!email}
-                      leftSection={
-                        <StackPlusIcon aria-hidden="true" size={15} />
-                      }
-                      onClick={onDuplicateClick}
-                    >
-                      Duplicate as...
-                    </Menu.Item>
-                    <Menu.Item
-                      color="red"
-                      disabled={!email}
-                      leftSection={
-                        <ArchiveIcon aria-hidden="true" size={15} />
-                      }
-                      onClick={() => onArchiveClick()}
-                    >
-                      {archiveEmailIsPending
-                        ? "Archiving"
-                        : "Archive email"}
-                    </Menu.Item>
-                    <Menu.Divider />
-                  </>
+                {hasAdaptationOptions ? (
+                  <AdaptationSelect
+                    adaptations={availableAdaptations}
+                    hasRegions={hasRegions}
+                    selectedAdaptation={selectedAdaptation}
+                    onSelect={onAdaptationSelect}
+                  />
                 ) : null}
-                <Menu.Item
-                  disabled={!email}
-                  leftSection={<SparkleIcon aria-hidden="true" size={15} />}
-                  onClick={onAnalyze}
-                >
-                  {isAnalyzingCurrentEmail ? "Analyzing" : "View shared AI analysis"}
-                </Menu.Item>
-                <Menu.Item
-                  disabled={!email || isAnalyzingCurrentEmail}
-                  leftSection={
-                    <ArrowsClockwiseIcon aria-hidden="true" size={15} />
-                  }
-                  onClick={onReanalyze}
-                >
-                  Generate new shared AI analysis
-                </Menu.Item>
-                <Menu.Divider />
-                <Menu.Item
-                  disabled={!nextEmailWithOpenComments}
-                  leftSection={<ArrowRightIcon aria-hidden="true" size={15} />}
-                  onClick={() => {
-                    if (nextEmailWithOpenComments) {
-                      onNavigateToReview(nextEmailWithOpenComments.id);
-                    }
-                  }}
-                >
-                  Next with open comments
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          ) : (
-            <Menu
-              opened={actionMenuOpened}
-              position="bottom-end"
-              width={240}
-              withinPortal
-              onChange={onActionMenuChange}
-            >
-              <Menu.Target>
-                <Button
-                  aria-label="Open actions menu"
-                  className={styles.moreMenuButton}
-                  data-expanded={actionMenuOpened || undefined}
-                  rightSection={<CaretDownIcon aria-hidden="true" size={12} />}
-                  size="xs"
-                  variant="subtle"
-                >
-                  More
-                </Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                {email ? (
-                  <>
-                    <Menu.Label>Review status</Menu.Label>
-                    <div className={styles.menuControls}>
-                      <ReviewStatusControl
-                        approvalBlockedCount={approvalBlockedCount}
-                        approvalBlockedMessage={approvalBlockedMessage}
-                        canManage={canManageEmail}
-                        isUpdating={reviewStatusIsPending}
-                        status={email.review_status}
-                        onChange={onReviewStatusChange}
-                      />
-                    </div>
-                    <Menu.Divider />
-                  </>
-                ) : null}
-                <Menu.Label>Sections</Menu.Label>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={!activeUtilityPanel || undefined}
-                  leftSection={<EnvelopeSimpleIcon aria-hidden="true" size={15} />}
-                  onClick={onEmailPanelSelect}
-                >
-                  Email
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "planning" || undefined}
-                  leftSection={<ListChecksIcon aria-hidden="true" size={15} />}
-                  onClick={() => onUtilityPanelSelect("planning")}
-                >
-                  Plan
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "approvals" || undefined}
-                  leftSection={<ChecksIcon aria-hidden="true" size={15} />}
-                  onClick={() => onUtilityPanelSelect("approvals")}
-                >
-                  Approvals
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "handoff" || undefined}
-                  leftSection={<HandshakeIcon aria-hidden="true" size={15} />}
-                  onClick={() => onUtilityPanelSelect("handoff")}
-                >
-                  Handoff
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "history" || undefined}
-                  leftSection={
-                    <ClockCounterClockwiseIcon aria-hidden="true" size={15} />
-                  }
-                  onClick={() => onUtilityPanelSelect("history")}
-                >
-                  History
-                </Menu.Item>
-                <Menu.Item
-                  className={styles.sectionMenuItem}
-                  data-active={activeUtilityPanel === "activity" || undefined}
-                  leftSection={
-                    <ClockCounterClockwiseIcon aria-hidden="true" size={15} />
-                  }
-                  onClick={() => onUtilityPanelSelect("activity")}
-                >
-                  Activity
-                </Menu.Item>
-                <Menu.Divider />
-                <Menu.Label>Actions</Menu.Label>
-                {canManageEmail ? (
-                  <>
-                    <Menu.Item
-                      disabled={!email}
-                      leftSection={
-                        <StackPlusIcon aria-hidden="true" size={15} />
-                      }
-                      onClick={onDuplicateClick}
-                    >
-                      Duplicate as...
-                    </Menu.Item>
-                    <Menu.Item
-                      color="red"
-                      disabled={!email}
-                      leftSection={
-                        <ArchiveIcon aria-hidden="true" size={15} />
-                      }
-                      onClick={() => onArchiveClick()}
-                    >
-                      {archiveEmailIsPending
-                        ? "Archiving"
-                        : "Archive email"}
-                    </Menu.Item>
-                    <Menu.Divider />
-                  </>
-                ) : null}
-                <Menu.Item
-                  disabled={!email}
-                  leftSection={<SparkleIcon aria-hidden="true" size={15} />}
-                  onClick={onAnalyze}
-                >
-                  {isAnalyzingCurrentEmail
-                    ? "Analyzing"
-                    : "View shared AI analysis"}
-                </Menu.Item>
-                <Menu.Item
-                  disabled={!email || isAnalyzingCurrentEmail}
-                  leftSection={
-                    <ArrowsClockwiseIcon aria-hidden="true" size={15} />
-                  }
-                  onClick={onReanalyze}
-                >
-                  Generate new shared AI analysis
-                </Menu.Item>
-                <Menu.Divider />
-                <Menu.Item
-                  disabled={!nextEmailWithOpenComments}
-                  leftSection={<ArrowRightIcon aria-hidden="true" size={15} />}
-                  onClick={() => {
-                    if (nextEmailWithOpenComments) {
-                      onNavigateToReview(nextEmailWithOpenComments.id);
-                    }
-                  }}
-                >
-                  Next with open comments
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          )}
+              </>
+            }
+            onArchiveClick={onArchiveClick}
+            onDuplicateClick={onDuplicateClick}
+            onNavigateToReview={onNavigateToReview}
+            onOpenedChange={onActionMenuChange}
+          />
         </Group>
       </div>
     </header>

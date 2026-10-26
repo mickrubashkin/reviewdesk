@@ -18,7 +18,9 @@ import {
 import { getVersionForVariant } from "../../emails/stages";
 import type {
   EmailActivityItem,
+  EmailAnalysis,
   EmailComment,
+  EmailCheck,
   EmailCommentSeverity,
   EmailDetail,
   EmailListItem,
@@ -29,7 +31,7 @@ import type {
   UpdateEmailPlanningFieldsPayload,
 } from "../../emails/types";
 
-import type { CommentBlockOption, ReviewUtilityPanel } from "./EmailReview.types";
+import type { CommentBlockOption } from "./EmailReview.types";
 
 export function clampPercent(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -55,24 +57,17 @@ export function formatAreaApprovalStatus(status: string) {
   }
 }
 
-export function buildApprovalBlockedMessage(
-  openBlockingCommentCount: number,
-  incompleteRequiredApprovalCount: number
-) {
-  const blockers: string[] = [];
-
+// buildApprovalBlockedMessage says why the email cannot be marked ready:
+// open blocking comments and the checks of form it fails, warnings included.
+export function buildApprovalBlockedMessage(openBlockingCommentCount: number, checks: EmailCheck[] = []) {
+  const reasons = [];
   if (openBlockingCommentCount > 0) {
-    blockers.push("Resolve blocking comments");
+    reasons.push("Resolve blocking comments before marking the email ready.");
   }
-  if (incompleteRequiredApprovalCount > 0) {
-    blockers.push("complete required approvals");
+  if (checks.length > 0) {
+    reasons.push(`Fix before marking the email ready: ${checks.map((check) => check.message).join("; ")}.`);
   }
-
-  if (blockers.length === 0) {
-    return "";
-  }
-
-  return `${blockers.join(" and ")} before approval.`;
+  return reasons.join(" ");
 }
 
 export function areaApprovalStatusColor(status: string) {
@@ -122,20 +117,6 @@ export function formatEmailTitle(title: string) {
   }
 }
 
-export function formatUtilityPanelLabel(tab: ReviewUtilityPanel) {
-  switch (tab) {
-    case "planning":
-      return "Plan";
-    case "approvals":
-      return "Approvals";
-    case "handoff":
-      return "Handoff";
-    case "history":
-      return "History";
-    case "activity":
-      return "Activity";
-  }
-}
 
 export function applyReviewStatusToCaches(
   queryClient: QueryClient,
@@ -469,10 +450,10 @@ export function formatActivityType(activity: EmailActivityItem) {
       return "Planning";
     case "email_review_status_updated":
       if (isStaleApprovalActivity(activity)) {
-        return "Approval stale";
+        return "Back to draft";
       }
       if (isReapprovalActivity(activity)) {
-        return "Re-approved";
+        return "Ready again";
       }
       return "Status";
     case "email_duplicated":
@@ -481,6 +462,10 @@ export function formatActivityType(activity: EmailActivityItem) {
       return "Adaptation";
     case "email_archived":
       return "Archive";
+    case "email_restored":
+      return "Restore";
+    case "slot_updated":
+      return "Slot";
     case "ai_analysis_run":
       return "AI";
   }
@@ -492,6 +477,7 @@ export function activityColor(type: EmailActivityItem["type"]) {
     case "email_updated":
       return "yellow";
     case "email_planning_updated":
+    case "slot_updated":
       return "cyan";
     case "comment_replied":
     case "email_duplicated":
@@ -505,6 +491,8 @@ export function activityColor(type: EmailActivityItem["type"]) {
       return "teal";
     case "email_archived":
       return "red";
+    case "email_restored":
+      return "green";
     case "ai_analysis_run":
       return "grape";
   }
@@ -547,12 +535,10 @@ export function activityDetail(activity: EmailActivityItem) {
 
 export function activitySummary(activity: EmailActivityItem) {
   if (isStaleApprovalActivity(activity)) {
-    return "Approval became stale after edit";
+    return "Moved back to draft after an edit";
   }
   if (isReapprovalActivity(activity)) {
-    return metadataText(activity, "reason") === "reapproved_after_stale_edit"
-      ? "Re-approved after stale edit"
-      : "Re-approved email";
+    return "Marked ready again";
   }
   if (activity.type === "email_updated") {
     return formatEmailUpdateSummary(activity.changes);
@@ -709,4 +695,20 @@ export function formatReviewBlockLabel(reviewBlock: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+// aiBlockTargets outlines the blocks AI recommendations are about, one
+// outline per block labelled with the recommendations' numbers ("AI 1, 3").
+export function aiBlockTargets(analysis: EmailAnalysis): ReviewChangedBlockTarget[] {
+  const numbers = new Map<string, number[]>();
+  analysis.recommendations.forEach((recommendation, index) => {
+    if (recommendation.block) {
+      numbers.set(recommendation.block, [...(numbers.get(recommendation.block) ?? []), index + 1]);
+    }
+  });
+  return [...numbers].map(([reviewBlock, items]) => ({
+    label: `AI ${items.join(", ")}`,
+    reason: "ai",
+    reviewBlock,
+  }));
 }

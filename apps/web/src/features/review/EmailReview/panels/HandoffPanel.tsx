@@ -17,20 +17,16 @@ import { copyRenderedHTML, downloadRenderedHTML } from "../../../emails/exportHt
 import {
   emailReviewStatusColor,
   formatEmailReviewStatus,
-  isProductionApprovedEmailReviewStatus,
+  isApprovedEmailReviewStatus,
 } from "../../../emails/reviewStatus";
-import type {
-  EmailActivityItem,
-  EmailAreaApproval,
-  EmailDetail,
-} from "../../../emails/types";
-import {
-  areaApprovalStatusColor,
-  formatAreaApprovalStatus,
-  formatCommentDate,
-} from "../EmailReview.helpers";
+import type { EmailActivityItem, EmailDetail } from "../../../emails/types";
+import { formatCommentDate } from "../EmailReview.helpers";
+import { BitrixUploadSection } from "./BitrixUploadSection";
 import { MarkLiveButton, UnmarkLiveButton } from "../../../portal/MarkLive";
 import styles from "../EmailReview.module.css";
+import { useUserName } from "../../../../shared/userNames";
+import { useBoardRegions } from "../../../boards/api";
+import { regionName } from "../../../boards/regions";
 
 async function copyPlainText(value: string, label: string) {
   try {
@@ -96,7 +92,6 @@ function formatByteSize(value: string) {
 
 export function HandoffPanel({
   approvalActivity,
-  areaApprovals,
   canMarkLive = false,
   email,
   isLoadingRenderedHTML,
@@ -107,7 +102,6 @@ export function HandoffPanel({
   onLiveChanged,
 }: {
   approvalActivity: EmailActivityItem | null;
-  areaApprovals: EmailAreaApproval[];
   canMarkLive?: boolean;
   onLiveChanged?: () => void;
   email: EmailDetail | undefined;
@@ -117,6 +111,8 @@ export function HandoffPanel({
   renderedHTML: string;
   renderedHTMLError: boolean;
 }) {
+  const userName = useUserName();
+  const regions = useBoardRegions(email?.sequence).data ?? [];
   if (!email) {
     return (
       <Stack className={styles.emptyState} align="center" justify="center">
@@ -125,18 +121,10 @@ export function HandoffPanel({
     );
   }
 
-  const isProductionApproved = isProductionApprovedEmailReviewStatus(
-    email.review_status
-  );
-  const incompleteRequiredApprovals = areaApprovals.filter(
-    (approval) => approval.required && approval.status !== "approved"
-  );
-  const staleApprovals = areaApprovals.filter(
-    (approval) => approval.status === "stale"
-  );
+  const isReady = isApprovedEmailReviewStatus(email.review_status);
   const approvalLabel = approvalActivity
-    ? `${approvalActivity.actor_email ?? "System"} on ${formatCommentDate(approvalActivity.created_at)}`
-    : "Approved";
+    ? `${userName(approvalActivity.actor_email, "System")} on ${formatCommentDate(approvalActivity.created_at)}`
+    : "Ready";
 
   return (
     <Stack gap="sm">
@@ -159,30 +147,23 @@ export function HandoffPanel({
         </Group>
       ) : null}
 
-      {!isProductionApproved ? (
-        <Alert color="gray" title="Handoff not ready" variant="light">
-          Mark this email production approved to prepare handoff.
+      {!isReady ? (
+        <Alert color="gray" title="Not ready yet" variant="light">
+          Mark this email Ready before pasting it into the Bitrix24 robot.
         </Alert>
       ) : null}
 
       {openBlockingCommentCount > 0 ? (
         <Alert color="red" title="Open blocking comments" variant="light">
-          Resolve blocking comments before production handoff.
+          Resolve blocking comments before marking the email ready.
         </Alert>
       ) : null}
 
-      {incompleteRequiredApprovals.length > 0 ? (
-        <Alert color="red" title="Required approvals incomplete" variant="light">
-          Complete required area approvals before production handoff.
-        </Alert>
-      ) : null}
-
-      {staleApprovals.length > 0 ? (
-        <Alert color="orange" title="Stale area approvals" variant="light">
-          Re-approve {staleApprovals.map((approval) => approval.name).join(", ")} after
-          the latest content change.
-        </Alert>
-      ) : null}
+      <BitrixUploadSection
+        canMarkUploaded={canMarkLive}
+        email={email}
+        onChanged={() => onLiveChanged?.()}
+      />
 
       <Stack className={styles.handoffSection} gap="xs">
         <Group justify="space-between" gap="xs" wrap="nowrap">
@@ -202,58 +183,26 @@ export function HandoffPanel({
         <HandoffRow label="Preheader" value={email.preheader ?? ""} copyable />
         <HandoffRow label="Language" value={email.language.toUpperCase()} />
         <HandoffRow label="Version" value={email.variant} />
-        <HandoffRow label="Adaptation" value={email.adaptation_label} />
+        {regions.length > 0 ? (
+          <HandoffRow label="Region" value={regionName(email, regions) || "No region"} />
+        ) : (
+          <HandoffRow label="Adaptation" value={email.adaptation_label} />
+        )}
         <HandoffRow label="Send timing" value={email.send_timing ?? ""} />
         <HandoffRow label="Send condition" value={email.send_condition ?? ""} />
       </Stack>
 
       <Stack className={styles.handoffSection} gap="xs">
         <Text fw={700} size="sm">
-          Approval
+          Status
         </Text>
         <HandoffRow label="Status" value={formatEmailReviewStatus(email.review_status)} />
-        {isProductionApproved ? <HandoffRow label="Approved by" value={approvalLabel} /> : null}
+        {isReady ? <HandoffRow label="Marked ready by" value={approvalLabel} /> : null}
         <HandoffRow
           label="Open comments"
           value={`${openCommentCount}${openBlockingCommentCount > 0 ? ` (${openBlockingCommentCount} blocking)` : ""}`}
         />
       </Stack>
-
-      {areaApprovals.length > 0 ? (
-        <Stack className={styles.handoffSection} gap="xs">
-          <Text fw={700} size="sm">
-            Area approvals
-          </Text>
-          {areaApprovals.map((approval) => (
-            <Group
-              className={styles.handoffRow}
-              gap="xs"
-              justify="space-between"
-              key={approval.board_approval_area_id}
-              wrap="nowrap"
-            >
-              <Group gap={6} wrap="nowrap">
-                <Text c="dimmed" size="sm">
-                  {approval.name}
-                </Text>
-                {approval.required ? (
-                  <Badge color="blue" radius="sm" size="xs" variant="light">
-                    Required
-                  </Badge>
-                ) : null}
-              </Group>
-              <Badge
-                color={areaApprovalStatusColor(approval.status)}
-                radius="sm"
-                size="sm"
-                variant="light"
-              >
-                {formatAreaApprovalStatus(approval.status)}
-              </Badge>
-            </Group>
-          ))}
-        </Stack>
-      ) : null}
 
       {email.implementation_notes ? (
         <Stack className={styles.handoffSection} gap={6}>
@@ -286,7 +235,7 @@ export function HandoffPanel({
           <>
             <Textarea
               autosize
-              disabled={!isProductionApproved || isLoadingRenderedHTML}
+              disabled={!isReady || isLoadingRenderedHTML}
               maxRows={8}
               minRows={5}
               readOnly
@@ -298,7 +247,7 @@ export function HandoffPanel({
             />
             <Group gap="xs" grow>
               <Button
-                disabled={!isProductionApproved || !renderedHTML}
+                disabled={!isReady || !renderedHTML}
                 leftSection={<CopyIcon aria-hidden="true" size={15} />}
                 size="xs"
                 variant="light"
@@ -307,7 +256,7 @@ export function HandoffPanel({
                 Copy HTML
               </Button>
               <Button
-                disabled={!isProductionApproved || !renderedHTML}
+                disabled={!isReady || !renderedHTML}
                 leftSection={<DownloadSimpleIcon aria-hidden="true" size={15} />}
                 size="xs"
                 variant="light"

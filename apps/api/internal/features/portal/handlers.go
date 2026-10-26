@@ -24,7 +24,9 @@ func RegisterRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Get("/api/bitrix-variables", getVariablesHandler(dbpool))
 	r.Put("/api/bitrix-variables", putVariablesHandler(dbpool))
 	r.Post("/api/boards/{boardKey}/portal/sync", startSyncHandler(dbpool))
+	r.Put("/api/boards/{boardKey}/portal/settings", putSyncSettingsHandler(dbpool))
 	r.Get("/api/boards/{boardKey}/portal", boardOverviewHandler(dbpool))
+	r.Get("/api/portal/upload-suggestions", uploadSuggestionsHandler(dbpool))
 	r.Get("/api/portal/groups/{id}", groupDetailHandler(dbpool))
 	r.Patch("/api/portal/groups/{id}", decideGroupHandler(dbpool))
 	r.Get("/api/portal/groups/{id}/reconstruct", reconstructGroupHandler(dbpool))
@@ -92,19 +94,10 @@ func startSyncHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		boardKey := chi.URLParam(r, "boardKey")
-		var runID string
-		err = dbpool.QueryRow(r.Context(), `
-			INSERT INTO portal_sync_runs (board_key, category_id, days, started_by_email)
-			SELECT $1, $2, $3, $4
-			WHERE NOT EXISTS (
-				SELECT 1 FROM portal_sync_runs
-				WHERE board_key = $1 AND status = 'running' AND started_at > now() - interval '30 minutes'
-			)
-			RETURNING id;
-		`, boardKey, request.CategoryID, request.Days, user.Email).Scan(&runID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			http.Error(w, "a sync for this board is already running", http.StatusConflict)
+		options := SyncOptions{BoardKey: chi.URLParam(r, "boardKey"), CategoryID: request.CategoryID, Days: request.Days}
+		runID, err := BeginRun(r.Context(), dbpool, options, user.Email)
+		if errors.Is(err, ErrSyncRunning) {
+			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
 		if err != nil {
@@ -113,14 +106,43 @@ func startSyncHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
 			defer cancel()
-			if err := Sync(ctx, dbpool, client, runID, SyncOptions{BoardKey: boardKey, CategoryID: request.CategoryID, Days: request.Days}); err != nil {
+			if err := Sync(ctx, dbpool, client, runID, options); err != nil {
 				fmt.Fprintf(os.Stderr, "portal sync %s failed: %v\n", runID, err)
 			}
 		}()
 
 		writeJSON(w, http.StatusAccepted, map[string]string{"run_id": runID})
+	}
+}
+
+func putSyncSettingsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireSuperAdmin(w, r)
+		if !ok {
+			return
+		}
+		var settings SyncSettings
+		if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := settings.validate(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		saved, err := saveSyncSettings(r.Context(), dbpool, chi.URLParam(r, "boardKey"), settings, user.Email)
+		if errors.Is(err, errBoardNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "portal sync settings: %v\n", err)
+			http.Error(w, "failed to save sync settings", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, saved)
 	}
 }
 
@@ -166,19 +188,22 @@ type groupItem struct {
 }
 
 type unseenEmail struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Stage           string  `json:"stage"`
-	SortOrder       int     `json:"sort_order"`
-	Language        string  `json:"language"`
-	Variant         string  `json:"variant"`
-	AdaptationLabel string  `json:"adaptation_label"`
-	SendTiming      *string `json:"send_timing"`
-	SendCondition   *string `json:"send_condition"`
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Stage           string `json:"stage"`
+	SortOrder       int    `json:"sort_order"`
+	Language        string `json:"language"`
+	Variant         string `json:"variant"`
+	AdaptationLabel string `json:"adaptation_label"`
+	// RegionName is the email's region on a board with regions, else "".
+	RegionName    string  `json:"region_name"`
+	SendTiming    *string `json:"send_timing"`
+	SendCondition *string `json:"send_condition"`
 }
 
 type boardOverview struct {
 	LatestRun *syncRun      `json:"latest_run"`
+	Settings  SyncSettings  `json:"settings"`
 	Stages    []portalStage `json:"stages"`
 	Groups    []groupItem   `json:"groups"`
 	Unseen    []unseenEmail `json:"unseen"`
@@ -225,6 +250,9 @@ func loadBoardOverview(ctx context.Context, db *pgxpool.Pool, boardKey string) (
 	if err == nil {
 		overview.LatestRun = &run
 	}
+	if overview.Settings, err = loadSyncSettings(ctx, db, boardKey); err != nil {
+		return overview, err
+	}
 
 	rows, err := db.Query(ctx, `SELECT stage_id, name, sort FROM portal_stages WHERE board_key = $1 ORDER BY sort;`, boardKey)
 	if err != nil {
@@ -269,7 +297,8 @@ func loadBoardOverview(ctx context.Context, db *pgxpool.Pool, boardKey string) (
 	// Board emails no sent email points to: either not triggered yet (the
 	// robot condition has not fired) or not used anymore.
 	rows, err = db.Query(ctx, `
-		SELECT e.id, e.title, e.stage, e.sort_order, e.language, e.variant, e.adaptation_label, e.send_timing, e.send_condition
+		SELECT e.id, e.title, e.stage, e.sort_order, e.language, e.variant, e.adaptation_label,
+			coalesce((SELECT r.name FROM board_regions r WHERE r.board_key = e.sequence AND r.key = e.region_key), ''), e.send_timing, e.send_condition
 		FROM emails e
 		WHERE e.sequence = $1 AND e.archived_at IS NULL AND e.live_marked_at IS NULL
 			AND NOT EXISTS (
@@ -287,7 +316,7 @@ func loadBoardOverview(ctx context.Context, db *pgxpool.Pool, boardKey string) (
 	defer rows.Close()
 	for rows.Next() {
 		var u unseenEmail
-		if err := rows.Scan(&u.ID, &u.Title, &u.Stage, &u.SortOrder, &u.Language, &u.Variant, &u.AdaptationLabel, &u.SendTiming, &u.SendCondition); err != nil {
+		if err := rows.Scan(&u.ID, &u.Title, &u.Stage, &u.SortOrder, &u.Language, &u.Variant, &u.AdaptationLabel, &u.RegionName, &u.SendTiming, &u.SendCondition); err != nil {
 			return overview, err
 		}
 		overview.Unseen = append(overview.Unseen, u)
@@ -298,7 +327,8 @@ func loadBoardOverview(ctx context.Context, db *pgxpool.Pool, boardKey string) (
 	rows.Close()
 
 	rows, err = db.Query(ctx, `
-		SELECT e.id, e.title, e.stage, e.sort_order, e.language, e.variant, e.adaptation_label, e.send_timing,
+		SELECT e.id, e.title, e.stage, e.sort_order, e.language, e.variant, e.adaptation_label,
+			coalesce((SELECT r.name FROM board_regions r WHERE r.board_key = e.sequence AND r.key = e.region_key), ''), e.send_timing,
 			e.send_condition, e.live_marked_at, COALESCE(e.live_marked_by, ''), e.live_note
 		FROM emails e
 		WHERE e.sequence = $1 AND e.archived_at IS NULL AND e.live_marked_at IS NOT NULL
@@ -310,7 +340,7 @@ func loadBoardOverview(ctx context.Context, db *pgxpool.Pool, boardKey string) (
 	for rows.Next() {
 		var m manualLiveEmail
 		if err := rows.Scan(&m.ID, &m.Title, &m.Stage, &m.SortOrder, &m.Language, &m.Variant, &m.AdaptationLabel,
-			&m.SendTiming, &m.SendCondition, &m.MarkedAt, &m.MarkedBy, &m.Note); err != nil {
+			&m.RegionName, &m.SendTiming, &m.SendCondition, &m.MarkedAt, &m.MarkedBy, &m.Note); err != nil {
 			return overview, err
 		}
 		overview.ManualLive = append(overview.ManualLive, m)

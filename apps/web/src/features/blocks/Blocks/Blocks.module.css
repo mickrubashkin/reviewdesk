@@ -1,0 +1,23 @@
+.code {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.previewWrap {
+  height: 640px;
+  max-height: 70dvh;
+  overflow: auto;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-sm);
+  background: #eef2f7;
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: white;
+}

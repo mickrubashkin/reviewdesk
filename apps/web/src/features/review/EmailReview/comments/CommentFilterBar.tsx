@@ -13,7 +13,8 @@ export function CommentFilterBar({
 }: {
   comments: EmailComment[];
   filter: CommentStatusFilter;
-  onAddCommentClick: () => void;
+  // Absent on an archived email: it is read-only.
+  onAddCommentClick?: () => void;
   onFilterChange: (filter: CommentStatusFilter) => void;
 }) {
   const openCount = comments.filter(
@@ -46,14 +47,18 @@ export function CommentFilterBar({
       </Group>
 
       <Group justify="space-between" gap="xs" wrap="nowrap">
-        <Button
-          leftSection={<ChatTextIcon aria-hidden="true" size={14} />}
-          size="xs"
-          variant="light"
-          onClick={onAddCommentClick}
-        >
-          Add comment
-        </Button>
+        {onAddCommentClick ? (
+          <Button
+            leftSection={<ChatTextIcon aria-hidden="true" size={14} />}
+            size="xs"
+            variant="light"
+            onClick={onAddCommentClick}
+          >
+            Add comment
+          </Button>
+        ) : (
+          <span />
+        )}
         <SegmentedControl
           aria-label="Comment status filter"
           className={styles.commentFilterControl}

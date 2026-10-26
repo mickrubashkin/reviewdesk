@@ -1,30 +1,36 @@
 import { ApiError, fetchJson } from "../../shared/api";
 import type {
+  BasedOnStatus,
   CreateCommentMessagePayload,
-  EmailAnalysis,
-  EmailDetail,
-  EmailHTMLInspection,
-  EmailListItem,
-  EmailVersionDetail,
-  EmailVersionListItem,
-  CreateEmailPayload,
   CreateEmailCommentPayload,
+  CreateEmailPayload,
   CreateSlotPayload,
   CreateSlotResponse,
   DuplicateEmailPayload,
   EmailActivityItem,
+  EmailAnalysis,
   EmailAreaApproval,
   EmailComment,
+  EmailReviewStatus,
   EmailCommentMessage,
+  EmailDetail,
+  EmailHTMLInspection,
+  EmailListItem,
+  EmailReviewArea,
+  EmailVersionDetail,
+  RobotUpload,
+  EmailVersionListItem,
+  LayoutItem,
+  ReferenceDifference,
   RenderedEmail,
   TranslationStatus,
+  TranslationSuggestions,
+  UpdateEditableFieldsPayload,
   UpdateEmailAreaApprovalPayload,
   UpdateEmailPlanningFieldsPayload,
   UpdateEmailPlanningFieldsResponse,
-  EmailReviewArea,
   UpdateEmailReviewStatusPayload,
   UpdateEmailReviewStatusResponse,
-  UpdateEditableFieldsPayload,
 } from "./types";
 
 export function fetchEmailActivity(emailId: string): Promise<EmailActivityItem[]> {
@@ -36,6 +42,11 @@ export function fetchEmailActivity(emailId: string): Promise<EmailActivityItem[]
 export function fetchEmails(boardKey?: string): Promise<EmailListItem[]> {
   const query = boardKey ? `?board=${encodeURIComponent(boardKey)}` : "";
   return fetchJson<EmailListItem[]>(`/api/emails${query}`);
+}
+
+// The board's history: archived emails, newest archive first.
+export function fetchArchivedEmails(boardKey: string): Promise<EmailListItem[]> {
+  return fetchJson<EmailListItem[]>(`/api/emails?board=${encodeURIComponent(boardKey)}&archived=only`);
 }
 
 export async function downloadEmailsExport(
@@ -80,6 +91,30 @@ export function markEmailLive(
   });
 }
 
+// version is the version that was copied; the API refuses the mark if the
+// email was saved again since. robots are the robots it went into or out
+// of; none means every robot of the email's region.
+export function markEmailUploaded(
+  emailId: string,
+  uploaded: boolean,
+  version?: number,
+  robots?: string[]
+): Promise<{ uploaded_version: number | null; uploaded_at: string | null; upload_robots: RobotUpload[] }> {
+  return fetchJson(`/api/emails/${encodeURIComponent(emailId)}/uploaded`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uploaded, version, robots }),
+  });
+}
+
+export function takeEmail(emailId: string, take: boolean): Promise<{ owner_email: string | null }> {
+  return fetchJson(`/api/emails/${encodeURIComponent(emailId)}/take`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ take }),
+  });
+}
+
 export function fetchTranslationStatus(emailId: string): Promise<TranslationStatus | undefined> {
   return fetchJson<TranslationStatus | undefined>(`/api/emails/${encodeURIComponent(emailId)}/translation`);
 }
@@ -91,12 +126,70 @@ export function confirmTranslation(emailId: string): Promise<TranslationStatus |
   );
 }
 
+export function suggestTranslation(emailId: string): Promise<TranslationSuggestions> {
+  return fetchJson<TranslationSuggestions>(
+    `/api/emails/${encodeURIComponent(emailId)}/translation/suggestions`,
+    { method: "POST" }
+  );
+}
+
+export function fetchBasedOnStatus(emailId: string): Promise<BasedOnStatus | undefined> {
+  return fetchJson<BasedOnStatus | undefined>(`/api/emails/${encodeURIComponent(emailId)}/based-on`);
+}
+
+export function confirmBasedOn(emailId: string): Promise<BasedOnStatus | undefined> {
+  return fetchJson<BasedOnStatus | undefined>(`/api/emails/${encodeURIComponent(emailId)}/based-on/confirm`, {
+    method: "POST",
+  });
+}
+
+// setBasedOnLink sets which reference email a region's email adapts; null
+// makes it the region's own email.
+export function setBasedOnLink(emailId: string, referenceId: string | null): Promise<void> {
+  return fetchJson<void>(`/api/emails/${encodeURIComponent(emailId)}/based-on`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reference_id: referenceId }),
+  });
+}
+
+// fetchReferenceDifferences sums up, per email id, how the board's region
+// emails differ from the reference emails they adapt.
+export async function fetchReferenceDifferences(boardKey: string): Promise<Record<string, ReferenceDifference>> {
+  return (
+    await fetchJson<{ emails: Record<string, ReferenceDifference> }>(
+      `/api/reference-differences?board=${encodeURIComponent(boardKey)}`
+    )
+  ).emails;
+}
+
 export function placeEmail(
   emailId: string,
   payload: { sequence: string; stage: string; sort_order?: number }
 ): Promise<{ id: string; sequence: string; stage: string; sort_order: number; translation_of: string | null }> {
   return fetchJson(`/api/emails/${encodeURIComponent(emailId)}/place`, {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type CreatedTranslation = {
+  email: EmailDetail;
+  model: string;
+  glossary: string[];
+  // Fields left in English because the model's text was unusable.
+  kept_english: { key: string; problem: string }[];
+};
+
+// createTranslationFromEN creates the missing translation of an EN email in
+// its slot, as a draft; translate asks the AI for the text first.
+export function createTranslationFromEN(
+  masterId: string,
+  payload: { language: string; translate: boolean }
+): Promise<CreatedTranslation> {
+  return fetchJson<CreatedTranslation>(`/api/emails/${encodeURIComponent(masterId)}/translations`, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
@@ -130,6 +223,65 @@ export function createSlot(payload: CreateSlotPayload): Promise<CreateSlotRespon
     headers: {
       "Content-Type": "application/json",
     },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type SlotRef = { sequence: string; stage: string; sort_order: number };
+export type SlotPlace = { stage: string; sort_order: number };
+
+// updateSlot edits every language of a slot at once: name, place, timing and
+// condition. Fields left out stay as they are; "" clears timing or condition.
+export function updateSlot(
+  payload: SlotRef & {
+    title?: string;
+    to_stage?: string;
+    to_sort_order?: number;
+    send_timing?: string;
+    send_condition?: string;
+  }
+): Promise<SlotPlace> {
+  return fetchJson<SlotPlace>("/api/slots", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// moveSlot puts a slot right before another slot of a stage, or at its end.
+export function moveSlot(
+  payload: SlotRef & { to_stage: string; before_sort_order: number | null }
+): Promise<SlotPlace> {
+  return fetchJson<SlotPlace>("/api/slots/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type BulkEmailAction =
+  | { action: "owner"; owner_email: string | null }
+  | { action: "status"; review_status: EmailReviewStatus }
+  | { action: "slot"; stage: string; sort_order?: number }
+  | { action: "timing"; send_timing?: string; send_condition?: string }
+  | { action: "archive" };
+
+export type BulkEmailResult = {
+  updated: number;
+  skipped: { id: string; title: string; language: string; reason: string }[];
+  slots?: number;
+  stage?: string;
+  sort_order?: number;
+};
+
+// bulkUpdateEmails applies one action to emails selected on a board, all or
+// nothing; only "ready" skips the emails its gates hold back.
+export function bulkUpdateEmails(
+  payload: BulkEmailAction & { sequence: string; email_ids: string[] }
+): Promise<BulkEmailResult> {
+  return fetchJson<BulkEmailResult>("/api/emails/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
@@ -177,6 +329,15 @@ export function restoreEmailVersion(
       method: "POST",
     }
   );
+}
+
+// Sets the blocks an EN email is built from; its translations follow.
+export function updateEmailLayout(emailId: string, layout: LayoutItem[]): Promise<void> {
+  return fetchJson<void>(`/api/emails/${encodeURIComponent(emailId)}/layout`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ layout }),
+  });
 }
 
 export function updateEmailEditableFields(
@@ -270,6 +431,14 @@ export function duplicateEmail(
 
 export function archiveEmail(emailId: string): Promise<void> {
   return fetchJson<void>(`/api/emails/${encodeURIComponent(emailId)}/archive`, {
+    method: "PATCH",
+  });
+}
+
+// Puts an archived email back in its place on the board; refused (409) when
+// an active email took that place meanwhile.
+export function restoreEmail(emailId: string): Promise<void> {
+  return fetchJson<void>(`/api/emails/${encodeURIComponent(emailId)}/restore`, {
     method: "PATCH",
   });
 }
@@ -409,4 +578,14 @@ export function resolveComment(commentId: string): Promise<EmailComment> {
       method: "PATCH",
     }
   );
+}
+
+// updateEmailRegion puts an email in a region of its board; "" leaves it
+// without one.
+export function updateEmailRegion(emailId: string, regionKey: string): Promise<void> {
+  return fetchJson<void>(`/api/emails/${encodeURIComponent(emailId)}/region`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ region_key: regionKey }),
+  });
 }

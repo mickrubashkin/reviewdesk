@@ -18,8 +18,8 @@ func TestRepairTimelineHTMLRestoresHiddenCTA(t *testing.T) {
 }
 
 func TestNormalizedTextIgnoresYearAndFiller(t *testing.T) {
-	sent := `<div>&zwnj;&nbsp;&zwnj;&nbsp;</div><p>Hello</p><p>© 2026 Example.</p>`
-	template := `<div>` + "‌ " + `</div><p>Hello</p><p>© {{=date('Y')}} Example.</p>`
+	sent := `<div>&zwnj;&nbsp;&zwnj;&nbsp;</div><p>Hello</p><p>© 2026 Acme.</p>`
+	template := `<div>` + "‌ " + `</div><p>Hello</p><p>© {{=date('Y')}} Acme.</p>`
 	if a, b := NormalizedText(sent), NormalizedText(template); a != b {
 		t.Fatalf("expected equal texts:\n%q\n%q", a, b)
 	}
@@ -36,9 +36,9 @@ func TestSimilarityAndLanguage(t *testing.T) {
 	}
 	cases := map[string]string{
 		a: "en",
-		"Olá! Você conseguiu avançar com aqueles ajustes? Me coloco à disposição para uma chamada com você e sua equipe, não hesite.":                                                                                                                                                    "br",
-		"Przeprowadzimy Cię przez proces instalacji. Nie zainstalowałeś jeszcze aplikacji? Jeśli nie wiesz, jak zacząć. © YEAR Example. All rights reserved. This is an automatically generated notification for you, the partner, because you signed up for this program and the emails.": "pl",
-		"Hola, gracias por su interés en el programa. Hemos intentado contactar con usted por los mensajes, para que pueda continuar con la solicitud.":                                                                                                                                  "es",
+		"Olá! Você conseguiu avançar com aqueles ajustes? Me coloco à disposição para uma chamada com você e sua equipe, não hesite.":                                                                                                                                                   "br",
+		"Przeprowadzimy Cię przez proces instalacji. Nie zainstalowałeś jeszcze aplikacji? Jeśli nie wiesz, jak zacząć. © YEAR Acme. All rights reserved. This is an automatically generated notification for you, the partner, because you signed up for this program and the emails.": "pl",
+		"Hola, gracias por su interés en el programa. Hemos intentado contactar con usted por los mensajes, para que pueda continuar con la solicitud.":                                                                                                                                 "es",
 	}
 	for text, want := range cases {
 		if got := DetectLanguage(text); got != want {

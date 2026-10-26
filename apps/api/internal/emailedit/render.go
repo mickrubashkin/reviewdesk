@@ -55,6 +55,9 @@ var invisibleCharEntities = strings.NewReplacer(
 
 type RenderMetadata struct {
 	Preheader string
+	// Subject fills an element marked data-email-subject, the <title> of an
+	// email built from blocks; templates without the mark keep their own.
+	Subject string
 }
 
 func RenderEditableHTML(templateHTML string, fields EditableFields) (string, error) {
@@ -94,6 +97,9 @@ func renderMetadataTargets(node *xhtml.Node, metadata RenderMetadata) {
 		if _, ok := attrValue(node, "data-email-preheader"); ok {
 			replaceChildrenWithText(node, metadata.Preheader)
 		}
+		if _, ok := attrValue(node, "data-email-subject"); ok {
+			replaceChildrenWithText(node, metadata.Subject)
+		}
 	}
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
@@ -107,6 +113,16 @@ func renderNodeFields(node *xhtml.Node, fields EditableFields) error {
 			value, err := stringFieldValue(fields, key)
 			if err != nil {
 				return err
+			}
+			if fields[key].Format == FormatMarkdown {
+				if !CanFormat(node.Data) {
+					return fmt.Errorf("editable field %q cannot be formatted: it is inside <%s>", key, node.Data)
+				}
+				if err := renderMarkdownInto(node, key, value); err != nil {
+					return err
+				}
+				// The rendered elements hold no fields of their own.
+				return nil
 			}
 			replaceChildrenWithText(node, value)
 		}
@@ -288,6 +304,23 @@ func replaceTemplateMarkers(templateHTML string, fields EditableFields) (string,
 	return rendered, nil
 }
 
+// ValidateFieldValue checks a value the way rendering does: URLs and images
+// must be http(s) (or mailto for links) or a Bitrix24 expression.
+func ValidateFieldValue(field EditableField) error {
+	fields := EditableFields{"value": field}
+	switch field.Type {
+	case FieldTypeNumber:
+		_, err := intFieldValue(fields, "value")
+		return err
+	case FieldTypeURL, FieldTypeImage:
+		_, err := urlFieldValue(fields, "value")
+		return err
+	default:
+		_, err := stringFieldValue(fields, "value")
+		return err
+	}
+}
+
 func stringFieldValue(fields EditableFields, key string) (string, error) {
 	field, ok := fields[key]
 	if !ok {
@@ -308,27 +341,32 @@ func urlFieldValue(fields EditableFields, key string) (string, error) {
 		return "", err
 	}
 
-	// Bitrix24 fills the link in when it sends the email, e.g. the responsible
-	// manager's booking link; a URL that carries expressions in its query is
-	// checked with them swapped for a placeholder.
+	if err := checkLinkURL(value, fields[key].Type == FieldTypeURL); err != nil {
+		return "", fmt.Errorf("editable field %q has %w", key, err)
+	}
+	return value, nil
+}
+
+// checkLinkURL lets through http(s) URLs, mailto when allowed, and Bitrix24
+// expressions: Bitrix24 fills the link in when it sends the email, e.g. the
+// responsible manager's booking link; a URL that carries expressions in its
+// query is checked with them swapped for a placeholder.
+func checkLinkURL(value string, allowMailto bool) error {
 	if IsBitrixExpression(value) {
-		return value, nil
+		return nil
 	}
 	parsed, err := url.Parse(bitrixExpressionPattern.ReplaceAllString(value, "x"))
 	if err != nil {
-		return "", fmt.Errorf("editable field %q has invalid URL: %w", key, err)
+		return fmt.Errorf("invalid URL: %w", err)
 	}
-
-	field := fields[key]
 	allowedScheme := parsed.Scheme == "http" || parsed.Scheme == "https"
-	if field.Type == FieldTypeURL && parsed.Scheme == "mailto" {
+	if allowMailto && parsed.Scheme == "mailto" {
 		allowedScheme = true
 	}
 	if !allowedScheme {
-		return "", fmt.Errorf("editable field %q has disallowed URL scheme %q", key, parsed.Scheme)
+		return fmt.Errorf("disallowed URL scheme %q", parsed.Scheme)
 	}
-
-	return value, nil
+	return nil
 }
 
 func intFieldValue(fields EditableFields, key string) (int, error) {

@@ -7,20 +7,23 @@ import {
   ScrollArea,
   SegmentedControl,
   Stack,
+  Tabs,
   Text,
   Title,
   Tooltip,
 } from "@mantine/core";
 import { ArrowSquareOutIcon, XIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchEmailDetail } from "../../emails/api";
 import { MailPreview } from "../../emails/MailPreview";
-import { ProductionBadge } from "../../emails/ProductionBadge";
-import { formatEmailReviewStatus } from "../../emails/reviewStatus";
+import { EmailStatusLine } from "../../emails/EmailStatusLine";
 import { formatStageName } from "../../emails/stages";
 import type { EmailListItem } from "../../emails/types";
+import { PanelComments } from "./PanelComments";
+import { ReferenceSection } from "./ReferenceSection";
 import { pickPrimary } from "./slotHelpers";
 import { TranslationLinkSelect, TranslationSection } from "./TranslationSection";
 import styles from "./EmailSidePanel.module.css";
@@ -29,12 +32,17 @@ import styles from "./EmailSidePanel.module.css";
 // emails while moving around the board without leaving it.
 export function EmailSidePanel({
   canManage,
+  canTranslate,
+  currentUserEmail,
   email,
   siblings,
   onClose,
   onSelect,
 }: {
   canManage: boolean;
+  // Admins, or translators of this email's language.
+  canTranslate: boolean;
+  currentUserEmail: string;
   email: EmailListItem;
   // Other emails of the same slot, to switch language or version in place.
   siblings: EmailListItem[];
@@ -45,6 +53,8 @@ export function EmailSidePanel({
     queryKey: ["emails", email.id, "review"],
     queryFn: () => fetchEmailDetail(email.id),
   });
+  // The tab stays when switching emails, so people can go through comments.
+  const [tab, setTab] = useState<string | null>("preview");
   const languages = [...new Set(siblings.map((s) => s.language))];
   const sameLanguage = siblings.filter((s) => s.language === email.language);
 
@@ -108,33 +118,58 @@ export function EmailSidePanel({
           <TranslationLinkSelect email={email} siblings={siblings} />
         ) : null}
         <Group gap={6}>
-          <ProductionBadge email={email} versions={sameLanguage} />
-          <Badge size="xs" variant="light">
-            {formatEmailReviewStatus(email.review_status)}
-          </Badge>
-          {email.open_comment_count > 0 ? (
-            <Badge color="orange" size="xs" variant="light">
-              {email.open_comment_count} open comments
-            </Badge>
-          ) : null}
+          <EmailStatusLine email={email} size="sm" versions={sameLanguage} />
           <Text c="dimmed" size="xs">
             {[email.send_timing, email.send_condition].filter(Boolean).join(" · ")}
           </Text>
         </Group>
       </Stack>
 
-      <ScrollArea className={styles.body} type="auto">
-        <div className={styles.translation}>
-          <TranslationSection canManage={canManage} email={email} />
-        </div>
-        {detailQuery.data ? (
-          <MailPreview email={detailQuery.data} isScanning={false} viewport="desktop" />
-        ) : (
-          <Stack align="center" p="xl">
-            <Loader size="sm" />
-          </Stack>
-        )}
-      </ScrollArea>
+      <Tabs className={styles.tabs} value={tab} onChange={setTab}>
+        <Tabs.List className={styles.tabList}>
+          <Tabs.Tab value="preview">Preview</Tabs.Tab>
+          <Tabs.Tab
+            rightSection={
+              email.open_comment_count > 0 ? (
+                <Badge
+                  color={email.open_blocking_comment_count > 0 ? "red" : "orange"}
+                  size="xs"
+                  variant="light"
+                >
+                  {email.open_comment_count}
+                </Badge>
+              ) : undefined
+            }
+            value="comments"
+          >
+            Comments
+          </Tabs.Tab>
+        </Tabs.List>
+        <ScrollArea className={styles.body} type="auto">
+          <Tabs.Panel value="preview">
+            <div className={styles.translation}>
+              <TranslationSection canEdit={canTranslate} email={email} />
+              <ReferenceSection candidates={siblings} canEdit={canTranslate} canManage={canManage} email={email} />
+            </div>
+            {detailQuery.data ? (
+              <MailPreview email={detailQuery.data} isScanning={false} viewport="desktop" />
+            ) : (
+              <Stack align="center" p="xl">
+                <Loader size="sm" />
+              </Stack>
+            )}
+          </Tabs.Panel>
+          <Tabs.Panel className={styles.comments} value="comments">
+            <PanelComments
+              key={email.id}
+              canManage={canManage}
+              currentUserEmail={currentUserEmail}
+              detail={detailQuery.data}
+              email={email}
+            />
+          </Tabs.Panel>
+        </ScrollArea>
+      </Tabs>
     </aside>
   );
 }

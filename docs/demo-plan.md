@@ -15,9 +15,11 @@ Subdomain is preferred over `/demo` because it keeps routes, cookies, API proxyi
 ## Demo Access
 
 - Demo-login mode is enabled only in the demo environment.
-- Public visitors use `Enter demo`; no email OTP is required.
-- The demo session uses `demo-reviewer@example.com` as a fixed low-privilege reviewer account.
-- Optional: add a separate `Try admin mode` demo session only if edit/approval interaction is part of the recorded story.
+- Public visitors open the board directly; no login page and no email OTP.
+- Each visitor gets a sandbox: their own board-scoped user (`visitor-…@visitors.demo.invalid`, a reviewer who manages one board) and their own copy of the demo board (`demo-visit-…`), seeded on entry. A board-scoped user sees only the boards they manage, so visitors never see each other's boards, comments, or edits.
+- The session ends with the sandbox, 24 hours after the visit. The API deletes expired sandboxes every hour, and the oldest ones when there are more than 500. A visitor who comes back later gets a fresh copy.
+- Entries are rate-limited to 20 per hour per address.
+- The shared `demo-onboarding` board is still seeded by `cmd/demoseed`. Visitors do not see it.
 
 ## Allowed Demo Actions
 
@@ -45,10 +47,13 @@ Interactive demo option:
 ## Current Implementation
 
 - Demo seed/reset strategy is implemented and isolated from normal seed data.
-- Demo login is implemented behind `AUTH_DEMO_LOGIN_ENABLED`.
+- Demo login is implemented behind `AUTH_DEMO_LOGIN_ENABLED`, with a sandbox per visitor (`internal/demo`).
 - Demo backend can reset synthetic data automatically on deploy.
 - Public demo uses a separate frontend, backend, and PostgreSQL database.
-- Remaining demo work: edge rate limits, screenshots, and short demo video.
+- Demo AI is live but limited: each visitor gets 5 OpenAI calls (analysis and translations; cached results are free) and the whole demo 200 per 24 hours, counted in `demo_ai_calls`.
+- Demo notification emails (@mentions) are only logged, even if `RESEND_API_KEY` is set.
+- Every demo entry is recorded in `demo_visits` (source, device, and what the visitor did), which outlives the sandbox and demo resets. See Visit Stats.
+- Remaining demo work: edge rate limits for the other endpoints, screenshots, and short demo video.
 
 ## Seed Commands
 
@@ -74,7 +79,7 @@ DEMO_RESET_ON_DEPLOY=true
 DEMO_RESET_CONFIRM=demo
 ```
 
-The demo board key is `demo-onboarding`. Reset deletes only demo-owned board/email/session data and then recreates the generic demo scenario. It also removes the migration-created `onboarding` fallback board only when that board has no emails.
+The demo board key is `demo-onboarding`. Reset deletes only demo-owned data: that board, every visitor sandbox, and the demo sessions, and then recreates the generic demo scenario. It also removes the migration-created `onboarding` fallback board only when that board has no emails.
 
 The seeded dataset is production-like but disposable:
 
@@ -91,6 +96,19 @@ VITE_AUTH_DEMO_LOGIN_ENABLED=true
 ```
 
 Keep both disabled in production.
+
+## Visit Stats
+
+`demo_visits` has one row per visitor: the source (`utm_source` of the link, else the referring site; every LinkedIn address counts as `linkedin`; empty is direct), whether the device is mobile, and the actions. The actions are email event counts by action, `marked_ready` for a status change to ready (the last step of the demo guide), and `ai_calls`. They are read from the live events while the sandbox lives and copied into the visit when the sandbox is deleted.
+
+Nobody can sign in to the demo as an admin, so the stats are a command. In the Railway backend service console:
+
+```sh
+/app/demostats              # visits per day and per source, last 14 days
+/app/demostats -days 30 -visits   # and each visit with its actions
+```
+
+Days are in `Europe/Madrid` (`-tz` to change). Locally: `cd apps/api && go run ./cmd/demostats`.
 
 ## Demo Story
 

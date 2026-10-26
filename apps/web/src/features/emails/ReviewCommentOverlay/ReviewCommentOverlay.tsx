@@ -46,7 +46,7 @@ export function ReviewCommentOverlay({
             }
           >
             <span className={styles.changedBlockBadge}>
-              {changedBlockLabel(rect.reason)}
+              {rect.label ?? changedBlockLabel(rect.reason)}
             </span>
           </div>
         ))}
@@ -126,8 +126,10 @@ export default ReviewCommentOverlay;
 
 function changedBlockLabel(reason: ReviewChangedBlockRect["reason"]) {
   switch (reason) {
+    case "ai":
+      return "AI";
     case "approval":
-      return "Edited after approval";
+      return "Edited since ready";
     case "comment":
       return "Edited after comment";
     case "comment_and_approval":

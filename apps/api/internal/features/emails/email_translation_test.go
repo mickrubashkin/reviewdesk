@@ -1,6 +1,7 @@
 package emails
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,28 +29,42 @@ func TestDiffVersionTextListsOnlyTranslatableChanges(t *testing.T) {
 	}
 }
 
-func TestConfirmTranslationRequiresAdmin(t *testing.T) {
+func TestConfirmTranslationNeedsAdminOrTranslator(t *testing.T) {
+	dbpool := testDBPool(t)
+	emailID := createTestEmail(t, dbpool) // language en, not a translation
+	reviewer := createTestUserWithRole(t, dbpool, "reviewer")
 	router := chi.NewRouter()
-	router.Post("/api/emails/{id}/translation/confirm", confirmTranslationHandler(nil))
+	router.Post("/api/emails/{id}/translation/confirm", confirmTranslationHandler(dbpool))
+	confirm := func() int {
+		request := httptest.NewRequest(http.MethodPost, "/api/emails/"+emailID+"/translation/confirm", nil)
+		request = request.WithContext(auth.WithUser(request.Context(), reviewer))
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response.Code
+	}
 
-	request := httptest.NewRequest(http.MethodPost, "/api/emails/x/translation/confirm", nil)
-	request = request.WithContext(auth.WithUser(request.Context(), auth.AuthUser{ID: "r", Email: "r@example.com", Role: "reviewer"}))
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for a reviewer, got %d", response.Code)
+	if code := confirm(); code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a reviewer who does not translate EN, got %d", code)
+	}
+	if _, err := dbpool.Exec(context.Background(), `UPDATE users SET languages = '{en}' WHERE id = $1;`, reviewer.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code := confirm(); code != http.StatusNotFound {
+		t.Fatalf("expected a translator to get past the check (404: not a translation), got %d", code)
 	}
 }
 
-func TestPlaceAndLinkRequireAdmin(t *testing.T) {
+func TestPlaceAndLinkRequireBoardManager(t *testing.T) {
+	dbpool := testDBPool(t)
+	emailID := createTestEmail(t, dbpool)
+	reviewer := createTestUserWithRole(t, dbpool, "reviewer")
 	router := chi.NewRouter()
-	router.Patch("/api/emails/{id}/place", placeEmailHandler(nil))
-	router.Patch("/api/emails/{id}/translation-link", translationLinkHandler(nil))
+	router.Patch("/api/emails/{id}/place", placeEmailHandler(dbpool))
+	router.Patch("/api/emails/{id}/translation-link", translationLinkHandler(dbpool))
 
-	for _, path := range []string{"/api/emails/x/place", "/api/emails/x/translation-link"} {
+	for _, path := range []string{"/api/emails/" + emailID + "/place", "/api/emails/" + emailID + "/translation-link"} {
 		request := httptest.NewRequest(http.MethodPatch, path, nil)
-		request = request.WithContext(auth.WithUser(request.Context(), auth.AuthUser{ID: "r", Email: "r@example.com", Role: "reviewer"}))
+		request = request.WithContext(auth.WithUser(request.Context(), reviewer))
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
 		if response.Code != http.StatusForbidden {

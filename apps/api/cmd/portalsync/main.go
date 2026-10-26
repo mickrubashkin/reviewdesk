@@ -48,16 +48,14 @@ func main() {
 	}
 	defer dbpool.Close()
 
-	var runID string
-	if err := dbpool.QueryRow(ctx, `
-		INSERT INTO portal_sync_runs (board_key, category_id, days, started_by_email)
-		VALUES ($1, $2, $3, 'cli') RETURNING id;
-	`, *board, *category, *days).Scan(&runID); err != nil {
+	options := portal.SyncOptions{BoardKey: *board, CategoryID: *category, Days: *days}
+	runID, err := portal.BeginRun(ctx, dbpool, options, "cli")
+	if err != nil {
 		fail(err)
 	}
 
 	fmt.Printf("sync %s: board=%s category=%d days=%d\n", runID, *board, *category, *days)
-	if err := portal.Sync(ctx, dbpool, client, runID, portal.SyncOptions{BoardKey: *board, CategoryID: *category, Days: *days}); err != nil {
+	if err := portal.Sync(ctx, dbpool, client, runID, options); err != nil {
 		fail(err)
 	}
 

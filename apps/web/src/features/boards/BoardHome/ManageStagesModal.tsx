@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { ActionIcon, Alert, Badge, Button, Group, Modal, SegmentedControl, Stack, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Modal, Stack, Tabs, TextInput, Tooltip } from "@mantine/core";
 import { ArrowLeftIcon, ArrowRightIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
 
@@ -8,8 +8,8 @@ import { createBoardStage, deleteBoardStage, reorderBoardStages, updateBoardStag
 import { formatStageName } from "../../emails/stages";
 import type { Board } from "../../emails/types";
 
-import { BoardApprovalAreasManager } from "./BoardApprovalAreasManager";
 import styles from "../../../App.module.css";
+import { BoardRegionsEditor } from "./BoardRegionsEditor";
 
 export function ManageStagesModal({
   board,
@@ -22,7 +22,6 @@ export function ManageStagesModal({
   onClose: () => void;
   onMutated: () => void;
 }) {
-  const [activeSettingsTab, setActiveSettingsTab] = useState("stages");
   const [newStageName, setNewStageName] = useState("");
   const [stageNames, setStageNames] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -105,123 +104,121 @@ export function ManageStagesModal({
   };
 
   return (
-    <Modal centered opened size="lg" title={`Board settings for ${board.name}`} onClose={onClose}>
+    <Modal centered opened size="xl" title={`Board settings for ${board.name}`} onClose={onClose}>
       <Stack gap="md">
-        <SegmentedControl
-          data={[
-            { label: "Stages", value: "stages" },
-            { label: "Approval areas", value: "approval_areas" },
-          ]}
-          value={activeSettingsTab}
-          onChange={(val) => setActiveSettingsTab(val)}
-        />
+        <Tabs defaultValue="stages" keepMounted={false}>
+          <Tabs.List mb="md">
+            <Tabs.Tab value="stages">Stages</Tabs.Tab>
+            <Tabs.Tab value="regions">Regions</Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel value="regions">
+            <BoardRegionsEditor board={board} />
+          </Tabs.Panel>
+          <Tabs.Panel value="stages">
+            <Stack gap="md">
+              {formError ? (
+                <Alert color="red" title="Could not update stages">
+                  {formError}
+                </Alert>
+              ) : null}
 
-        {activeSettingsTab === "stages" ? (
-          <>
-            {formError ? (
-              <Alert color="red" title="Could not update stages">
-                {formError}
-              </Alert>
-            ) : null}
+              <form onSubmit={handleAddStage}>
+                <Group align="flex-end" gap="xs" wrap="nowrap">
+                  <TextInput
+                    disabled={isSubmitting}
+                    label="New stage"
+                    placeholder="Ready for QA"
+                    value={newStageName}
+                    onChange={(event) => {
+                      setFormError(null);
+                      setNewStageName(event.currentTarget.value);
+                    }}
+                  />
+                  <Button
+                    disabled={isSubmitting || !newStageName.trim()}
+                    leftSection={<PlusIcon aria-hidden="true" size={16} />}
+                    type="submit"
+                  >
+                    Add
+                  </Button>
+                </Group>
+              </form>
 
-            <form onSubmit={handleAddStage}>
-              <Group align="flex-end" gap="xs" wrap="nowrap">
-                <TextInput
-                  disabled={isSubmitting}
-                  label="New stage"
-                  placeholder="Ready for QA"
-                  value={newStageName}
-                  onChange={(event) => {
-                    setFormError(null);
-                    setNewStageName(event.currentTarget.value);
-                  }}
-                />
-                <Button
-                  disabled={isSubmitting || !newStageName.trim()}
-                  leftSection={<PlusIcon aria-hidden="true" size={16} />}
-                  type="submit"
-                >
-                  Add
-                </Button>
-              </Group>
-            </form>
+              <Stack gap="xs">
+                {board.stages.map((stage, stageIndex) => {
+                  const stageName = stageNames[stage] ?? formatStageName(stage);
+                  const emailCount = stageCounts.get(stage) ?? 0;
+                  const isNameChanged = stageName.trim() !== formatStageName(stage);
 
-            <Stack gap="xs">
-              {board.stages.map((stage, stageIndex) => {
-                const stageName = stageNames[stage] ?? formatStageName(stage);
-                const emailCount = stageCounts.get(stage) ?? 0;
-                const isNameChanged = stageName.trim() !== formatStageName(stage);
-
-                return (
-                  <Group className={styles.stageManagerRow} gap="xs" key={stage} wrap="nowrap">
-                    <TextInput
-                      className={styles.stageManagerName}
-                      disabled={isSubmitting}
-                      value={stageName}
-                      onChange={(event) => {
-                        const nextStageName = event.currentTarget.value;
-                        setFormError(null);
-                        setStageNames((current) => ({
-                          ...current,
-                          [stage]: nextStageName,
-                        }));
-                      }}
-                    />
-                    <Badge variant="light">{emailCount}</Badge>
-                    <Tooltip label="Move stage left">
-                      <ActionIcon
-                        aria-label="Move stage left"
-                        disabled={isSubmitting || stageIndex === 0}
-                        variant="default"
-                        onClick={() => moveStage(stageIndex, -1)}
-                      >
-                        <ArrowLeftIcon aria-hidden="true" size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Move stage right">
-                      <ActionIcon
-                        aria-label="Move stage right"
-                        disabled={isSubmitting || stageIndex === board.stages.length - 1}
-                        variant="default"
-                        onClick={() => moveStage(stageIndex, 1)}
-                      >
-                        <ArrowRightIcon aria-hidden="true" size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Rename stage">
-                      <ActionIcon
-                        aria-label="Rename stage"
-                        disabled={isSubmitting || !stageName.trim() || !isNameChanged}
-                        variant="default"
-                        onClick={() =>
-                          renameStageMutation.mutate({
-                            name: stageName.trim(),
-                            stage,
-                          })
-                        }
-                      >
-                        <PencilSimpleIcon aria-hidden="true" size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label={emailCount > 0 ? "Only empty stages can be deleted" : "Delete stage"}>
-                      <ActionIcon
-                        aria-label="Delete stage"
-                        color="red"
-                        disabled={isSubmitting || emailCount > 0}
-                        variant="light"
-                        onClick={() => deleteStageMutation.mutate(stage)}
-                      >
-                        <TrashIcon aria-hidden="true" size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
-                );
-              })}
+                  return (
+                    <Group className={styles.stageManagerRow} gap="xs" key={stage} wrap="nowrap">
+                      <TextInput
+                        className={styles.stageManagerName}
+                        disabled={isSubmitting}
+                        value={stageName}
+                        onChange={(event) => {
+                          const nextStageName = event.currentTarget.value;
+                          setFormError(null);
+                          setStageNames((current) => ({
+                            ...current,
+                            [stage]: nextStageName,
+                          }));
+                        }}
+                      />
+                      <Badge variant="light">{emailCount}</Badge>
+                      <Tooltip label="Move stage left">
+                        <ActionIcon
+                          aria-label="Move stage left"
+                          disabled={isSubmitting || stageIndex === 0}
+                          variant="default"
+                          onClick={() => moveStage(stageIndex, -1)}
+                        >
+                          <ArrowLeftIcon aria-hidden="true" size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Move stage right">
+                        <ActionIcon
+                          aria-label="Move stage right"
+                          disabled={isSubmitting || stageIndex === board.stages.length - 1}
+                          variant="default"
+                          onClick={() => moveStage(stageIndex, 1)}
+                        >
+                          <ArrowRightIcon aria-hidden="true" size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Rename stage">
+                        <ActionIcon
+                          aria-label="Rename stage"
+                          disabled={isSubmitting || !stageName.trim() || !isNameChanged}
+                          variant="default"
+                          onClick={() =>
+                            renameStageMutation.mutate({
+                              name: stageName.trim(),
+                              stage,
+                            })
+                          }
+                        >
+                          <PencilSimpleIcon aria-hidden="true" size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={emailCount > 0 ? "Only empty stages can be deleted" : "Delete stage"}>
+                        <ActionIcon
+                          aria-label="Delete stage"
+                          color="red"
+                          disabled={isSubmitting || emailCount > 0}
+                          variant="light"
+                          onClick={() => deleteStageMutation.mutate(stage)}
+                        >
+                          <TrashIcon aria-hidden="true" size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
+                  );
+                })}
+              </Stack>
             </Stack>
-          </>
-        ) : (
-          <BoardApprovalAreasManager board={board} />
-        )}
+          </Tabs.Panel>
+        </Tabs>
 
         <Group justify="flex-end">
           <Button disabled={isSubmitting} variant="default" onClick={onClose}>

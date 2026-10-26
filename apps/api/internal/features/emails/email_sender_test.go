@@ -26,7 +26,7 @@ func TestNewLoginCodeEmailSendersUsesLogFallbackWithoutResendKey(t *testing.T) {
 func TestNewLoginCodeEmailSendersUsesResendWhenConfigured(t *testing.T) {
 	t.Setenv("RESEND_API_KEY", "re_test")
 	t.Setenv("AUTH_FROM_EMAIL", "ReviewDesk <login@example.com>")
-	t.Setenv("AUTH_REPLY_TO_EMAIL", "ReviewDesk Support <support@example.com>")
+	t.Setenv("AUTH_REPLY_TO_EMAIL", "ReviewDesk Support <support@acme.example>")
 	t.Setenv("AUTH_LOG_LOGIN_CODES", "false")
 
 	senders := newLoginCodeEmailSendersFromEnv()
@@ -44,8 +44,21 @@ func TestNewLoginCodeEmailSendersUsesResendWhenConfigured(t *testing.T) {
 	if resendSender.From != "ReviewDesk <login@example.com>" {
 		t.Fatalf("expected configured from email, got %q", resendSender.From)
 	}
-	if resendSender.ReplyTo != "ReviewDesk Support <support@example.com>" {
+	if resendSender.ReplyTo != "ReviewDesk Support <support@acme.example>" {
 		t.Fatalf("expected configured reply-to email, got %q", resendSender.ReplyTo)
+	}
+}
+
+func TestNewNotificationSenderOnlyLogsInDemo(t *testing.T) {
+	t.Setenv("RESEND_API_KEY", "re_test")
+	t.Setenv("AUTH_DEMO_LOGIN_ENABLED", "false")
+	if _, ok := NewNotificationSender().(ResendEmailSender); !ok {
+		t.Fatalf("expected resend sender outside the demo")
+	}
+
+	t.Setenv("AUTH_DEMO_LOGIN_ENABLED", "true")
+	if _, ok := NewNotificationSender().(LogEmailSender); !ok {
+		t.Fatalf("expected log sender in the demo")
 	}
 }
 
@@ -86,23 +99,23 @@ func TestResendEmailSenderSendsLoginCodePayload(t *testing.T) {
 	sender := ResendEmailSender{
 		APIKey:   "re_test",
 		From:     "ReviewDesk <login@example.com>",
-		ReplyTo:  "ReviewDesk Support <support@example.com>",
+		ReplyTo:  "ReviewDesk Support <support@acme.example>",
 		Endpoint: server.URL,
 		Client:   server.Client(),
 	}
 
 	code := "123456"
-	if err := sender.SendLoginCode(context.Background(), "user@example.com", code); err != nil {
+	if err := sender.SendLoginCode(context.Background(), "user@acme.example", code); err != nil {
 		t.Fatalf("expected send to succeed, got %v", err)
 	}
 
 	if receivedPayload.From != "ReviewDesk <login@example.com>" {
 		t.Fatalf("expected from email, got %q", receivedPayload.From)
 	}
-	if receivedPayload.ReplyTo != "ReviewDesk Support <support@example.com>" {
+	if receivedPayload.ReplyTo != "ReviewDesk Support <support@acme.example>" {
 		t.Fatalf("expected reply-to email, got %q", receivedPayload.ReplyTo)
 	}
-	if len(receivedPayload.To) != 1 || receivedPayload.To[0] != "user@example.com" {
+	if len(receivedPayload.To) != 1 || receivedPayload.To[0] != "user@acme.example" {
 		t.Fatalf("expected recipient, got %#v", receivedPayload.To)
 	}
 	if receivedPayload.Subject != "Your ReviewDesk sign-in code" {
@@ -131,7 +144,7 @@ func TestResendEmailSenderReturnsHTTPError(t *testing.T) {
 		Client:   server.Client(),
 	}
 
-	err := sender.SendLoginCode(context.Background(), "user@example.com", "123456")
+	err := sender.SendLoginCode(context.Background(), "user@acme.example", "123456")
 	if err == nil || !strings.Contains(err.Error(), "resend returned 400") {
 		t.Fatalf("expected resend HTTP error, got %v", err)
 	}

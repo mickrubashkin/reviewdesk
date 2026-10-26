@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Checkbox,
+  Divider,
   Group,
   List,
   Loader,
@@ -35,6 +36,7 @@ import {
   type PortalStage,
 } from "../api";
 import { MarkLiveButton, UnmarkLiveButton } from "../MarkLive";
+import { AutoSyncSettings } from "./AutoSyncSettings";
 import { GroupDrawer } from "./GroupDrawer";
 import { topStages } from "./portalHelpers";
 import styles from "../../auth-events/AuthEvents/AuthEvents.module.css";
@@ -133,13 +135,15 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
 
   const categories = categoriesQuery.data ?? [];
   const defaultCategory =
-    run?.category_id ?? categories.find((c) => /onboarding/i.test(c.name))?.id ?? categories[0]?.id;
+    overview?.settings.category_id ?? run?.category_id ?? categories.find((c) => /onboarding/i.test(c.name))?.id ?? categories[0]?.id;
   const selectedCategory = categoryID ?? (defaultCategory !== undefined ? String(defaultCategory) : null);
 
   if (!isSuperAdmin) {
     return <Navigate replace to="/" />;
   }
 
+  // On a board with regions the emails are told apart by region.
+  const unseenByRegion = (overview?.unseen ?? []).some((email) => email.region_name);
   return (
     <div className={styles.page}>
       <AdminTableHeader
@@ -184,7 +188,7 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
               <Text size="sm">
                 {run.status === "running"
                   ? run.progress
-                  : `${new Date(run.started_at).toLocaleString()} · ${run.days} days · ${run.emails_stored} emails from the funnel · ${run.groups_count} distinct`}
+                  : `${new Date(run.started_at).toLocaleString()}${run.started_by_email === "auto" ? " · nightly" : ""} · ${run.days} days · ${run.emails_stored} emails from the funnel · ${run.groups_count} distinct`}
               </Text>
               {run.status === "running" ? <Loader size="xs" /> : null}
               {run.error ? <Text c="red" size="sm">{run.error}</Text> : null}
@@ -195,6 +199,17 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
             </Text>
           )}
           <PrivacyNote expanded={run?.status === "running"} />
+          {overview ? (
+            <>
+              <Divider label="Nightly sync" labelPosition="left" my="md" />
+              <AutoSyncSettings
+                key={boardKey}
+                boardKey={boardKey}
+                categories={categories}
+                settings={overview.settings}
+              />
+            </>
+          ) : null}
         </Paper>
 
         {overviewQuery.isError ? <Alert color="red">Failed to load portal data.</Alert> : null}
@@ -303,7 +318,7 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
                 <Table.Th>Title</Table.Th>
                 <Table.Th>Lang</Table.Th>
                 <Table.Th>Version</Table.Th>
-                <Table.Th>Adaptation</Table.Th>
+                <Table.Th>{unseenByRegion ? "Region" : "Adaptation"}</Table.Th>
                 <Table.Th>Timing / condition</Table.Th>
                 <Table.Th />
               </Table.Tr>
@@ -318,7 +333,7 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
                   </Table.Td>
                   <Table.Td>{email.language.toUpperCase()}</Table.Td>
                   <Table.Td>{email.variant}</Table.Td>
-                  <Table.Td>{email.adaptation_label}</Table.Td>
+                  <Table.Td>{unseenByRegion ? email.region_name || "No region" : email.adaptation_label}</Table.Td>
                   <Table.Td>
                     {[email.send_timing, email.send_condition].filter(Boolean).join(" · ")}
                   </Table.Td>

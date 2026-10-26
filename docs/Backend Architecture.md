@@ -29,6 +29,7 @@ apps/api/
 │   │   ├── api_helpers.go      # Common API response helpers
 │   │   ├── health_handler.go   # /health endpoint
 │   │   └── operational_events.go # System operational logging
+│   └── syncmeta/               # Metadata generation tool
 ├── internal/
 │   ├── core/
 │   │   └── auth/               # Core authentication primitives & context handling
@@ -86,4 +87,4 @@ Approval state transitions enforce strict business integrity:
 - `make setup-dev` — Start DB container → apply migrations → run seed.
 - `make dev` — Run DB, API server, and web frontend concurrently.
 - `make test-api` — Execute all unit and integration tests (`go test ./...`).
-- `make db-migrate` / `make db-seed` / `make db-seed-demo` — Database management tasks.
+- `make db-migrate` / `make db-seed` / `make db-sync-meta` — Database management tasks.

@@ -13,11 +13,16 @@ import {
   Text,
 } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import {
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
-import { fetchBoards } from "../api";
+import { fetchBoards, useBoardRegions } from "../api";
 import { EmailBoard } from "../../emails/EmailBoard";
-import type { AuthUser } from "../../emails/types";
+import type { AuthUser, EmailListItem } from "../../emails/types";
 
 import {
   boardFilterStorageKey,
@@ -25,6 +30,8 @@ import {
   boardSearchStorageKey,
   boardSelectedVersionsStorageKey,
   boardViewStorageKey,
+  isBoardView,
+  matrixByRegionStorageKey,
   type BoardFilters,
   type BoardView,
 } from "./BoardHome.types";
@@ -33,20 +40,25 @@ import {
   readStoredBoardScrollPosition,
   readStoredBoardSearch,
   readStoredBoardView,
+  readStoredMatrixByRegion,
   readStoredSelectedVersions,
   writeSessionStorageValue,
 } from "./BoardHome.storage";
 import { BoardHeader } from "./BoardHeader";
 import { CreateBoardModal } from "./CreateBoardModal";
+import { ActiveBoardFilters } from "./ActiveBoardFilters";
 import { BoardAIExportModal } from "./BoardAIExportModal";
-import { useFilteredExport } from "./useFilteredExport";
+import { ExportModal, type ExportScope } from "./ExportModal";
 import { EmailSidePanel } from "./EmailSidePanel";
+import { ArchiveList } from "./ArchiveList";
 import { SlotMatrix } from "./SlotMatrix";
+import { BoardTimeline } from "./Timeline/BoardTimeline";
 import { UnsortedPanel } from "./UnsortedPanel";
 import matrixStyles from "./SlotMatrix.module.css";
 import { fetchEmails } from "../../emails/api";
 import { getProductionStatus } from "../../emails/productionStatus";
 import { ManageStagesModal } from "./ManageStagesModal";
+import { canEditEmailContent } from "../../emails/permissions";
 import { useBoardHomeData } from "./useBoardHomeData";
 import styles from "../../../App.module.css";
 
@@ -168,24 +180,46 @@ function EmailBoardApp({
   >;
 }) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [aiExportOpened, setAiExportOpened] = useState(false);
+  const [exportRequest, setExportRequest] = useState<{ scope: ExportScope; selected: EmailListItem[] } | null>(
+    null
+  );
   const [panelEmailId, setPanelEmailId] = useState<string | null>(null);
   // Live emails imported from the portal wait on the "<board>-portal" board
   // until they are placed into slots of this board from the matrix.
   const portalBoardKey = `${boardKey}-portal`;
-  const [boardView, setBoardViewState] = useState<BoardView>(readStoredBoardView);
+  // The view is in the URL (?view=timeline) so a link opens the same one; a
+  // link without it falls back to the one this tab used last.
+  const [storedView, setStoredView] = useState<BoardView>(readStoredBoardView);
+  const viewParam = searchParams.get("view");
+  const boardView: BoardView = isBoardView(viewParam) ? viewParam : storedView;
   const setBoardView = (view: BoardView) => {
-    setBoardViewState(view);
+    setStoredView(view);
     writeSessionStorageValue(boardViewStorageKey, view);
+    setSearchParams(
+      (params) => {
+        params.set("view", view);
+        return params;
+      },
+      { replace: true }
+    );
+  };
+  // On a board with regions the matrix can show them as columns instead of
+  // languages.
+  const boardRegions = useBoardRegions(boardKey).data ?? [];
+  const [matrixByRegion, setMatrixByRegionState] = useState(readStoredMatrixByRegion);
+  const setMatrixByRegion = (byRegion: boolean) => {
+    setMatrixByRegionState(byRegion);
+    writeSessionStorageValue(matrixByRegionStorageKey, byRegion);
   };
   const {
     activeBoard,
     activeBoardFilterCount,
-    activeHandoffFilterCount,
+    boardFilterCounts,
     boardFilterOptions,
     boards,
     boardsQuery,
-    canExportSequenceHandoff,
     columns,
     createBoardModalOpened,
     createBoardMutation,
@@ -194,20 +228,16 @@ function EmailBoardApp({
     filterEmptyHint,
     filterEmptyState,
     handleReviewStatusChange,
-    handoffFilters,
     hasBoardFilters,
     headerSubtitle,
+    canManage,
     isAdmin,
     isCompactHeader,
     manageStagesModalOpened,
-    openCommentEmailCount,
     preferredBoard,
     refreshBoardData,
     resetBoardFilters,
-    sequenceHandoffEmailCount,
-    sequenceHandoffJSON,
     setCreateBoardModalOpened,
-    setHandoffFilters,
     setManageStagesModalOpened,
     setUserMenuOpened,
     updateBoardFilter,
@@ -221,7 +251,31 @@ function EmailBoardApp({
     onBoardFiltersChange,
   });
 
-  const filteredExport = useFilteredExport(filteredEmailIds);
+  // Links from the review page ("Board › Stage") ask for a column to be
+  // brought into view; the param is dropped once the column is found.
+  const stageToReveal = searchParams.get("stage");
+  useEffect(() => {
+    if (!stageToReveal) {
+      return;
+    }
+    const column = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-stage]")
+    ).find((element) => element.dataset.stage === stageToReveal);
+    if (!column) {
+      return;
+    }
+    column.scrollIntoView({ block: "nearest", inline: "start" });
+    setSearchParams(
+      (params) => {
+        params.delete("stage");
+        return params;
+      },
+      { replace: true }
+    );
+  }, [stageToReveal, columns, setSearchParams]);
+
+  const filteredIdSet = new Set(filteredEmailIds);
+  const filteredEmails = (emailsQuery.data ?? []).filter((email) => filteredIdSet.has(email.id));
   const unsortedQuery = useQuery({
     queryKey: ["emails", portalBoardKey],
     queryFn: () => fetchEmails(portalBoardKey),
@@ -267,32 +321,25 @@ function EmailBoardApp({
         <BoardHeader
           activeBoard={activeBoard}
           activeBoardFilterCount={activeBoardFilterCount}
-          activeHandoffFilterCount={activeHandoffFilterCount}
+          boardFilterCounts={boardFilterCounts}
           boardFilterOptions={boardFilterOptions}
           boardFilters={boardFilters}
-          boardKey={boardKey}
           boardSearchQuery={boardSearchQuery}
           boards={boards}
           boardsLoading={boardsQuery.isLoading}
-          canExportSequenceHandoff={canExportSequenceHandoff}
           currentUser={currentUser}
-          filteredExport={filteredExport}
-          handoffFilters={handoffFilters}
           hasBoardFilters={hasBoardFilters}
           headerSubtitle={headerSubtitle}
+          canManage={canManage}
           isAdmin={isAdmin}
           isCompactHeader={isCompactHeader}
           isLoggingOut={isLoggingOut}
-          openCommentEmailCount={openCommentEmailCount}
-          sequenceHandoffEmailCount={sequenceHandoffEmailCount}
-          sequenceHandoffJSON={sequenceHandoffJSON}
           userMenuOpened={userMenuOpened}
           onBoardChange={handleBoardChange}
           onBoardFilterChange={updateBoardFilter}
           onBoardSearchQueryChange={onBoardSearchQueryChange}
           onCreateBoard={() => setCreateBoardModalOpened(true)}
-          onExportForAI={() => setAiExportOpened(true)}
-          onHandoffFiltersChange={setHandoffFilters}
+          onExport={() => setExportRequest({ scope: hasBoardFilters ? "filtered" : "board", selected: [] })}
           onLogout={onLogout}
           onManageStages={() => setManageStagesModalOpened(true)}
           onResetBoardFilters={resetBoardFilters}
@@ -304,63 +351,98 @@ function EmailBoardApp({
 
       <AppShell.Main>
         <Box className={styles.boardPage}>
-          {emailsQuery.isLoading || boardsQuery.isLoading ? (
-            <Stack align="center" justify="center" h="100%">
-              <Loader />
-              <Text c="dimmed">Loading emails</Text>
-            </Stack>
-          ) : null}
-
-          {emailsQuery.isError || boardsQuery.isError ? (
-            <Alert color="red" title="Failed to load emails">
-              Check that the API server is reachable.
-            </Alert>
-          ) : null}
-
-          {emailsQuery.isSuccess ? (
-            visibleColumns.length > 0 ? (
-              boardView === "matrix" ? (
-                <div className={matrixStyles.matrixView}>
-                  {activeBoard && isAdmin ? (
-                    <UnsortedPanel
-                      board={activeBoard}
-                      columns={columns}
-                      emails={unsortedEmails}
-                      onPreview={(email) => setPanelEmailId(email.id)}
-                    />
-                  ) : null}
-                  <SlotMatrix
-                    columns={visibleColumns}
-                    selectedEmailId={panelEmailId}
-                    onOpenEmail={(email) => setPanelEmailId(email.id)}
-                  />
-                </div>
-              ) : (
-              <EmailBoard
-                columns={visibleColumns}
-                scrollPosition={boardScrollPosition}
-                selectedVersionByGroup={selectedVersionByGroup}
-                onOpenVersionGroup={handleOpenVersionGroup}
-                onReviewStatusChange={handleReviewStatusChange}
-                onScrollPositionChange={onBoardScrollPositionChange}
-                onSelectVersion={handleSelectVersion}
-              />
-              )
-            ) : (
-              <Stack align="center" justify="center" h="100%" ta="center">
-                <Text fw={600}>{filterEmptyState}</Text>
-                <Text c="rgba(255, 255, 255, 0.72)" size="sm">
-                  {filterEmptyHint}
-                </Text>
+          <ActiveBoardFilters
+            boardFilterOptions={boardFilterOptions}
+            boardFilters={boardFilters}
+            onBoardFilterChange={updateBoardFilter}
+            onResetBoardFilters={resetBoardFilters}
+          />
+          <Box className={styles.boardContent}>
+            {boardView !== "archive" && (emailsQuery.isLoading || boardsQuery.isLoading) ? (
+              <Stack align="center" justify="center" h="100%">
+                <Loader />
+                <Text c="dimmed">Loading emails</Text>
               </Stack>
-            )
-          ) : null}
+            ) : null}
+
+            {emailsQuery.isError || boardsQuery.isError ? (
+              <Alert color="red" title="Failed to load emails">
+                Check that the API server is reachable.
+              </Alert>
+            ) : null}
+
+            {boardView === "archive" ? (
+              <ArchiveList
+                boardKey={boardKey}
+                canRestore={canManage}
+                languages={boardFilters.languages}
+                searchQuery={boardSearchQuery}
+              />
+            ) : emailsQuery.isSuccess ? (
+              visibleColumns.length > 0 ? (
+                boardView === "matrix" ? (
+                  <div className={matrixStyles.matrixView}>
+                    {activeBoard && isAdmin ? (
+                      <UnsortedPanel
+                        board={activeBoard}
+                        columns={columns}
+                        emails={unsortedEmails}
+                        onPreview={(email) => setPanelEmailId(email.id)}
+                      />
+                    ) : null}
+                    <SlotMatrix
+                      board={activeBoard}
+                      boardColumns={columns}
+                      canManage={canManage}
+                      columns={visibleColumns}
+                      selectedEmailId={panelEmailId}
+                      canTranslate={(language) => canEditEmailContent(currentUser, { language, sequence: boardKey })}
+                      onEmailCreated={setPanelEmailId}
+                      onExportSelected={(selected) => setExportRequest({ scope: "selected", selected })}
+                      onOpenEmail={(email) => setPanelEmailId(email.id)}
+                      byRegion={matrixByRegion && boardRegions.length > 0}
+                      regions={boardRegions}
+                      onByRegionChange={setMatrixByRegion}
+                    />
+                  </div>
+                ) : boardView === "timeline" ? (
+                  <BoardTimeline
+                    boardKey={boardKey}
+                    columns={visibleColumns}
+                    regions={boardRegions}
+                    selectedEmailId={panelEmailId}
+                    onOpenEmail={setPanelEmailId}
+                  />
+                ) : (
+                <EmailBoard
+                  columns={visibleColumns}
+                  currentUser={currentUser}
+                  scrollPosition={boardScrollPosition}
+                  selectedVersionByGroup={selectedVersionByGroup}
+                  onOpenVersionGroup={handleOpenVersionGroup}
+                  onReviewStatusChange={handleReviewStatusChange}
+                  onScrollPositionChange={onBoardScrollPositionChange}
+                  onSelectVersion={handleSelectVersion}
+                />
+                )
+              ) : (
+                <Stack align="center" justify="center" h="100%" ta="center">
+                  <Text fw={600}>{filterEmptyState}</Text>
+                  <Text c="rgba(255, 255, 255, 0.72)" size="sm">
+                    {filterEmptyHint}
+                  </Text>
+                </Stack>
+              )
+            ) : null}
+          </Box>
         </Box>
       </AppShell.Main>
 
       {panelEmail ? (
         <EmailSidePanel
-          canManage={isAdmin}
+          canManage={canManage}
+          canTranslate={canEditEmailContent(currentUser, panelEmail)}
+          currentUserEmail={currentUser.email}
           email={panelEmail}
           siblings={panelSiblings}
           onClose={() => setPanelEmailId(null)}
@@ -368,7 +450,21 @@ function EmailBoardApp({
         />
       ) : null}
 
-      {isAdmin ? filteredExport.dialog : null}
+      {exportRequest && activeBoard && emailsQuery.data ? (
+        <ExportModal
+          board={activeBoard}
+          boardEmails={emailsQuery.data}
+          currentUser={currentUser}
+          filteredEmails={filteredEmails}
+          initialScope={exportRequest.scope}
+          selectedEmails={exportRequest.selected}
+          onClose={() => setExportRequest(null)}
+          onOpenBoardPackForAI={() => {
+            setExportRequest(null);
+            setAiExportOpened(true);
+          }}
+        />
+      ) : null}
 
       {aiExportOpened && activeBoard && emailsQuery.data ? (
         <BoardAIExportModal

@@ -1,4 +1,5 @@
-import { Badge, Select } from "@mantine/core";
+import { Badge, Menu } from "@mantine/core";
+import { CaretDownIcon, CheckIcon } from "@phosphor-icons/react";
 
 import type { EmailReviewStatus } from "../../../emails/types";
 import {
@@ -7,8 +8,9 @@ import {
   formatEmailReviewStatus,
   isApprovedEmailReviewStatus,
 } from "../../../emails/reviewStatus";
-import styles from "../EmailReview.module.css";
 
+// ReviewStatusControl is the status badge of the header; for admins it opens
+// a menu to switch between Draft and Ready.
 export function ReviewStatusControl({
   approvalBlockedCount,
   approvalBlockedMessage,
@@ -24,13 +26,10 @@ export function ReviewStatusControl({
   onChange: (value: string | null) => void;
   status: EmailReviewStatus;
 }) {
+  const color = emailReviewStatusColor(status);
   if (!canManage) {
     return (
-      <Badge
-        color={emailReviewStatusColor(status)}
-        radius="sm"
-        variant="light"
-      >
+      <Badge color={color} radius="sm" size="lg" variant="light">
         {formatEmailReviewStatus(status)}
       </Badge>
     );
@@ -39,19 +38,44 @@ export function ReviewStatusControl({
   const approvalBlocked =
     approvalBlockedCount > 0 && !isApprovedEmailReviewStatus(status);
   return (
-    <Select
-      allowDeselect={false}
-      aria-label={approvalBlocked ? approvalBlockedMessage : "Review status"}
-      className={styles.reviewStatusSelect}
-      classNames={{ input: styles.headerSelectInput }}
-      data={emailReviewStatusOptions.map((option) => ({
-        ...option,
-        disabled: isApprovedEmailReviewStatus(option.value) && approvalBlocked,
-      }))}
-      disabled={isUpdating}
-      size="xs"
-      value={status}
-      onChange={onChange}
-    />
+    <Menu disabled={isUpdating} position="bottom-start" withinPortal>
+      <Menu.Target>
+        <Badge
+          aria-label={approvalBlocked ? approvalBlockedMessage : "Change status"}
+          color={color}
+          component="button"
+          radius="sm"
+          rightSection={<CaretDownIcon aria-hidden="true" size={11} />}
+          size="lg"
+          style={{ cursor: "pointer", opacity: isUpdating ? 0.6 : 1 }}
+          type="button"
+          variant="light"
+        >
+          {formatEmailReviewStatus(status)}
+        </Badge>
+      </Menu.Target>
+      <Menu.Dropdown>
+        {emailReviewStatusOptions.map((option) => {
+          const blocked =
+            isApprovedEmailReviewStatus(option.value) && approvalBlocked;
+          return (
+            <Menu.Item
+              disabled={blocked}
+              key={option.value}
+              title={blocked ? approvalBlockedMessage : undefined}
+              rightSection={
+                option.value === status ? (
+                  <CheckIcon aria-hidden="true" size={13} weight="bold" />
+                ) : null
+              }
+              onClick={() => onChange(option.value)}
+            >
+              {option.label}
+              {blocked ? " (blocked)" : ""}
+            </Menu.Item>
+          );
+        })}
+      </Menu.Dropdown>
+    </Menu>
   );
 }

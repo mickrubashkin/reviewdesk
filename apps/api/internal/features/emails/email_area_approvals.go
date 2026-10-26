@@ -129,8 +129,7 @@ func updateEmailAreaApprovalHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !auth.IsAdmin(user) {
-			http.Error(w, "forbidden", http.StatusForbidden)
+		if !requireManageEmail(w, r, dbpool, user, id) {
 			return
 		}
 		areaKey := boards.NormalizeApprovalAreaKey(area)
