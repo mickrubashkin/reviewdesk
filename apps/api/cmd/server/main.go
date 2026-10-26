@@ -46,6 +46,10 @@ func main() {
 	r.Use(featureauth.SameOriginMutationMiddleware)
 	r.Use(requestIDMiddleware)
 	r.Use(featureauth.Middleware(dbpool))
+	demoEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_DEMO_LOGIN_ENABLED")), "true")
+	if demoEnabled {
+		r.Use(demo.LimitVisitorWrites())
+	}
 	r.Use(operationalEventMiddleware(dbpool))
 	aiService, err := ai.NewAIAnalysisService()
 	if err != nil {
@@ -75,7 +79,7 @@ func main() {
 		go portal.RunAutoSync(ctx, dbpool)
 	}
 	// Each demo visitor's sandbox is removed a day after the visit.
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_DEMO_LOGIN_ENABLED")), "true") {
+	if demoEnabled {
 		go demo.RunSandboxCleanup(ctx, dbpool)
 	}
 
