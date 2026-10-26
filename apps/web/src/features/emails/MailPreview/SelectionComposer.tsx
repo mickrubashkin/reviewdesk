@@ -115,7 +115,7 @@ export function SelectionComposer({
   return (
     <Popover
       opened={selectionMenu !== null}
-      position="top"
+      position={selectionMenu?.placement ?? "top"}
       shadow="md"
       styles={{
         dropdown: {

@@ -46,6 +46,7 @@ import { previewSender } from "../../../shared/brand";
 export type SelectionMenuState = ReviewTextSelection & {
   editableTarget: InlineEditableTarget | null;
   mode: "actions" | "comment" | "edit";
+  placement?: "top" | "bottom";
   x: number;
   y: number;
 };
@@ -125,6 +126,7 @@ export function MailPreview({
 }: MailPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const frameOverlayLayerRef = useRef<HTMLDivElement | null>(null);
+  const frameInputLayerRef = useRef<HTMLDivElement | null>(null);
   const overlayRootRef = useRef<HTMLElement | null>(null);
   const isApplyingInlineEditRef = useRef(isApplyingInlineEdit);
   const wasApplyingInlineEditRef = useRef(false);
@@ -163,11 +165,16 @@ export function MailPreview({
       setFrameLoadVersion((version) => version + 1);
 
       if (enableReviewSelectionComposer) {
-        installReviewSelectionMenu(event.currentTarget, email, (nextSelectionMenu) => {
-          if (!isApplyingInlineEditRef.current) {
-            setSelectionMenu(nextSelectionMenu);
-          }
-        });
+        installReviewSelectionMenu(
+          event.currentTarget,
+          email,
+          (nextSelectionMenu) => {
+            if (!isApplyingInlineEditRef.current) {
+              setSelectionMenu(nextSelectionMenu);
+            }
+          },
+          frameInputLayerRef.current
+        );
       }
 
       if (isApplyingInlineEditRef.current) {
@@ -460,6 +467,7 @@ export function MailPreview({
               sandbox="allow-same-origin"
               srcDoc={email.review_html || email.original_html}
             />
+            <div className={styles.frameInputLayer} hidden ref={frameInputLayerRef} />
             {shouldShowCommentOverlay ? (
               <ReviewCommentOverlay
                 activeCommentId={activeCommentId}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { FRAME_SCROLL_EVENT } from "./MailPreview/MailPreview.helpers";
 import {
   buildChangedBlockFrameRects,
   buildExternalChangedBlockRects,
@@ -136,6 +137,7 @@ export function useReviewOverlayRects({
 
     scheduleOverlayUpdate();
     frameWindow.addEventListener("scroll", handleFrameScroll, true);
+    window.addEventListener(FRAME_SCROLL_EVENT, handleFrameScroll);
     window.addEventListener("resize", scheduleOverlayUpdate);
     resizeObserver.observe(frame);
     resizeObserver.observe(overlayRoot);
@@ -149,6 +151,7 @@ export function useReviewOverlayRects({
     return () => {
       window.cancelAnimationFrame(animationFrame);
       frameWindow.removeEventListener("scroll", handleFrameScroll, true);
+      window.removeEventListener(FRAME_SCROLL_EVENT, handleFrameScroll);
       window.removeEventListener("resize", scheduleOverlayUpdate);
       resizeObserver.disconnect();
     };
