@@ -78,7 +78,7 @@ import {
   DuplicateEmailModal,
   SourceHTMLModal,
 } from "./ReviewModals";
-import type { EmailReviewProps } from "./EmailReview.types";
+import type { EmailReviewProps, ReviewContentTab } from "./EmailReview.types";
 import {
   aiBlockTargets,
   buildCommentBlockOptions,
@@ -265,9 +265,12 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
     }
   }, [nextBoardEmail, previousBoardEmail, queryClient]);
 
-  const handleSelectComment = (comment: EmailComment) => {
+  const handleSelectComment = (
+    comment: EmailComment,
+    contentTab: ReviewContentTab = "comments"
+  ) => {
     setActivePanelTab("comments");
-    setActiveContentTab("comments");
+    setActiveContentTab(contentTab);
     setActiveCommentId(comment.id);
 
     if (activeCommentTimeoutRef.current !== null) {
@@ -567,7 +570,11 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
       onResolve={(commentId) =>
         resolveCommentMutation.mutate(commentId)
       }
-      onSelectComment={handleSelectComment}
+      // On a phone the comments and the email are separate tabs: a tap on a
+      // comment shows its place in the email.
+      onSelectComment={(comment) =>
+        handleSelectComment(comment, isCompactReview ? "email" : "comments")
+      }
       readOnly={isArchived}
       replyingCommentId={
         createReplyMutation.isPending

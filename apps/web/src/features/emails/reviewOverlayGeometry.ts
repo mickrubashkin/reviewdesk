@@ -182,6 +182,16 @@ export function scrollReviewTargetIntoView(
   }
 
   const range = getTargetTextRange(block, target);
+  // A frame as tall as its email (touch screens in WebKit) does not scroll;
+  // the page does.
+  if (frameDocument.documentElement.scrollHeight <= frame.clientHeight + 1) {
+    const rect = (range && !isWholeBlockTarget(block, target) ? range : block).getBoundingClientRect();
+    window.scrollBy({
+      behavior: "smooth",
+      top: frame.getBoundingClientRect().top + rect.top - window.innerHeight / 2 + rect.height / 2,
+    });
+    return true;
+  }
   if (range && !isWholeBlockTarget(block, target)) {
     const rangeRect = range.getBoundingClientRect();
     frame.contentWindow?.scrollBy({
@@ -345,16 +355,19 @@ function getTargetTextRange(block: Element, target: ReviewTextSelection) {
     target.startOffset,
     target.endOffset
   );
-  if (rangeFromOffsets) {
+  // Offsets go stale when the text before the quote changes; the quote
+  // itself is the better anchor then.
+  const blockText = block.textContent ?? "";
+  const offsetText = blockText.slice(target.startOffset, target.endOffset);
+  if (rangeFromOffsets && sameText(offsetText, target.selectedText)) {
     return rangeFromOffsets;
   }
 
-  const blockText = block.textContent ?? "";
   const fallbackStart = target.selectedText
     ? blockText.indexOf(target.selectedText)
     : -1;
   if (fallbackStart < 0) {
-    return null;
+    return rangeFromOffsets;
   }
 
   return createRangeFromTextOffsets(
@@ -362,6 +375,12 @@ function getTargetTextRange(block: Element, target: ReviewTextSelection) {
     fallbackStart,
     fallbackStart + target.selectedText.length
   );
+}
+
+// A selection's text has its whitespace collapsed; the DOM text may not.
+function sameText(a: string, b: string) {
+  const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+  return normalize(a) === normalize(b);
 }
 
 function createRangeFromTextOffsets(

@@ -535,6 +535,11 @@ button.languagePill:hover {
 }
 
 @media (max-width: 64em) {
+  /* The tabs stay at the top instead: a sticky header would cover them. */
+  .header {
+    position: static;
+  }
+
   .headerInner {
     align-items: center;
     flex-direction: row;

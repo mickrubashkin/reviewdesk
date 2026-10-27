@@ -3,7 +3,6 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -131,7 +130,6 @@ export function MailPreview({
   const isApplyingInlineEditRef = useRef(isApplyingInlineEdit);
   const wasApplyingInlineEditRef = useRef(false);
   const wasCreatingCommentRef = useRef(false);
-  const shouldShowCommentOverlay = !useMediaQuery("(max-width: 64em)");
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(
     null
   );
@@ -315,8 +313,8 @@ export function MailPreview({
   };
   const overlay = useReviewOverlayRects({
     activeCommentId,
-    changedBlockTargets: shouldShowCommentOverlay ? changedBlockTargets : [],
-    commentTargets: shouldShowCommentOverlay ? commentTargets : [],
+    changedBlockTargets,
+    commentTargets,
     frameOverlayLayerRef,
     frameLoadVersion,
     frameRef,
@@ -468,30 +466,26 @@ export function MailPreview({
               srcDoc={email.review_html || email.original_html}
             />
             <div className={styles.frameInputLayer} hidden ref={frameInputLayerRef} />
-            {shouldShowCommentOverlay ? (
-              <ReviewCommentOverlay
-                activeCommentId={activeCommentId}
-                badges={overlay.frameBadges}
-                changedBlockRects={overlay.frameChangedBlockRects}
-                hoveredCommentId={hoveredCommentId}
-                layerRef={frameOverlayLayerRef}
-                onBadgeClick={onCommentBadgeClick}
-                onBadgeHover={onCommentBadgeHover}
-                rects={overlay.frameRects}
-              />
-            ) : null}
-          </div>
-          {shouldShowCommentOverlay ? (
             <ReviewCommentOverlay
               activeCommentId={activeCommentId}
-              badges={overlay.externalBadges}
-              changedBlockRects={overlay.externalChangedBlockRects}
+              badges={overlay.frameBadges}
+              changedBlockRects={overlay.frameChangedBlockRects}
               hoveredCommentId={hoveredCommentId}
+              layerRef={frameOverlayLayerRef}
               onBadgeClick={onCommentBadgeClick}
               onBadgeHover={onCommentBadgeHover}
-              rects={overlay.externalRects}
+              rects={overlay.frameRects}
             />
-          ) : null}
+          </div>
+          <ReviewCommentOverlay
+            activeCommentId={activeCommentId}
+            badges={overlay.externalBadges}
+            changedBlockRects={overlay.externalChangedBlockRects}
+            hoveredCommentId={hoveredCommentId}
+            onBadgeClick={onCommentBadgeClick}
+            onBadgeHover={onCommentBadgeHover}
+            rects={overlay.externalRects}
+          />
         </article>
       </div>
       {isScanning ? (
