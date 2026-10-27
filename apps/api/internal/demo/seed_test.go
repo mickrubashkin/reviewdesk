@@ -84,8 +84,8 @@ func TestGenerateDemoEmailsCreatesProductionLikeDataset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(emails) != 60 {
-		t.Fatalf("expected 60 generated demo emails, got %d", len(emails))
+	if len(emails) != 40 {
+		t.Fatalf("expected 40 generated demo emails, got %d", len(emails))
 	}
 
 	stageSet := map[string]bool{}
@@ -120,8 +120,8 @@ func TestLoadDemoEmailDatasetKeepsGeneratedCountWithFixtureOverrides(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(emails) != 60 {
-		t.Fatalf("expected 60 demo emails with fixture overrides, got %d", len(emails))
+	if len(emails) != 40 {
+		t.Fatalf("expected 40 demo emails with fixture overrides, got %d", len(emails))
 	}
 }
 
@@ -158,4 +158,60 @@ func keysInOrder(values map[string]bool, order []string) []string {
 		}
 	}
 	return keys
+}
+
+func TestDemoTranslationsFollowTheirEnMasters(t *testing.T) {
+	emails, err := loadDemoEmailDataset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bySlug := map[string]demoEmail{}
+	for _, email := range emails {
+		bySlug[email.Slug] = email
+	}
+
+	outdated := 0
+	for _, email := range emails {
+		if email.Language == "en" {
+			if email.TranslationOf != "" {
+				t.Fatalf("EN email %s must not be a translation", email.Slug)
+			}
+			if email.Earlier != nil {
+				outdated++
+				if email.Earlier.TemplateHash == email.TemplateHash {
+					t.Fatalf("earlier version of %s has the same text", email.Slug)
+				}
+			}
+			continue
+		}
+		master, ok := bySlug[email.TranslationOf]
+		if !ok || master.Language != "en" {
+			t.Fatalf("translation %s has no EN master (%q)", email.Slug, email.TranslationOf)
+		}
+		if strings.HasPrefix(email.Subject, "Demo ") || email.Subject == master.Subject {
+			t.Fatalf("translation %s has no translated subject: %q", email.Slug, email.Subject)
+		}
+	}
+	if outdated != 1 {
+		t.Fatalf("expected one EN master changed since its translation, got %d", outdated)
+	}
+}
+
+func TestDemoFixturesKeepTheirSlotNextToTranslations(t *testing.T) {
+	emails, err := loadDemoEmailDataset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bySlug := map[string]demoEmail{}
+	for _, email := range emails {
+		bySlug[email.Slug] = email
+	}
+	for _, email := range emails {
+		if email.TranslationOf == "" {
+			continue
+		}
+		if master := bySlug[email.TranslationOf]; master.SortOrder != email.SortOrder {
+			t.Fatalf("%s is at %d, its master at %d", email.Slug, email.SortOrder, master.SortOrder)
+		}
+	}
 }
