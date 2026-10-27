@@ -33,7 +33,37 @@ const (
 )
 
 var demoStages = []string{"signup", "profile", "activation", "education", "integration", "first-value", "expansion", "retention"}
-var demoLanguages = []string{"en", "de", "fr"}
+var demoLanguages = []string{"en", "es"}
+
+// demoOutdatedTranslation is the email whose EN master changed after its ES
+// translation was made, so the board shows a translation behind EN.
+const demoOutdatedTranslation = "verify-email"
+
+// demoUpdatedIntro is the EN intro of demoOutdatedTranslation after the change.
+const demoUpdatedIntro = "Confirm your address now so your workspace checklist, reminders and team invites reach the right inbox."
+
+var demoSpanishMeta = map[string]struct{ Subject, Preheader string }{
+	"welcome":             {"Te damos la bienvenida a Acme Cloud", "Empieza el recorrido de incorporación."},
+	"verify-email":        {"Confirma tu dirección de correo", "Confirma tu dirección antes de empezar la lista de configuración."},
+	"workspace-invite":    {"Invita a tu equipo al espacio de trabajo", "Suma a las personas adecuadas a la configuración."},
+	"complete-profile":    {"Completa tu perfil", "Añade los datos que personalizan tu incorporación."},
+	"choose-goals":        {"Elige tu primer objetivo", "Escoge el resultado que guiará los siguientes pasos."},
+	"complete-setup":      {"Completa la configuración en tres minutos", "Termina los últimos pasos para ver el primer resultado."},
+	"connect-data":        {"Conecta tu primera fuente de datos", "Sincroniza una fuente para que el panel muestre tu progreso."},
+	"invite-team":         {"Invita a quienes lanzarán contigo", "Comparte el acceso antes de que el primer flujo esté listo."},
+	"first-value":         {"Consigue tu primer resultado", "Usa la lista de pasos para lograr un primer resultado útil."},
+	"workflow-tips":       {"Tres formas de avanzar más rápido esta semana", "Usa estas prácticas para no perder el ritmo."},
+	"install-app":         {"Instala la aplicación complementaria", "Conecta la aplicación para recibir novedades automáticamente."},
+	"sync-settings":       {"Revisa los ajustes de sincronización", "Comprueba que las reglas de automatización encajan con tu equipo."},
+	"api-ready":           {"Tu espacio de API está listo", "Envía el primer evento de prueba cuando el equipo técnico esté listo."},
+	"launch-checklist":    {"Usa la lista de lanzamiento", "Confirma los últimos detalles antes del primer despliegue."},
+	"first-report":        {"Tu primer informe está listo", "Revisa el progreso y decide qué mejorar después."},
+	"upgrade-nudge":       {"Listo para el siguiente paso", "Revisa las siguientes opciones cuando tu equipo esté listo."},
+	"invite-stakeholders": {"Invita a los responsables antes del lanzamiento", "Da a quienes deciden una vista clara del estado del lanzamiento."},
+	"advanced-automation": {"Automatiza la siguiente tarea rutinaria", "Convierte una acción repetida en un flujo gestionado."},
+	"weekly-summary":      {"Tu resumen semanal de incorporación", "Mira qué avanzó y qué necesita atención."},
+	"renewal-reminder":    {"Prepara la próxima revisión de resultados", "Usa las señales de adopción para planificar el siguiente hito."},
+}
 
 var demoEmailMetaByName = map[string]demoEmailMeta{
 	"welcome": {
@@ -210,6 +240,11 @@ type demoEmail struct {
 	TemplateHTML   string
 	TemplateHash   string
 	EditableFields []byte
+	// TranslationOf is the slug of the EN master of a translation.
+	TranslationOf string
+	// Earlier is the master's first version when it changed since, the one
+	// its translation was made from.
+	Earlier *demoEmail
 }
 
 type demoActor struct {
@@ -278,8 +313,22 @@ func Seed(ctx context.Context, tx pgx.Tx, board Board) (int, error) {
 			return 0, fmt.Errorf("upsert %s: %w", email.Slug, err)
 		}
 		emailIDs[email.Slug] = emailID
-		if err := ensureInitialVersion(ctx, tx, emailID, email); err != nil {
-			return 0, fmt.Errorf("ensure initial version for %s: %w", email.Slug, err)
+		if err := ensureDemoVersions(ctx, tx, emailID, email, admin); err != nil {
+			return 0, fmt.Errorf("ensure versions for %s: %w", email.Slug, err)
+		}
+	}
+	for _, email := range emails {
+		if email.TranslationOf == "" {
+			continue
+		}
+		masterID, ok := emailIDs[email.TranslationOf]
+		if !ok {
+			return 0, fmt.Errorf("master %s of %s was not seeded", email.TranslationOf, email.Slug)
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE emails SET translation_of = $2, translated_from_version = 1 WHERE id = $1;
+		`, emailIDs[email.Slug], masterID); err != nil {
+			return 0, fmt.Errorf("link %s to its master: %w", email.Slug, err)
 		}
 	}
 
@@ -336,9 +385,13 @@ func loadDemoEmailDataset() ([]demoEmail, error) {
 		return nil, err
 	}
 	for _, fixture := range fixtures {
-		if _, exists := emailBySlug[fixture.Slug]; !exists {
+		generated, exists := emailBySlug[fixture.Slug]
+		if !exists {
 			continue
 		}
+		// A fixture replaces the HTML only: the email keeps its place, next
+		// to its translations.
+		fixture.SortOrder = generated.SortOrder
 		emailBySlug[fixture.Slug] = fixture
 	}
 
@@ -366,10 +419,22 @@ func generateDemoEmails() ([]demoEmail, error) {
 			return nil, fmt.Errorf("demo concept %s uses unknown stage %s", concept.Key, concept.Stage)
 		}
 		for _, language := range demoLanguages {
-			localizedMeta := localizeDemoMeta(meta, language)
-			email, err := buildDemoEmail(order, conceptIndex+1, concept.Stage, concept.Key, language, localizedMeta, generateDemoHTML(concept.Stage, concept.Key, language, localizedMeta))
+			localizedMeta := localizeDemoMeta(concept.Key, meta, language)
+			copy := demoTemplateCopy(language)
+			email, err := buildDemoEmail(order, conceptIndex+1, concept.Stage, concept.Key, language, localizedMeta, generateDemoHTML(concept.Stage, concept.Key, language, localizedMeta, copy))
 			if err != nil {
 				return nil, err
+			}
+			if language != "en" {
+				email.TranslationOf = demoEmailSlug(concept.Stage, concept.Key, "en")
+			}
+			if language == "en" && concept.Key == demoOutdatedTranslation {
+				earlier := email
+				copy.Intro = demoUpdatedIntro
+				if email, err = buildDemoEmail(order, conceptIndex+1, concept.Stage, concept.Key, language, localizedMeta, generateDemoHTML(concept.Stage, concept.Key, language, localizedMeta, copy)); err != nil {
+					return nil, err
+				}
+				email.Earlier = &earlier
 			}
 			emails = append(emails, email)
 		}
@@ -416,24 +481,17 @@ func buildDemoEmail(stageOrder int, emailOrder int, stage string, emailName stri
 	}, nil
 }
 
-func localizeDemoMeta(meta demoEmailMeta, language string) demoEmailMeta {
-	if language == "en" {
+func localizeDemoMeta(key string, meta demoEmailMeta, language string) demoEmailMeta {
+	if language != "es" {
 		return meta
 	}
 	localized := meta
-	switch language {
-	case "de":
-		localized.Subject = "Demo DE: " + meta.Subject
-		localized.Preheader = "Generischer Demo-Text fuer den Review-Workflow."
-	case "fr":
-		localized.Subject = "Demo FR: " + meta.Subject
-		localized.Preheader = "Texte de demonstration generique pour le workflow de revue."
-	}
+	localized.Subject = demoSpanishMeta[key].Subject
+	localized.Preheader = demoSpanishMeta[key].Preheader
 	return localized
 }
 
-func generateDemoHTML(stage string, emailName string, language string, meta demoEmailMeta) string {
-	copy := demoTemplateCopy(language)
+func generateDemoHTML(stage string, emailName string, language string, meta demoEmailMeta, copy demoTemplateText) string {
 	bannerText := strings.ReplaceAll(meta.Title, " ", "+")
 	return fmt.Sprintf(`<!doctype html>
 <html lang="%s">
@@ -495,21 +553,13 @@ type demoTemplateText struct {
 
 func demoTemplateCopy(language string) demoTemplateText {
 	switch language {
-	case "de":
+	case "es":
 		return demoTemplateText{
-			Intro:           "Ihr Demo-Workspace ist bereit. Nutzen Sie diesen Schritt, um das Onboarding strukturiert fortzusetzen.",
-			RiskCopy:        "Dieser Absatz ist bewusst als reviewbarer Demo-Text formuliert, damit Kommentare, Freigaben und stale approvals sichtbar werden.",
-			ProofPoint:      "Teams koennen Fortschritt pruefen, Aufgaben verteilen und den naechsten Meilenstein vorbereiten.",
-			SecondaryDetail: "Alle Namen, Links und Inhalte sind generisch und enthalten keine echten Produktionsdaten.",
-			CTA:             "Naechsten Schritt oeffnen",
-		}
-	case "fr":
-		return demoTemplateText{
-			Intro:           "Votre espace de demonstration est pret. Utilisez cette etape pour continuer le parcours d onboarding.",
-			RiskCopy:        "Ce paragraphe est volontairement redige comme texte de revue afin de montrer les commentaires et approvals stale.",
-			ProofPoint:      "Les equipes peuvent suivre les progres, partager les responsabilites et preparer le prochain jalon.",
-			SecondaryDetail: "Les noms, liens et contenus sont generiques et ne contiennent aucune donnee de production.",
-			CTA:             "Ouvrir la prochaine etape",
+			Intro:           "Tu espacio de demostración está listo. Usa este paso para avanzar en la incorporación con una acción clara.",
+			RiskCopy:        "Este párrafo está escrito a propósito como texto de revisión, para que los comentarios, las aprobaciones y las aprobaciones caducadas se vean con facilidad.",
+			ProofPoint:      "Los equipos pueden revisar el progreso, asignar responsables y preparar el siguiente hito antes del lanzamiento.",
+			SecondaryDetail: "Todos los nombres, enlaces y textos son genéricos y no contienen datos de producción.",
+			CTA:             "Abrir el siguiente paso",
 		}
 	default:
 		return demoTemplateText{
@@ -844,24 +894,36 @@ func upsertDemoEmail(ctx context.Context, tx pgx.Tx, board Board, email demoEmai
 func demoReviewStatus(email demoEmail) string {
 	switch email.Slug {
 	case demoEmailSlug("activation", "complete-setup", "en"),
-		demoEmailSlug("integration", "sync-settings", "de"),
-		demoEmailSlug("retention", "renewal-reminder", "fr"):
+		demoEmailSlug("integration", "sync-settings", "es"),
+		demoEmailSlug("retention", "renewal-reminder", "es"):
 		return "draft"
 	case demoEmailSlug("expansion", "upgrade-nudge", "en"),
-		demoEmailSlug("first-value", "first-report", "de"),
+		demoEmailSlug("first-value", "first-report", "es"),
 		demoEmailSlug("retention", "weekly-summary", "en"),
 		demoEmailSlug("signup", "welcome", "en"),
-		demoEmailSlug("profile", "complete-profile", "de"),
-		demoEmailSlug("education", "first-value", "fr"),
+		demoEmailSlug("profile", "complete-profile", "es"),
+		demoEmailSlug("education", "first-value", "es"),
 		demoEmailSlug("integration", "install-app", "en"),
-		demoEmailSlug("expansion", "invite-stakeholders", "fr"):
+		demoEmailSlug("expansion", "invite-stakeholders", "es"):
 		return "ready"
 	default:
 		return "draft"
 	}
 }
 
-func ensureInitialVersion(ctx context.Context, tx pgx.Tx, emailID string, email demoEmail) error {
+// ensureDemoVersions stores the email as its first version, or, when it
+// changed since, its earlier text first and the current one as an edit.
+func ensureDemoVersions(ctx context.Context, tx pgx.Tx, emailID string, email demoEmail, admin demoActor) error {
+	if email.Earlier == nil {
+		return ensureDemoVersion(ctx, tx, emailID, 1, "initial", "demo-seed", email)
+	}
+	if err := ensureDemoVersion(ctx, tx, emailID, 1, "initial", "demo-seed", *email.Earlier); err != nil {
+		return err
+	}
+	return ensureDemoVersion(ctx, tx, emailID, 2, "manual", admin.Email, email)
+}
+
+func ensureDemoVersion(ctx context.Context, tx pgx.Tx, emailID string, number int, source string, author string, email demoEmail) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO email_versions (
 			email_id,
@@ -875,7 +937,7 @@ func ensureInitialVersion(ctx context.Context, tx pgx.Tx, emailID string, email 
 			template_html,
 			editable_fields
 		)
-		VALUES ($1, 1, 'demo-seed', 'initial', $2, $3, $4, $5, $6, $7::jsonb)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
 		ON CONFLICT (email_id, version_number) DO UPDATE SET
 			title = EXCLUDED.title,
 			subject = EXCLUDED.subject,
@@ -883,7 +945,7 @@ func ensureInitialVersion(ctx context.Context, tx pgx.Tx, emailID string, email 
 			original_html = EXCLUDED.original_html,
 			template_html = EXCLUDED.template_html,
 			editable_fields = EXCLUDED.editable_fields;
-	`, emailID, email.Title, email.Subject, email.Preheader, email.OriginalHTML, email.TemplateHTML, email.EditableFields)
+	`, emailID, number, author, source, email.Title, email.Subject, email.Preheader, email.OriginalHTML, email.TemplateHTML, email.EditableFields)
 	return err
 }
 
@@ -1039,13 +1101,13 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 			EventKey:  "workspace-invite-comment",
 		},
 		{
-			Slug:  demoEmailSlug("profile", "complete-profile", "de"),
+			Slug:  demoEmailSlug("profile", "complete-profile", "es"),
 			Title: "Complete Profile",
 			Comment: demoComment{
 				ReviewBlock:  "proof_point",
-				SelectedText: "Fortschritt pruefen",
-				StartOffset:  20,
-				EndOffset:    39,
+				SelectedText: "revisar el progreso",
+				StartOffset:  19,
+				EndOffset:    38,
 				Body:         "Resolved: proof point now matches the profile completion step.",
 				Status:       "resolved",
 				Severity:     "suggestion",
@@ -1055,13 +1117,13 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 			EventKey:  "complete-profile-approved",
 		},
 		{
-			Slug:  demoEmailSlug("integration", "sync-settings", "de"),
+			Slug:  demoEmailSlug("integration", "sync-settings", "es"),
 			Title: "Sync Settings",
 			Comment: demoComment{
 				ReviewBlock:  "risk_copy",
-				SelectedText: "stale approvals",
-				StartOffset:  92,
-				EndOffset:    107,
+				SelectedText: "aprobaciones caducadas",
+				StartOffset:  111,
+				EndOffset:    133,
 				Body:         "Blocking: legal wants this automation claim softened before approval.",
 				Status:       "open",
 				Severity:     "blocking",
@@ -1070,13 +1132,13 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 			EventKey:  "sync-settings-changes-requested",
 		},
 		{
-			Slug:  demoEmailSlug("first-value", "first-report", "de"),
+			Slug:  demoEmailSlug("first-value", "first-report", "es"),
 			Title: "First Report",
 			Comment: demoComment{
 				ReviewBlock:  "primary_cta",
-				SelectedText: "Naechsten Schritt oeffnen",
+				SelectedText: "Abrir el siguiente paso",
 				StartOffset:  0,
-				EndOffset:    24,
+				EndOffset:    23,
 				Body:         "Approved: CTA is actionable and fits the first-report handoff.",
 				Status:       "resolved",
 				Severity:     "suggestion",
@@ -1086,13 +1148,13 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 			EventKey:  "first-report-production-approved",
 		},
 		{
-			Slug:  demoEmailSlug("retention", "renewal-reminder", "fr"),
+			Slug:  demoEmailSlug("retention", "renewal-reminder", "es"),
 			Title: "Renewal Reminder",
 			Comment: demoComment{
 				ReviewBlock:  "secondary_detail",
-				SelectedText: "aucune donnee de production",
-				StartOffset:  70,
-				EndOffset:    97,
+				SelectedText: "datos de producción",
+				StartOffset:  65,
+				EndOffset:    84,
 				Body:         "Blocking: confirm this disclaimer stays visible in localized variants.",
 				Status:       "open",
 				Severity:     "blocking",

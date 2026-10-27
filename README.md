@@ -8,7 +8,7 @@ ReviewDesk is a focused review and approval layer for HTML email sequences befor
 
 **[demo.reviewdesk.rubashkin.xyz](https://demo.reviewdesk.rubashkin.xyz/)** — opens straight on a demo board, no sign-up. A short guide walks you through one review loop: open an email, fix a paragraph, resolve a blocking comment, mark it ready.
 
-- Synthetic data only: a generic SaaS onboarding sequence (8 stages, 3 languages, 60 emails) with comments, approval states and handoff examples.
+- Synthetic data only: a generic SaaS onboarding sequence (8 stages, 40 emails: EN masters with linked ES translations) with comments, approval states, an outdated translation and handoff examples.
 - Every visitor gets their own copy of the board that resets in 24 hours, so feel free to comment, edit and resolve.
 
 ![Review board: an onboarding sequence laid out as a timeline of stages, with per-email status, upload and open-comment badges](docs/screenshots/board.png)
