@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
-import { fetchEmails } from "../emails/api";
+import { fetchEmails, fetchSharedEmailAnalysis } from "../emails/api";
 import type { AuthUser } from "../emails/types";
 import { findHeroEmail, guideSteps, type GuideStepKey } from "./demoGuideSteps";
 import styles from "./DemoGuide.module.css";
@@ -13,6 +13,11 @@ const stepText: Record<GuideStepKey, ReactNode> = {
   open: (
     <>
       Open <b>Complete Setup</b>: a reviewer left a blocking comment on it.
+    </>
+  ),
+  ai: (
+    <>
+      Ask the AI for a second opinion: <b>Generate AI analysis</b> in the AI tab.
     </>
   ),
   edit: (
@@ -51,6 +56,13 @@ export function DemoGuide({ currentUser }: { currentUser: AuthUser }) {
     enabled: boardKey !== "" && !dismissed,
   });
   const hero = findHeroEmail(emailsQuery.data ?? []);
+  // The review page fills the same cache entry when an analysis finishes,
+  // so the step ticks off without a refetch.
+  const analysisQuery = useQuery({
+    queryKey: ["emails", hero?.id ?? "", "ai-analysis"],
+    queryFn: () => fetchSharedEmailAnalysis(hero?.id ?? ""),
+    enabled: hero !== undefined && !dismissed,
+  });
   const heroPath = hero ? `/emails/${encodeURIComponent(hero.id)}/review` : "";
   const onHero = heroPath !== "" && location.pathname === heroPath;
   // On an email the preview is on the left, so the guide sits on the right.
@@ -68,7 +80,7 @@ export function DemoGuide({ currentUser }: { currentUser: AuthUser }) {
     return null;
   }
 
-  const steps = guideSteps(hero, opened);
+  const steps = guideSteps(hero, opened, Boolean(analysisQuery.data));
   const doneCount = steps.filter((step) => step.done).length;
   const finished = doneCount === steps.length;
   const toggle = () => {
@@ -113,6 +125,12 @@ export function DemoGuide({ currentUser }: { currentUser: AuthUser }) {
         ) : null}
       </Group>
 
+      <Text c="dimmed" mt={6} size="xs">
+        A team checks and fixes the automatic emails a company sends its clients, before they go
+        out. The board is one such series: the line is the stages a client goes through, and
+        each stage branches into the emails sent at it.
+      </Text>
+
       <Stack component="ol" className={styles.steps} gap={8}>
         {steps.map((step, index) => (
           <li key={step.key} className={styles.step} data-done={step.done || undefined}>
@@ -142,7 +160,7 @@ export function DemoGuide({ currentUser }: { currentUser: AuthUser }) {
           <Anchor component={Link} to={`/boards/${encodeURIComponent(boardKey)}?view=matrix`}>
             language matrix
           </Anchor>
-          , and an email has an AI review in its AI tab.
+          .
         </Text>
       ) : !onHero ? (
         <Button component={Link} to={heroPath} fullWidth mt="sm" size="xs">

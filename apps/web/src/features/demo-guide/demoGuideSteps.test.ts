@@ -35,15 +35,15 @@ describe("guideSteps", () => {
     steps.filter((step) => step.done).map((step) => step.key);
 
   it("starts with nothing done on the seeded hero", () => {
-    expect(done(guideSteps(email({}), false))).toEqual([]);
+    expect(done(guideSteps(email({}), false, false))).toEqual([]);
   });
 
   it("ticks steps off from the hero's state, in any order", () => {
-    expect(done(guideSteps(email({ open_blocking_comment_count: 0 }), true))).toEqual(["open", "resolve"]);
+    expect(done(guideSteps(email({ open_blocking_comment_count: 0 }), true, false))).toEqual(["open", "resolve"]);
     expect(
       done(
-        guideSteps(email({ latest_version: 2, open_blocking_comment_count: 0, review_status: "ready" }), true)
+        guideSteps(email({ latest_version: 2, open_blocking_comment_count: 0, review_status: "ready" }), true, true)
       )
-    ).toEqual(["open", "edit", "resolve", "ready"]);
+    ).toEqual(["open", "ai", "edit", "resolve", "ready"]);
   });
 });
