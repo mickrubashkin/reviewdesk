@@ -9,7 +9,7 @@ export function findHeroEmail(emails: EmailListItem[]): EmailListItem | undefine
   );
 }
 
-export type GuideStepKey = "open" | "edit" | "resolve" | "ready";
+export type GuideStepKey = "open" | "ai" | "edit" | "resolve" | "ready";
 
 export type GuideStep = {
   key: GuideStepKey;
@@ -18,9 +18,11 @@ export type GuideStep = {
 
 // guideSteps ticks each step off from the hero's state, so the guide follows
 // what the visitor actually did, in any order.
-export function guideSteps(hero: EmailListItem, opened: boolean): GuideStep[] {
+export function guideSteps(hero: EmailListItem, opened: boolean, analyzed: boolean): GuideStep[] {
   return [
     { key: "open", done: opened },
+    // The seed leaves the hero without an AI analysis.
+    { key: "ai", done: analyzed },
     // The seed makes v1; saving edited text makes a new version.
     { key: "edit", done: (hero.latest_version ?? 1) > 1 },
     { key: "resolve", done: hero.open_blocking_comment_count === 0 },
