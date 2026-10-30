@@ -11,38 +11,54 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const apiBase = "https://api.telegram.org"
 
-// Bot posts to the chat ChatID as the bot whose token is Token.
+// Bot posts to the chat ChatID as the bot whose token is Token, in the topic
+// ThreadID of a group with topics when it is not zero.
 type Bot struct {
-	Token   string
-	ChatID  string
-	BaseURL string
-	Client  *http.Client
+	Token    string
+	ChatID   string
+	ThreadID int64
+	BaseURL  string
+	Client   *http.Client
 }
 
-// FromEnv returns the bot of TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or
-// false when either is unset.
+// FromEnv returns the bot of TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, with
+// the optional topic TELEGRAM_THREAD_ID, or false when the token or the chat
+// is unset.
 func FromEnv() (*Bot, bool) {
 	token := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	chatID := strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
 	if token == "" || chatID == "" {
 		return nil, false
 	}
-	return &Bot{Token: token, ChatID: chatID}, true
+	bot := &Bot{Token: token, ChatID: chatID}
+	if thread := strings.TrimSpace(os.Getenv("TELEGRAM_THREAD_ID")); thread != "" {
+		id, err := strconv.ParseInt(thread, 10, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "TELEGRAM_THREAD_ID %q is not a number; posting to the whole chat\n", thread)
+		}
+		bot.ThreadID = id
+	}
+	return bot, true
 }
 
 // Send posts text as a plain message, without link previews.
 func (b *Bot) Send(ctx context.Context, text string) error {
-	body, err := json.Marshal(map[string]any{
+	message := map[string]any{
 		"chat_id":                  b.ChatID,
 		"text":                     text,
 		"disable_web_page_preview": true,
-	})
+	}
+	if b.ThreadID != 0 {
+		message["message_thread_id"] = b.ThreadID
+	}
+	body, err := json.Marshal(message)
 	if err != nil {
 		return err
 	}

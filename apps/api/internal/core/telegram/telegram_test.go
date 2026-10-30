@@ -26,6 +26,17 @@ func TestSend(t *testing.T) {
 	if path != "/bot123:abc/sendMessage" || got["chat_id"] != "-100" || got["text"] != "hello" {
 		t.Fatalf("unexpected request %s %v", path, got)
 	}
+	if _, ok := got["message_thread_id"]; ok {
+		t.Fatalf("expected no topic, got %v", got)
+	}
+
+	bot.ThreadID = 42
+	if err := bot.Send(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if got["message_thread_id"] != float64(42) {
+		t.Fatalf("expected topic 42, got %v", got)
+	}
 }
 
 func TestSendErrorsKeepTheTokenOut(t *testing.T) {
@@ -52,7 +63,15 @@ func TestFromEnv(t *testing.T) {
 		t.Fatal("expected no bot without a chat")
 	}
 	t.Setenv("TELEGRAM_CHAT_ID", "-100")
-	if bot, ok := FromEnv(); !ok || bot.ChatID != "-100" {
+	if bot, ok := FromEnv(); !ok || bot.ChatID != "-100" || bot.ThreadID != 0 {
+		t.Fatalf("unexpected bot %+v", bot)
+	}
+	t.Setenv("TELEGRAM_THREAD_ID", "7")
+	if bot, ok := FromEnv(); !ok || bot.ThreadID != 7 {
+		t.Fatalf("unexpected bot %+v", bot)
+	}
+	t.Setenv("TELEGRAM_THREAD_ID", "general")
+	if bot, ok := FromEnv(); !ok || bot.ThreadID != 0 {
 		t.Fatalf("unexpected bot %+v", bot)
 	}
 }

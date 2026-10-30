@@ -150,15 +150,21 @@ func allowedAuthOrigins() []string {
 	return origins
 }
 
+// touchUserLastSeen moves last_seen_at at most every ten minutes and keeps
+// each move in user_presence for the activity digest.
 func touchUserLastSeen(ctx context.Context, dbpool *pgxpool.Pool, user AuthUser) {
 	_, err := dbpool.Exec(ctx, `
-		UPDATE users
-		SET last_seen_at = now()
-		WHERE id = $1
-			AND (
-				last_seen_at IS NULL
-				OR last_seen_at < now() - interval '10 minutes'
-			);
+		WITH touched AS (
+			UPDATE users
+			SET last_seen_at = now()
+			WHERE id = $1
+				AND (
+					last_seen_at IS NULL
+					OR last_seen_at < now() - interval '10 minutes'
+				)
+			RETURNING id
+		)
+		INSERT INTO user_presence (user_id) SELECT id FROM touched;
 	`, user.ID)
 	if err != nil {
 		if IsRequestCanceledError(err) {
@@ -374,6 +380,7 @@ func demoLoginHandler(dbpool *pgxpool.Pool, limiter *httprate.RateLimiter) http.
 				OwnerKey:  payload.OwnerKey,
 				TimeZone:  payload.TimeZone,
 				Language:  payload.Language,
+				Address:   RequestIPAddress(r),
 			})
 		}
 		if err != nil {

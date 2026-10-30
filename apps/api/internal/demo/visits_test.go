@@ -204,11 +204,22 @@ func TestReturningVisits(t *testing.T) {
 		return visit
 	}
 
-	browser := VisitEntry{UTMSource: "returning-test", VisitorID: "returning-test-browser", TimeZone: "Europe/Warsaw", Language: "pl-PL"}
+	t.Cleanup(func() {
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM demo_owner_addresses WHERE address IN ('192.0.2.7', '0.0.0.0');`)
+	})
+	browser := VisitEntry{UTMSource: "returning-test", VisitorID: "returning-test-browser", TimeZone: "Europe/Warsaw", Language: "pl-PL", Address: "198.51.100.1"}
 	first := enter(browser)
 	second := enter(browser)
 	other := enter(VisitEntry{UTMSource: "returning-test"})
-	owner := enter(VisitEntry{UTMSource: "returning-test", OwnerKey: "owner-secret"})
+	owner := enter(VisitEntry{UTMSource: "returning-test", OwnerKey: "owner-secret", Address: "192.0.2.7"})
+	// From the owner's address without the key, as from a private tab: the
+	// owner's too. A hidden address is never the owner's.
+	ownerTab := enter(VisitEntry{UTMSource: "returning-test", Address: "192.0.2.7"})
+	hiddenOwner := enter(VisitEntry{UTMSource: "returning-test", OwnerKey: "owner-secret", Address: "0.0.0.0"})
+	hidden := enter(VisitEntry{UTMSource: "returning-test", Address: "0.0.0.0"})
+	if !ownerTab.Owner || !hiddenOwner.Owner || hidden.Owner {
+		t.Fatalf("unexpected owner marks: same address %v, hidden with key %v, hidden without %v", ownerTab.Owner, hiddenOwner.Owner, hidden.Owner)
+	}
 
 	if first.Number != 1 || first.Returning() || first.TimeZone != "Europe/Warsaw" || first.Language != "pl-PL" {
 		t.Fatalf("unexpected first visit %+v", first)
@@ -230,7 +241,7 @@ func TestReturningVisits(t *testing.T) {
 			numbers = append(numbers, visit.Number)
 		}
 	}
-	if len(numbers) != 3 || numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 1 {
-		t.Fatalf("expected the three visitors' visits without the owner's, got numbers %v", numbers)
+	if len(numbers) != 4 || numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 1 || numbers[3] != 1 {
+		t.Fatalf("expected the four visitors' visits without the owner's, got numbers %v", numbers)
 	}
 }

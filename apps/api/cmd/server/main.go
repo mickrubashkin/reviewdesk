@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/telegram"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/demo"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/digest"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/features/ai"
 	featureauth "github.com/mickrubashkin/reviewdesk/apps/api/internal/features/auth"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/features/boards"
@@ -86,8 +88,17 @@ func main() {
 		// Each entry and each visit that went quiet go to the owner's chat.
 		if bot, ok := telegram.FromEnv(); ok {
 			demo.Notifier = bot
-			demo.ReportLocation = demoReportLocation()
+			demo.ReportLocation = reportLocation("DEMO_REPORT_TZ")
 			go demo.RunVisitReports(ctx, dbpool)
+		}
+	}
+	// Each morning the owner's chat gets who was in the day before and what
+	// they did.
+	if !demoEnabled && strings.EqualFold(strings.TrimSpace(os.Getenv("ACTIVITY_DIGEST_ENABLED")), "true") {
+		if bot, ok := telegram.FromEnv(); ok {
+			go digest.Run(ctx, dbpool, bot, reportLocation("ACTIVITY_DIGEST_TZ"), digestHour())
+		} else {
+			fmt.Fprintln(os.Stderr, "ACTIVITY_DIGEST_ENABLED needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID; no digest")
 		}
 	}
 
@@ -152,17 +163,32 @@ func (c commentEventLogger) LogEvent(ctx context.Context, db comments.EmailEvent
 	})
 }
 
-// demoReportLocation is the time zone of the demo visit reports:
-// DEMO_REPORT_TZ, else Europe/Madrid.
-func demoReportLocation() *time.Location {
-	zone := strings.TrimSpace(os.Getenv("DEMO_REPORT_TZ"))
+// reportLocation is the time zone of the chat messages named by the
+// variable env, else Europe/Madrid.
+func reportLocation(env string) *time.Location {
+	zone := strings.TrimSpace(os.Getenv(env))
 	if zone == "" {
 		zone = "Europe/Madrid"
 	}
 	loc, err := time.LoadLocation(zone)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "DEMO_REPORT_TZ %q: %v; using UTC\n", zone, err)
+		fmt.Fprintf(os.Stderr, "%s %q: %v; using UTC\n", env, zone, err)
 		return time.UTC
 	}
 	return loc
+}
+
+// digestHour is the hour the activity digest goes out:
+// ACTIVITY_DIGEST_HOUR, else 8.
+func digestHour() int {
+	value := strings.TrimSpace(os.Getenv("ACTIVITY_DIGEST_HOUR"))
+	if value == "" {
+		return 8
+	}
+	hour, err := strconv.Atoi(value)
+	if err != nil || hour < 0 || hour > 23 {
+		fmt.Fprintf(os.Stderr, "ACTIVITY_DIGEST_HOUR %q is not an hour; using 8\n", value)
+		return 8
+	}
+	return hour
 }
