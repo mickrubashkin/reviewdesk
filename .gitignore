@@ -63,3 +63,6 @@ inbox/
 
 # Local direnv settings (may hold secrets) — never commit
 .envrc
+
+# Personal Claude Code settings.
+.claude/settings.local.json

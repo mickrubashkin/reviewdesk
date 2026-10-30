@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { defineConfig, loadEnv, searchForWorkspaceRoot, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 function git(args: string) {
@@ -65,6 +65,10 @@ export default defineConfig(({ mode }) => ({
     __APP_UPDATED_AT__: JSON.stringify(git('log -1 --format=%cI') || new Date().toISOString()),
   },
   server: {
+    // The help pages are Markdown in docs/help, outside this app.
+    fs: {
+      allow: [searchForWorkspaceRoot(process.cwd()), '../../docs/help'],
+    },
     proxy: {
       '/api': 'http://localhost:8080',
       '/health': 'http://localhost:8080',

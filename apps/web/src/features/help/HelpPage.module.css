@@ -1,0 +1,47 @@
+.page {
+  min-height: 100vh;
+  background: var(--mantine-color-gray-0);
+  color: var(--mantine-color-dark-7);
+}
+
+.content {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--mantine-spacing-lg) var(--mantine-spacing-md);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--mantine-spacing-lg);
+  align-items: start;
+}
+
+.nav {
+  position: sticky;
+  top: var(--mantine-spacing-lg);
+}
+
+.article {
+  min-width: 0;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+@media (max-width: 48em) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nav {
+    position: static;
+  }
+}
+
+/* The chosen search result keeps its text readable. */
+.searchAction[data-selected] {
+  background: var(--mantine-primary-color-light);
+  color: inherit;
+}

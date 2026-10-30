@@ -23,6 +23,7 @@ import { EmailStatusLine } from "../../emails/EmailStatusLine";
 import { formatStageName } from "../../emails/stages";
 import type { EmailListItem } from "../../emails/types";
 import { PanelComments } from "./PanelComments";
+import { HelpLink } from "../../help/HelpLink";
 import { ReferenceSection } from "./ReferenceSection";
 import { pickPrimary } from "./slotHelpers";
 import { TranslationLinkSelect, TranslationSection } from "./TranslationSection";
@@ -119,6 +120,7 @@ export function EmailSidePanel({
         ) : null}
         <Group gap={6}>
           <EmailStatusLine email={email} size="sm" versions={sameLanguage} />
+          <HelpLink topic="statusLine" />
           <Text c="dimmed" size="xs">
             {[email.send_timing, email.send_condition].filter(Boolean).join(" · ")}
           </Text>

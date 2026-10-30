@@ -84,6 +84,7 @@ make test-web
 - `apps/api/cmd/demoseed` - synthetic demo dataset (`db/seeds/demo-emails` plus generated emails).
 - `apps/web/src` - React application.
 - `db/migrations` - PostgreSQL migrations.
+- `docs/help/en` - [user help](docs/help/en/README.md) by role and task, also served in the app at `/help`.
 - `docs/` - [case study](docs/case-study.md), [backend](docs/Backend%20Architecture.md) and [frontend](docs/Frontend%20Architecture.md) architecture, [roadmap](docs/roadmap.md).
 
 ## Demo Data

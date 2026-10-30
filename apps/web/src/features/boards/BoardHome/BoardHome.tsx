@@ -205,6 +205,22 @@ function EmailBoardApp({
       { replace: true }
     );
   };
+  // ?present=1 shows the timeline without the review interface, to walk
+  // someone through the sequence; it shows the whole board, not the filters
+  // of whoever opened it.
+  const presenting = boardView === "timeline" && searchParams.get("present") === "1";
+  const setPresenting = (present: boolean) => {
+    setSearchParams((params) => {
+      // The view goes in too, so the link opens present mode for anyone.
+      if (present) {
+        params.set("view", "timeline");
+        params.set("present", "1");
+      } else {
+        params.delete("present");
+      }
+      return params;
+    });
+  };
   // On a board with regions the matrix can show them as columns instead of
   // languages.
   const boardRegions = useBoardRegions(boardKey).data ?? [];
@@ -274,6 +290,7 @@ function EmailBoardApp({
     );
   }, [stageToReveal, columns, setSearchParams]);
 
+  const shownColumns = presenting ? columns : visibleColumns;
   const filteredIdSet = new Set(filteredEmailIds);
   const filteredEmails = (emailsQuery.data ?? []).filter((email) => filteredIdSet.has(email.id));
   const unsortedQuery = useQuery({
@@ -316,47 +333,51 @@ function EmailBoardApp({
   };
 
   return (
-    <AppShell header={{ height: 64 }} padding={0}>
-      <AppShell.Header className={styles.appHeader}>
-        <BoardHeader
-          activeBoard={activeBoard}
-          activeBoardFilterCount={activeBoardFilterCount}
-          boardFilterCounts={boardFilterCounts}
-          boardFilterOptions={boardFilterOptions}
-          boardFilters={boardFilters}
-          boardSearchQuery={boardSearchQuery}
-          boards={boards}
-          boardsLoading={boardsQuery.isLoading}
-          currentUser={currentUser}
-          hasBoardFilters={hasBoardFilters}
-          headerSubtitle={headerSubtitle}
-          canManage={canManage}
-          isAdmin={isAdmin}
-          isCompactHeader={isCompactHeader}
-          isLoggingOut={isLoggingOut}
-          userMenuOpened={userMenuOpened}
-          onBoardChange={handleBoardChange}
-          onBoardFilterChange={updateBoardFilter}
-          onBoardSearchQueryChange={onBoardSearchQueryChange}
-          onCreateBoard={() => setCreateBoardModalOpened(true)}
-          onExport={() => setExportRequest({ scope: hasBoardFilters ? "filtered" : "board", selected: [] })}
-          onLogout={onLogout}
-          onManageStages={() => setManageStagesModalOpened(true)}
-          onResetBoardFilters={resetBoardFilters}
-          onUserMenuOpenedChange={setUserMenuOpened}
-          boardView={boardView}
-          onBoardViewChange={setBoardView}
-        />
-      </AppShell.Header>
+    <AppShell header={presenting ? undefined : { height: 64 }} padding={0}>
+      {presenting ? null : (
+        <AppShell.Header className={styles.appHeader}>
+          <BoardHeader
+            activeBoard={activeBoard}
+            activeBoardFilterCount={activeBoardFilterCount}
+            boardFilterCounts={boardFilterCounts}
+            boardFilterOptions={boardFilterOptions}
+            boardFilters={boardFilters}
+            boardSearchQuery={boardSearchQuery}
+            boards={boards}
+            boardsLoading={boardsQuery.isLoading}
+            currentUser={currentUser}
+            hasBoardFilters={hasBoardFilters}
+            headerSubtitle={headerSubtitle}
+            canManage={canManage}
+            isAdmin={isAdmin}
+            isCompactHeader={isCompactHeader}
+            isLoggingOut={isLoggingOut}
+            userMenuOpened={userMenuOpened}
+            onBoardChange={handleBoardChange}
+            onBoardFilterChange={updateBoardFilter}
+            onBoardSearchQueryChange={onBoardSearchQueryChange}
+            onCreateBoard={() => setCreateBoardModalOpened(true)}
+            onExport={() => setExportRequest({ scope: hasBoardFilters ? "filtered" : "board", selected: [] })}
+            onLogout={onLogout}
+            onManageStages={() => setManageStagesModalOpened(true)}
+            onResetBoardFilters={resetBoardFilters}
+            onUserMenuOpenedChange={setUserMenuOpened}
+            boardView={boardView}
+            onBoardViewChange={setBoardView}
+          />
+        </AppShell.Header>
+      )}
 
       <AppShell.Main>
         <Box className={styles.boardPage}>
-          <ActiveBoardFilters
-            boardFilterOptions={boardFilterOptions}
-            boardFilters={boardFilters}
-            onBoardFilterChange={updateBoardFilter}
-            onResetBoardFilters={resetBoardFilters}
-          />
+          {presenting ? null : (
+            <ActiveBoardFilters
+              boardFilterOptions={boardFilterOptions}
+              boardFilters={boardFilters}
+              onBoardFilterChange={updateBoardFilter}
+              onResetBoardFilters={resetBoardFilters}
+            />
+          )}
           <Box className={styles.boardContent}>
             {boardView !== "archive" && (emailsQuery.isLoading || boardsQuery.isLoading) ? (
               <Stack align="center" justify="center" h="100%">
@@ -379,7 +400,7 @@ function EmailBoardApp({
                 searchQuery={boardSearchQuery}
               />
             ) : emailsQuery.isSuccess ? (
-              visibleColumns.length > 0 ? (
+              shownColumns.length > 0 ? (
                 boardView === "matrix" ? (
                   <div className={matrixStyles.matrixView}>
                     {activeBoard && isAdmin ? (
@@ -408,7 +429,10 @@ function EmailBoardApp({
                 ) : boardView === "timeline" ? (
                   <BoardTimeline
                     boardKey={boardKey}
-                    columns={visibleColumns}
+                    boardName={activeBoard?.name ?? boardKey}
+                    columns={shownColumns}
+                    present={presenting}
+                    onPresentChange={setPresenting}
                     regions={boardRegions}
                     selectedEmailId={panelEmailId}
                     onOpenEmail={setPanelEmailId}

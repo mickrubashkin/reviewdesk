@@ -7,6 +7,7 @@ import { useBoardRegions } from "../../boards/api";
 import { confirmBasedOn, fetchBasedOnStatus, setBasedOnLink } from "../../emails/api";
 import { formatStageName } from "../../emails/stages";
 import type { BasedOnStatus, BlockChange, EmailListItem } from "../../emails/types";
+import { HelpLink } from "../../help/HelpLink";
 import { WordDiff } from "./TranslationSection";
 
 type ReferenceEmail = Pick<
@@ -79,7 +80,12 @@ export function ReferenceSection({
             { label: `Own email of ${region.name}`, value: ownEmail },
           ]}
           disabled={linkMutation.isPending}
-          label="Based on the reference"
+          label={
+            <Group component="span" gap={4} wrap="nowrap">
+              Based on the reference
+              <HelpLink topic="reference" />
+            </Group>
+          }
           size="xs"
           value={linkMutation.isPending ? (linkMutation.variables ?? ownEmail) : (email.based_on ?? ownEmail)}
           onChange={(value) => linkMutation.mutate(value === ownEmail || !value ? null : value)}

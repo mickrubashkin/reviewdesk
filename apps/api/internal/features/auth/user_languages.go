@@ -19,6 +19,10 @@ type meResponse struct {
 	AuthUser
 	Languages     []string `json:"languages"`
 	ManagedBoards []string `json:"managed_boards"`
+	// The version of the first-login tour this person last finished or skipped.
+	TourVersion int `json:"tour_version"`
+	// The date of the newest "What's new" entry this person has opened.
+	WhatsNewSeen string `json:"whats_new_seen"`
 }
 
 type updateUserLanguagesRequest struct {

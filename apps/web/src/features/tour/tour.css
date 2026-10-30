@@ -1,0 +1,30 @@
+/* driver.js popovers in the app's type and colors. */
+.driver-popover.reviewdesk-tour {
+  max-width: 340px;
+  border-radius: var(--mantine-radius-md);
+  font-family: var(--mantine-font-family);
+  color: var(--mantine-color-dark-7);
+}
+
+.reviewdesk-tour .driver-popover-title {
+  font-family: var(--mantine-font-family);
+  font-size: var(--mantine-font-size-md);
+}
+
+.reviewdesk-tour .driver-popover-description {
+  font-family: var(--mantine-font-family);
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.5;
+}
+
+.reviewdesk-tour .driver-popover-footer button {
+  border-radius: var(--mantine-radius-sm);
+  font-family: var(--mantine-font-family);
+  text-shadow: none;
+}
+
+.reviewdesk-tour .driver-popover-next-btn {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-filled);
+  color: var(--mantine-color-white);
+}

@@ -1,5 +1,6 @@
 import { Loader, Stack, Text } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 
 import { AIConfig } from "./features/ai-config/AIConfig";
@@ -22,6 +23,9 @@ import { PortalSync } from "./features/portal/PortalSync";
 import { SharedTexts } from "./features/shared-texts/SharedTexts";
 import { TranslationGlossary } from "./features/translation-glossary/TranslationGlossary";
 import { Blocks } from "./features/blocks/Blocks";
+
+// The help and its Markdown renderer load only when someone opens it.
+const HelpPage = lazy(() => import("./features/help/HelpPage").then((module) => ({ default: module.HelpPage })));
 
 export default function App() {
   return <AuthenticatedApp />;
@@ -62,6 +66,8 @@ function AuthenticatedApp() {
     <Routes>
       <Route path="/ai-logs" element={<AIAnalysisLogs />} />
       <Route path="/my-tasks" element={<MyTasks currentUser={currentUserQuery.data} />} />
+      <Route path="/help" element={<HelpRoute currentUser={currentUserQuery.data} />} />
+      <Route path="/help/:page" element={<HelpRoute currentUser={currentUserQuery.data} />} />
       <Route
         path="/admin/ai-config"
         element={<AIConfig currentUserRole={currentUserQuery.data.role} />}
@@ -146,5 +152,19 @@ function EmailEditRedirectRoute() {
     <Navigate replace to={`/emails/${encodeURIComponent(emailId)}/review`} />
   ) : (
     <Navigate replace to="/" />
+  );
+}
+
+function HelpRoute({ currentUser }: { currentUser: AuthUser }) {
+  return (
+    <Suspense
+      fallback={
+        <Stack align="center" justify="center" h="100dvh">
+          <Loader />
+        </Stack>
+      }
+    >
+      <HelpPage currentUser={currentUser} />
+    </Suspense>
   );
 }
