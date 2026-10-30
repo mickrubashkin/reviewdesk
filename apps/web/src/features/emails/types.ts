@@ -497,6 +497,10 @@ export type AuthUser = {
   languages?: string[];
   // Keys of boards this person manages like an admin; admins manage every board.
   managed_boards?: string[];
+  // The first-login tour version this person last finished or skipped.
+  tour_version?: number;
+  // The date (YYYY-MM-DD) of the newest "What's new" entry this person opened.
+  whats_new_seen?: string;
 };
 
 export type UserRole = "super_admin" | "admin" | "reviewer";

@@ -1,10 +1,10 @@
-import { Badge, Group, Loader, Text, Tooltip } from "@mantine/core";
+import { Badge, Group, Loader, Modal, Text, Tooltip } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { fetchEmailDetail } from "../../../emails/api";
 import { emailStatusParts } from "../../../emails/statusSummary";
-import type { BoardRegion } from "../../../emails/types";
+import type { BoardRegion, EmailListItem } from "../../../emails/types";
 import { regionName } from "../../regions";
 import { formatDay, formatDelay, type TimelineStep } from "./timeline";
 import styles from "./Timeline.module.css";
@@ -19,26 +19,33 @@ type TimelineNodeProps = {
   showRegion: boolean;
   // Faded because a highlight is on and this email is not one it lights up.
   dimmed: boolean;
+  // Present mode: the email as the recipient gets it, without its status,
+  // comments or how it compares to the reference.
+  present: boolean;
   onOpen: () => void;
 };
 
-export function TimelineNode({ step, regions, selected, first, showRegion, dimmed, onOpen }: TimelineNodeProps) {
+export function TimelineNode({ step, regions, selected, first, showRegion, dimmed, present, onOpen }: TimelineNodeProps) {
   const { email } = step;
-  const status = emailStatusParts(email, step.versions)[0];
+  const status = present ? undefined : emailStatusParts(email, step.versions)[0];
   const region = showRegion ? regionName(email, regions) : "";
 
   return (
     <div className={styles.node}>
       <div className={styles.dayRow}>
-        <Tooltip label={status ? `${status.label}. ${status.detail}` : "No status"} multiline maw={320}>
-          <span
-            className={styles.dot}
-            style={{ background: `var(--mantine-color-${status?.color === "dimmed" || !status ? "gray" : status.color}-5)` }}
-          />
-        </Tooltip>
+        {present ? (
+          <span className={styles.dot} style={{ background: "var(--mantine-color-blue-5)" }} />
+        ) : (
+          <Tooltip label={status ? `${status.label}. ${status.detail}` : "No status"} multiline maw={320}>
+            <span
+              className={styles.dot}
+              style={{ background: `var(--mantine-color-${status?.color === "dimmed" || !status ? "gray" : status.color}-5)` }}
+            />
+          </Tooltip>
+        )}
         <span>Day {formatDay(step.day)}</span>
         {first && step.day === 0 ? <Text size="xs" c="dimmed">on entry</Text> : null}
-        {step.referenceDelay !== undefined ? (
+        {step.referenceDelay !== undefined && !present ? (
           <Tooltip label={`The reference waits ${formatDelay(step.referenceDelay)} here`}>
             <Badge color="orange" size="xs" variant="light">
               timing differs
@@ -59,7 +66,7 @@ export function TimelineNode({ step, regions, selected, first, showRegion, dimme
               {status.label}
             </Badge>
           ) : null}
-          {email.open_comment_count > 0 ? (
+          {email.open_comment_count > 0 && !present ? (
             <Badge color={email.open_blocking_comment_count > 0 ? "red" : "orange"} size="xs" variant="filled">
               {email.open_comment_count} open
             </Badge>
@@ -71,7 +78,7 @@ export function TimelineNode({ step, regions, selected, first, showRegion, dimme
               </Badge>
             </Tooltip>
           ) : null}
-          {email.based_on_stale ? (
+          {email.based_on_stale && !present ? (
             <Tooltip label="The reference email changed since this one last matched it" multiline maw={320}>
               <Badge color="yellow" size="xs" variant="light">
                 outdated
@@ -134,6 +141,25 @@ export function TimelineGap({ name }: { name: string }) {
   );
 }
 
+// TimelinePreview shows one email large, as the recipient sees it, for
+// walking someone through the sequence in present mode.
+export function TimelinePreview({ email, onClose }: { email: EmailListItem; onClose: () => void }) {
+  const html = useEmailHtml(email.id, true);
+
+  return (
+    <Modal opened size="xl" title={email.subject || email.title} onClose={onClose}>
+      {html.data ? (
+        // Third-party HTML, sandboxed as on the cards.
+        <iframe className={styles.previewFrame} sandbox="" srcDoc={html.data} title={email.title} />
+      ) : (
+        <Group className={styles.previewFrame} justify="center">
+          {html.isError ? <Text c="dimmed">No preview</Text> : <Loader size="sm" />}
+        </Group>
+      )}
+    </Modal>
+  );
+}
+
 // How far past the edge of the timeline a thumbnail is still kept ready.
 const thumbMargin = 600;
 
@@ -158,13 +184,8 @@ function TimelineThumb({ emailId, title }: { emailId: string; title: string }) {
     return () => observer.disconnect();
   }, []);
 
-  const detail = useQuery({
-    queryKey: ["emails", emailId, "review"],
-    queryFn: () => fetchEmailDetail(emailId),
-    enabled: near,
-    staleTime: 60_000,
-  });
-  const html = detail.data ? detail.data.review_html || detail.data.original_html : null;
+  const detail = useEmailHtml(emailId, near);
+  const html = detail.data ?? null;
 
   return (
     <div className={styles.thumb} ref={ref}>
@@ -185,4 +206,16 @@ function TimelineThumb({ emailId, title }: { emailId: string; title: string }) {
       )}
     </div>
   );
+}
+
+// useEmailHtml reads the email's HTML through the review page's query, so the
+// cards, the preview and the review page share one copy of it.
+function useEmailHtml(emailId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["emails", emailId, "review"],
+    queryFn: () => fetchEmailDetail(emailId),
+    enabled,
+    staleTime: 60_000,
+    select: (detail) => detail.review_html || detail.original_html,
+  });
 }

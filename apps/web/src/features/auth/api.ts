@@ -76,6 +76,28 @@ export async function fetchCurrentUserOrEnterDemo(): Promise<AuthUser> {
   return fetchCurrentUser();
 }
 
+// finishTour records that the tour of this version was finished or skipped.
+export function finishTour(version: number): Promise<{ tour_version: number }> {
+  return fetchJson<{ tour_version: number }>("/api/users/me/tour", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ version }),
+  });
+}
+
+// markWhatsNewSeen records that "What's new" was opened up to this entry.
+export function markWhatsNewSeen(seen: string): Promise<{ whats_new_seen: string }> {
+  return fetchJson<{ whats_new_seen: string }>("/api/users/me/whats-new", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ seen }),
+  });
+}
+
 export function logout(): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>("/api/auth/logout", {
     method: "POST",

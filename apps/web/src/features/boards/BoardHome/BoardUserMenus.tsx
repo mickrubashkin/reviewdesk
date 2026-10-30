@@ -1,12 +1,15 @@
-import { Badge, Button, Menu, Stack, Text } from "@mantine/core";
+import { Badge, Button, Indicator, Menu, Stack, Text } from "@mantine/core";
 import {
   CaretDownIcon,
   DownloadSimpleIcon,
   EnvelopeSimpleIcon,
   GearSixIcon,
   KanbanIcon,
+  MegaphoneIcon,
   PlusIcon,
+  QuestionIcon,
   SignOutIcon,
+  SignpostIcon,
   SlidersHorizontalIcon,
   StackIcon,
   UserCircleIcon,
@@ -15,7 +18,9 @@ import { Link } from "react-router-dom";
 
 import { isAdminRole } from "../../emails/permissions";
 import { demoMode } from "../../auth/api";
+import { replayTour } from "../../tour/useBoardTour";
 import type { AuthUser } from "../../emails/types";
+import { hasUnreadNews } from "../../help/whatsNew";
 
 import { AppVersionInfo } from "./AppVersionInfo";
 import styles from "../../../App.module.css";
@@ -27,6 +32,7 @@ export function NewMenu({ onCreateBoard }: { onCreateBoard?: () => void }) {
       <Menu.Target>
         <Button
           aria-label="New"
+          data-tour="new"
           className={`${styles.headerMenuButton} ${styles.collapsibleButton}`}
           leftSection={<PlusIcon aria-hidden="true" size={16} />}
           rightSection={<CaretDownIcon aria-hidden="true" size={14} />}
@@ -228,17 +234,21 @@ export function AccountMenu({
   return (
     <Menu position="bottom-end" width={260} withinPortal>
       <Menu.Target>
-        <Button
-          aria-label={`Account: ${accountLabel(currentUser)}`}
-          className={`${styles.accountButton} ${styles.collapsibleButton}`}
-          leftSection={<UserCircleIcon aria-hidden="true" size={18} />}
-          rightSection={<CaretDownIcon aria-hidden="true" size={14} />}
-          variant="white"
-        >
-          <span className={styles.collapsibleLabel}>
-            <span className={styles.accountEmail}>{accountLabel(currentUser)}</span>
-          </span>
-        </Button>
+        {/* The dot: there is a "What's new" entry this person has not opened. */}
+        <Indicator color="orange" disabled={!showsNews(currentUser)} offset={4} size={9} withBorder>
+          <Button
+            aria-label={`Account: ${accountLabel(currentUser)}${showsNews(currentUser) ? " (new in What's new)" : ""}`}
+            data-tour="account"
+            className={`${styles.accountButton} ${styles.collapsibleButton}`}
+            leftSection={<UserCircleIcon aria-hidden="true" size={18} />}
+            rightSection={<CaretDownIcon aria-hidden="true" size={14} />}
+            variant="white"
+          >
+            <span className={styles.collapsibleLabel}>
+              <span className={styles.accountEmail}>{accountLabel(currentUser)}</span>
+            </span>
+          </Button>
+        </Indicator>
       </Menu.Target>
       <Menu.Dropdown>
         <UserMenuLabel currentUser={currentUser} />
@@ -248,6 +258,9 @@ export function AccountMenu({
             Export…
           </Menu.Item>
         ) : null}
+        <HelpMenuItem />
+        <WhatsNewMenuItem currentUser={currentUser} />
+        {demoMode ? null : <ReplayTourMenuItem />}
         {/* In the demo a logout would only open a new demo session. */}
         {demoMode ? null : (
           <Menu.Item
@@ -261,6 +274,48 @@ export function AccountMenu({
         )}
       </Menu.Dropdown>
     </Menu>
+  );
+}
+
+// HelpMenuItem opens the user help; in the account menu and the compact menu.
+export function HelpMenuItem() {
+  return (
+    <Menu.Item component={Link} leftSection={<QuestionIcon aria-hidden="true" size={16} />} to="/help">
+      Help
+    </Menu.Item>
+  );
+}
+
+// showsNews: there is a "What's new" entry this person has not opened. The
+// demo visitors share one account, so the demo never marks it.
+function showsNews(currentUser: AuthUser) {
+  return !demoMode && hasUnreadNews(currentUser);
+}
+
+export function WhatsNewMenuItem({ currentUser }: { currentUser: AuthUser }) {
+  return (
+    <Menu.Item
+      component={Link}
+      leftSection={<MegaphoneIcon aria-hidden="true" size={16} />}
+      rightSection={
+        showsNews(currentUser) ? (
+          <Badge color="orange" size="xs">
+            new
+          </Badge>
+        ) : null
+      }
+      to="/help/whats-new"
+    >
+      What&apos;s new
+    </Menu.Item>
+  );
+}
+
+export function ReplayTourMenuItem() {
+  return (
+    <Menu.Item leftSection={<SignpostIcon aria-hidden="true" size={16} />} onClick={replayTour}>
+      Replay tour
+    </Menu.Item>
   );
 }
 

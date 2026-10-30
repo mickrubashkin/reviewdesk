@@ -1,4 +1,4 @@
-import { Select, Stack, Text } from "@mantine/core";
+import { Group, Select, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -6,6 +6,7 @@ import { ApiError } from "../../../../shared/api";
 import { useBoardRegions } from "../../../boards/api";
 import { updateEmailRegion } from "../../../emails/api";
 import type { EmailDetail } from "../../../emails/types";
+import { HelpLink } from "../../../help/HelpLink";
 
 // RegionField shows which region of its board the email belongs to; a
 // manager of the email changes it. Boards without regions show nothing.
@@ -45,7 +46,12 @@ export function RegionField({ canEdit, email }: { canEdit: boolean; email: Email
           })),
         ]}
         disabled={!canEdit || mutation.isPending}
-        label="Region"
+        label={
+          <Group component="span" gap={4} wrap="nowrap">
+            Region
+            <HelpLink topic="regions" />
+          </Group>
+        }
         value={mutation.isPending ? mutation.variables : (email.region_key ?? "")}
         onChange={(value) => mutation.mutate(value ?? "")}
       />

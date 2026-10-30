@@ -31,12 +31,16 @@ import {
 import {
   AccountMenu,
   CreateActions,
+  HelpMenuItem,
   NewMenu,
+  ReplayTourMenuItem,
+  WhatsNewMenuItem,
   SettingsMenu,
   SettingsMenuItems,
   UserMenuLabel,
 } from "./BoardUserMenus";
 import { MyTasksButton } from "../../my-tasks/MyTasksButton";
+import { useBoardTour } from "../../tour/useBoardTour";
 import styles from "../../../App.module.css";
 
 type BoardHeaderProps = {
@@ -100,6 +104,7 @@ export function BoardHeader({
   onResetBoardFilters,
   onUserMenuOpenedChange,
 }: BoardHeaderProps) {
+  useBoardTour(currentUser, !boardsLoading && activeBoard != null);
   const boardOptions = boards.map((board) => ({
     label: board.name,
     value: board.key,
@@ -149,6 +154,7 @@ export function BoardHeader({
             <Select
               allowDeselect={false}
               className={styles.boardSelect}
+              data-tour="board"
               // Room for the longest name, so the current one is not cut.
               style={{ width: `calc(${Math.max(12, ...boardOptions.map((option) => option.label.length))}ch + 48px)` }}
               data={boardOptions}
@@ -253,6 +259,7 @@ function CompactHeaderMenu({
         <Menu.Target>
           <Burger
             aria-label="Open user menu"
+            data-tour="account"
             color="white"
             opened={userMenuOpened}
             size="sm"
@@ -316,6 +323,9 @@ function CompactHeaderMenu({
             <Menu.Divider />
             <UserMenuLabel currentUser={currentUser} />
             {!canManage ? <Menu.Item onClick={onExport}>Export…</Menu.Item> : null}
+            <HelpMenuItem />
+            <WhatsNewMenuItem currentUser={currentUser} />
+            {demoMode ? null : <ReplayTourMenuItem />}
             {canManage ? (
               <>
                 <Menu.Divider />
@@ -372,6 +382,7 @@ function BoardViewToggle({
   return (
     <SegmentedControl
       className={inMenu ? undefined : styles.boardViewToggle}
+      data-tour={inMenu ? undefined : "views"}
       data={boardViews}
       fullWidth={inMenu}
       size="xs"
@@ -389,6 +400,7 @@ function BoardViewMenu({ value, onChange }: { value: BoardView; onChange: (view:
         <Menu.Target>
           <Button
             aria-label="View"
+            data-tour="views"
             rightSection={<CaretDownIcon aria-hidden="true" size={14} />}
             size="sm"
             variant="white"

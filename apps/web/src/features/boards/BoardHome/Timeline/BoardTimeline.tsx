@@ -2,6 +2,7 @@ import { Badge, Button, CopyButton, Group, ScrollArea, SegmentedControl, Select,
 import { Fragment, useMemo, useState, type CSSProperties } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { HelpLink } from "../../../help/HelpLink";
 import type { BoardRegion, StageColumn } from "../../../emails/types";
 import { timelineByRegionStorageKey } from "../BoardHome.types";
 import {
@@ -11,7 +12,7 @@ import {
   writeStoredTimelineCollapsed,
 } from "../BoardHome.storage";
 import { matrixLanguages } from "../slotHelpers";
-import { TimelineEdge, TimelineGap, TimelineNode } from "./TimelineNode";
+import { TimelineEdge, TimelineGap, TimelineNode, TimelinePreview } from "./TimelineNode";
 import {
   buildTimeline,
   countMatches,
@@ -28,7 +29,12 @@ import styles from "./Timeline.module.css";
 
 type BoardTimelineProps = {
   boardKey: string;
+  boardName: string;
   columns: StageColumn[];
+  // Present mode leaves only the sequence itself: no statuses, comments or
+  // review tools, and an email opens as a large preview.
+  present: boolean;
+  onPresentChange: (present: boolean) => void;
   regions: BoardRegion[];
   selectedEmailId: string | null;
   onOpenEmail: (emailId: string) => void;
@@ -40,8 +46,17 @@ type BoardTimelineProps = {
 // board with regions a stage has a branch per region, lined up slot by slot
 // to compare them; otherwise one branch of the language chosen. It works on
 // the board's filtered columns, so the region, owner and state filters narrow
-// it like the other views.
-export function BoardTimeline({ boardKey, columns, regions, selectedEmailId, onOpenEmail }: BoardTimelineProps) {
+// it like the other views; present mode gets the whole board.
+export function BoardTimeline({
+  boardKey,
+  boardName,
+  columns,
+  present,
+  onPresentChange,
+  regions,
+  selectedEmailId,
+  onOpenEmail,
+}: BoardTimelineProps) {
   const languages = useMemo(() => matrixLanguages(columns), [columns]);
   const [picked, setPicked] = useState("en");
   const language = languages.includes(picked) ? picked : (languages[0] ?? "en");
@@ -63,7 +78,10 @@ export function BoardTimeline({ boardKey, columns, regions, selectedEmailId, onO
     if (!next.delete(stage)) next.add(stage);
     updateCollapsed(next);
   };
-  const [highlight, setHighlight] = useState<Highlight>("none");
+  const [pickedHighlight, setHighlight] = useState<Highlight>("none");
+  const highlight = present ? "none" : pickedHighlight;
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const preview = previewId ? findEmail(stages, previewId) : undefined;
   const matches = useMemo(() => countMatches(stages, highlight), [stages, highlight]);
 
   // A link with ?stage= (from the review page or "Copy link") brings that
@@ -85,35 +103,46 @@ export function BoardTimeline({ boardKey, columns, regions, selectedEmailId, onO
   return (
     <div className={styles.timeline} data-timeline-root>
       <Group justify="space-between" mb="sm">
-        <Text c="rgba(255, 255, 255, 0.72)" size="sm">
-          Stages along the trunk; each branch is what a recipient gets there, in send order{byRegion ? ", one branch per region" : ""}. Days count from a deal entering the stage.
-        </Text>
+        {present ? (
+          <Text c="white" fw={700} size="lg">
+            {boardName}
+          </Text>
+        ) : (
+          <Text c="rgba(255, 255, 255, 0.72)" size="sm">
+            Stages along the trunk; each branch is what a recipient gets there, in send order{byRegion ? ", one branch per region" : ""}. Days count from a deal entering the stage.
+          </Text>
+        )}
         <Group gap="xs">
-          {highlight !== "none" ? (
-            <Text c="rgba(255, 255, 255, 0.85)" size="xs">
-              {matches.matching} of {matches.total} emails
-            </Text>
-          ) : null}
-          <Select
-            allowDeselect={false}
-            aria-label="Highlight"
-            data={highlightOptions.map((option) => ({
-              value: option.value,
-              label: option.value === "none" ? "Highlight: nothing" : `Highlight: ${option.label.toLowerCase()}`,
-            }))}
-            size="xs"
-            value={highlight}
-            w={190}
-            onChange={(value) => setHighlight(isHighlight(value) ? value : "none")}
-          />
-          <Button
-            color="gray"
-            size="compact-xs"
-            variant="default"
-            onClick={() => updateCollapsed(allCollapsed ? new Set() : new Set(stages.map((stage) => stage.stage)))}
-          >
-            {allCollapsed ? "Expand all" : "Collapse all"}
-          </Button>
+          {present ? null : (
+            <>
+              <HelpLink onDark topic="timeline" />
+              {highlight !== "none" ? (
+                <Text c="rgba(255, 255, 255, 0.85)" size="xs">
+                  {matches.matching} of {matches.total} emails
+                </Text>
+              ) : null}
+              <Select
+                allowDeselect={false}
+                aria-label="Highlight"
+                data={highlightOptions.map((option) => ({
+                  value: option.value,
+                  label: option.value === "none" ? "Highlight: nothing" : `Highlight: ${option.label.toLowerCase()}`,
+                }))}
+                size="xs"
+                value={highlight}
+                w={190}
+                onChange={(value) => setHighlight(isHighlight(value) ? value : "none")}
+              />
+              <Button
+                color="gray"
+                size="compact-xs"
+                variant="default"
+                onClick={() => updateCollapsed(allCollapsed ? new Set() : new Set(stages.map((stage) => stage.stage)))}
+              >
+                {allCollapsed ? "Expand all" : "Collapse all"}
+              </Button>
+            </>
+          )}
           {hasRegions ? (
             <SegmentedControl
               aria-label="Branches"
@@ -138,6 +167,14 @@ export function BoardTimeline({ boardKey, columns, regions, selectedEmailId, onO
               onChange={setPicked}
             />
           ) : null}
+          <Button
+            color="gray"
+            size="compact-xs"
+            variant={present ? "white" : "default"}
+            onClick={() => onPresentChange(!present)}
+          >
+            {present ? "Exit present" : "Present"}
+          </Button>
         </Group>
       </Group>
       <div className={styles.graph}>
@@ -151,16 +188,28 @@ export function BoardTimeline({ boardKey, columns, regions, selectedEmailId, onO
             byRegion={byRegion}
             language={language}
             last={index === stages.length - 1}
+            present={present}
             regions={regions}
-            selectedEmailId={selectedEmailId}
+            selectedEmailId={present ? null : selectedEmailId}
             stage={stage}
-            onOpenEmail={onOpenEmail}
+            onOpenEmail={present ? setPreviewId : onOpenEmail}
             onToggle={() => toggle(stage.stage)}
           />
         ))}
       </div>
+      {preview ? <TimelinePreview email={preview} onClose={() => setPreviewId(null)} /> : null}
     </div>
   );
+}
+
+function findEmail(stages: TimelineStage[], emailId: string) {
+  for (const stage of stages) {
+    for (const branch of stage.branches) {
+      const cell = branch.cells.find((c) => c?.email.id === emailId);
+      if (cell) return cell.email;
+    }
+  }
+  return undefined;
 }
 
 type StageBranchProps = {
@@ -172,6 +221,7 @@ type StageBranchProps = {
   last: boolean;
   collapsed: boolean;
   highlight: Highlight;
+  present: boolean;
   regions: BoardRegion[];
   selectedEmailId: string | null;
   onOpenEmail: (emailId: string) => void;
@@ -187,6 +237,7 @@ function StageBranch({
   last,
   collapsed,
   highlight,
+  present,
   regions,
   selectedEmailId,
   onOpenEmail,
@@ -220,47 +271,53 @@ function StageBranch({
                 {byRegion ? ` in ${summary.branches} ${summary.branches === 1 ? "region" : "regions"}` : ""} · Day 0–
                 {formatDay(summary.lastDay)}
               </Text>
-              <Tooltip label={`${summary.live} of ${summary.emails} emails are sent by the robots now`}>
-                <Badge color={allLive ? "green" : summary.live > 0 ? "yellow" : "gray"} size="xs" variant="light">
-                  {summary.live}/{summary.emails} live
-                </Badge>
-              </Tooltip>
-              {summary.toUpload > 0 ? (
-                <Tooltip label="Ready emails the Bitrix24 robots do not have in this version yet">
-                  <Badge color="orange" size="xs" variant="light">
-                    {summary.toUpload} to upload
-                  </Badge>
-                </Tooltip>
-              ) : null}
-              {highlight !== "none" ? (
-                <Badge color={stageMatches > 0 ? "violet" : "gray"} size="xs" variant={stageMatches > 0 ? "filled" : "outline"}>
-                  {stageMatches} match
-                </Badge>
-              ) : null}
-              {summary.openComments > 0 ? (
-                <Badge color={summary.blockingComments > 0 ? "red" : "orange"} size="xs" variant="filled">
-                  {summary.openComments} open
-                </Badge>
-              ) : null}
+              {present ? null : (
+                <>
+                  <Tooltip label={`${summary.live} of ${summary.emails} emails are sent by the robots now`}>
+                    <Badge color={allLive ? "green" : summary.live > 0 ? "yellow" : "gray"} size="xs" variant="light">
+                      {summary.live}/{summary.emails} live
+                    </Badge>
+                  </Tooltip>
+                  {summary.toUpload > 0 ? (
+                    <Tooltip label="Ready emails the Bitrix24 robots do not have in this version yet">
+                      <Badge color="orange" size="xs" variant="light">
+                        {summary.toUpload} to upload
+                      </Badge>
+                    </Tooltip>
+                  ) : null}
+                  {highlight !== "none" ? (
+                    <Badge color={stageMatches > 0 ? "violet" : "gray"} size="xs" variant={stageMatches > 0 ? "filled" : "outline"}>
+                      {stageMatches} match
+                    </Badge>
+                  ) : null}
+                  {summary.openComments > 0 ? (
+                    <Badge color={summary.blockingComments > 0 ? "red" : "orange"} size="xs" variant="filled">
+                      {summary.openComments} open
+                    </Badge>
+                  ) : null}
+                </>
+              )}
             </Group>
           ) : (
             <Text c="dimmed" size="xs">
               {byRegion ? "No emails" : `No emails in ${language.toUpperCase()}`}
             </Text>
           )}
-          {!byRegion && stage.missing > 0 && hasBranch ? (
+          {!present && !byRegion && stage.missing > 0 && hasBranch ? (
             <Text c="dimmed" size="xs">
               {stage.missing} without {language.toUpperCase()}
             </Text>
           ) : null}
         </button>
-        <CopyButton value={stageLink(boardKey, stage.stage)} timeout={1500}>
-          {({ copied, copy }) => (
-            <Button className={styles.stageLink} color="gray" size="compact-xs" variant="subtle" onClick={copy}>
-              {copied ? "Link copied" : "Copy link"}
-            </Button>
-          )}
-        </CopyButton>
+        {present ? null : (
+          <CopyButton value={stageLink(boardKey, stage.stage)} timeout={1500}>
+            {({ copied, copy }) => (
+              <Button className={styles.stageLink} color="gray" size="compact-xs" variant="subtle" onClick={copy}>
+                {copied ? "Link copied" : "Copy link"}
+              </Button>
+            )}
+          </CopyButton>
+        )}
       </div>
 
       {hasBranch && !collapsed
@@ -270,6 +327,7 @@ function StageBranch({
               highlight={highlight}
               key={branch.key}
               labelled={byRegion}
+              present={present}
               regions={regions}
               selectedEmailId={selectedEmailId}
               onOpenEmail={onOpenEmail}
@@ -285,12 +343,13 @@ type BranchProps = {
   highlight: Highlight;
   // Name the branch above its first email (the branches of regions).
   labelled: boolean;
+  present: boolean;
   regions: BoardRegion[];
   selectedEmailId: string | null;
   onOpenEmail: (emailId: string) => void;
 };
 
-function Branch({ branch, highlight, labelled, regions, selectedEmailId, onOpenEmail }: BranchProps) {
+function Branch({ branch, highlight, labelled, present, regions, selectedEmailId, onOpenEmail }: BranchProps) {
   const firstIndex = branch.cells.findIndex((cell) => cell !== null);
   const style = {
     "--branch": `var(--mantine-color-${branch.color}-6)`,
@@ -305,12 +364,12 @@ function Branch({ branch, highlight, labelled, regions, selectedEmailId, onOpenE
           <Text fw={700} size="xs" style={{ color: "var(--branch)" }}>
             {branch.name.toLowerCase() === branch.language ? branch.name : `${branch.name} · ${branch.language.toUpperCase()}`}
           </Text>
-          {branch.reference ? (
+          {branch.reference && !present ? (
             <Badge color="blue" size="xs" variant="light">
               reference
             </Badge>
           ) : null}
-          {branch.managers.length > 0 ? (
+          {branch.managers.length > 0 && !present ? (
             <Text c="dimmed" size="xs">
               {branch.managers.join(", ")}
             </Text>
@@ -325,7 +384,7 @@ function Branch({ branch, highlight, labelled, regions, selectedEmailId, onOpenE
                 <TimelineEdge
                   dashed={cell === null || branch.cells[index - 1] === null}
                   delay={cell?.delay ?? null}
-                  referenceDelay={cell?.referenceDelay}
+                  referenceDelay={present ? undefined : cell?.referenceDelay}
                 />
               ) : null}
               <div className={styles.step}>
@@ -333,6 +392,7 @@ function Branch({ branch, highlight, labelled, regions, selectedEmailId, onOpenE
                   <TimelineNode
                     dimmed={!matchesHighlight(cell.email, highlight)}
                     first={index === firstIndex}
+                    present={present}
                     regions={regions}
                     selected={cell.versions.some((v) => v.id === selectedEmailId)}
                     showRegion={!labelled}

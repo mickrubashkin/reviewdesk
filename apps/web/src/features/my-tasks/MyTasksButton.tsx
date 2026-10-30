@@ -24,6 +24,7 @@ export function MyTasksButton({
         aria-label={count > 0 ? `My tasks: ${count}` : "My tasks"}
         className={fullWidth ? undefined : `${styles.myEmailsToggle} ${styles.collapsibleButton}`}
         component={Link}
+        data-tour="my-tasks"
         fullWidth={fullWidth}
         leftSection={<ListChecksIcon aria-hidden="true" size={16} />}
         rightSection={

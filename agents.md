@@ -11,6 +11,7 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - `apps/web/src/main.tsx` — frontend entrypoint.
 - `apps/web/src/App.tsx` — router. `/emails/{id}/edit` redirects to `/emails/{id}/review`.
 - `db/migrations/` — goose migrations applied sequentially.
+- `docs/help/en/` — user help in Markdown, built into the web app at `/help` (`apps/web/src/features/help/`). Links between pages are plain `page.md#anchor`.
 
 ## Commands
 - `make setup-dev` — DB up → migrations → seed (`db/seeds/emails` if present, else the demo board).
@@ -34,6 +35,7 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - `VITE_AUTH_*` variables mirror `AUTH_*` for the frontend (exposed by Vite).
 - Portal sync: manual from Settings → Portal sync (or `cmd/portalsync`), nightly at 03:00 UTC+2 when `PORTAL_AUTOSYNC_ENABLED=true` and the board turns it on. One running sync per board (unique index).
 - OpenAI: `OPENAI_API_KEY` enables AI review; `AI_DEBUG_ENABLED=true` enables debug endpoint.
+- Demo visit messages: with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set, the demo server posts each entry and, once a visitor has been quiet for 30 minutes, a report of the visit (`internal/demo/notify.go`). `demo_visits.reported_at` marks the reported ones.
 
 ## Product rules
 - Backend is the source of truth — write to DB, then serve via API.
@@ -58,7 +60,15 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - Never commit to `main` directly. One branch per change: `feat/…`, `fix/…`, `perf/…`, `chore/…`.
 - Conventional commit subjects (`feat: …`, `fix: …`, `perf: …`, `chore: …`), lowercase, imperative.
 - Branches are merged into `main` with a merge commit (`Merge branch '…'`), no squash.
-- The repo is public: never commit secrets, `.env`, production data, or `personal-notes/` (gitignored).
+- Assume anything committed can become public, because a public copy of this code is synced from it. Never commit secrets, `.env`, production data, or `personal-notes/` (gitignored), and keep company names, real people, domains and data out of code, docs, fixtures and screenshots. The sync checks text only: screenshots must come from the demo data, never from a real board.
+- Ending a session: `/handoff` (`.claude/skills/handoff`) brings open work to PRs, deletes merged branches (`scripts/handoff.sh`), leaves git clean and updates the plan. `/handoff merge` also merges once checks pass.
+
+## User help
+When a change alters what a user sees or does, update the help in the same PR:
+- `docs/help/en/` — the pages that describe it. Renaming a heading breaks the anchors in `helpTopics` (`features/help/help.ts`); the help test catches it.
+- The tour (`features/tour/tour.ts`) if a step it shows changed; bump `TOUR_VERSION` only when everyone should see the tour again.
+- An entry in `docs/help/en/whats-new.md` under `## YYYY-MM-DD` (ISO date, newest first). Every new entry brings the dot back on everyone's account menu, so add only what users will notice.
+- Help is published with the public copy: write it neutrally, check it against `scripts/public/denylist.txt`, and take screenshots from the demo board only.
 
 ## Verifying changes
 - Backend: `cd apps/api && go test ./...`. Frontend: `cd apps/web && npm run lint && npm test && npm run build`.

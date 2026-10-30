@@ -48,6 +48,8 @@ func RegisterAuthRoutes(r chi.Router, dbpool *pgxpool.Pool, emailSender EmailSen
 	r.Get("/api/auth/me", meHandler(dbpool))
 	r.Post("/api/auth/logout", logoutHandler(dbpool))
 	r.Get("/api/users/names", listUserNamesHandler(dbpool))
+	r.Post("/api/users/me/tour", updateUserTourHandler(dbpool))
+	r.Post("/api/users/me/whats-new", updateUserWhatsNewHandler(dbpool))
 	r.Get("/api/admin/users", listAdminUsersHandler(dbpool))
 	r.Post("/api/admin/users", createAdminUserHandler(dbpool))
 	r.Patch("/api/admin/users/{id}/role", updateAdminUserRoleHandler(dbpool))
@@ -374,6 +376,7 @@ func demoLoginHandler(dbpool *pgxpool.Pool, limiter *httprate.RateLimiter) http.
 			http.Error(w, "failed to sign in", http.StatusInternalServerError)
 			return
 		}
+		demo.AnnounceVisit(demo.VisitEntry{Referrer: payload.Referrer, UTMSource: payload.UTMSource, UserAgent: r.UserAgent()})
 		user := AuthUser{ID: visitor.ID, Email: visitor.Email, Role: visitor.Role}
 		logAuthEvent(r.Context(), dbpool, r, AuthEvent{
 			UserID:    &user.ID,
@@ -403,8 +406,8 @@ func meHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 		response := meResponse{AuthUser: user}
 		if err := dbpool.QueryRow(r.Context(), `
-			SELECT languages, managed_boards FROM users WHERE id = $1;
-		`, user.ID).Scan(&response.Languages, &response.ManagedBoards); err != nil {
+			SELECT languages, managed_boards, tour_version, whats_new_seen FROM users WHERE id = $1;
+		`, user.ID).Scan(&response.Languages, &response.ManagedBoards, &response.TourVersion, &response.WhatsNewSeen); err != nil {
 			http.Error(w, "failed to load user", http.StatusInternalServerError)
 			return
 		}

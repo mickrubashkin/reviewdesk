@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/telegram"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/demo"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/features/ai"
 	featureauth "github.com/mickrubashkin/reviewdesk/apps/api/internal/features/auth"
@@ -81,6 +83,11 @@ func main() {
 	// Each demo visitor's sandbox is removed a day after the visit.
 	if demoEnabled {
 		go demo.RunSandboxCleanup(ctx, dbpool)
+		// Each entry and each visit that went quiet go to the owner's chat.
+		if bot, ok := telegram.FromEnv(); ok {
+			demo.Notifier = bot
+			go demo.RunVisitReports(ctx, dbpool, demoReportLocation())
+		}
 	}
 
 	port := os.Getenv("PORT")
@@ -142,4 +149,19 @@ func (c commentEventLogger) LogEvent(ctx context.Context, db comments.EmailEvent
 		EmailTitle:  &emailTitle,
 		Metadata:    metadata,
 	})
+}
+
+// demoReportLocation is the time zone of the demo visit reports:
+// DEMO_REPORT_TZ, else Europe/Madrid.
+func demoReportLocation() *time.Location {
+	zone := strings.TrimSpace(os.Getenv("DEMO_REPORT_TZ"))
+	if zone == "" {
+		zone = "Europe/Madrid"
+	}
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "DEMO_REPORT_TZ %q: %v; using UTC\n", zone, err)
+		return time.UTC
+	}
+	return loc
 }

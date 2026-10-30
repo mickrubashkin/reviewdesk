@@ -278,3 +278,11 @@
 .cardDimmed:focus-visible {
   opacity: 1;
 }
+
+/* The large preview of present mode. */
+.previewFrame {
+  display: block;
+  width: 100%;
+  height: 75dvh;
+  border: 0;
+}
