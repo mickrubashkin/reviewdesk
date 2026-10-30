@@ -51,6 +51,41 @@ func TestVisitReport(t *testing.T) {
 	}
 }
 
+func TestVisitAnnouncement(t *testing.T) {
+	madrid, err := time.LoadLocation("Europe/Madrid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered := time.Date(2026, 10, 30, 9, 20, 0, 0, time.UTC)
+	first := time.Date(2026, 10, 28, 23, 30, 0, 0, time.UTC)
+
+	for _, test := range []struct {
+		visit Visit
+		want  string
+	}{
+		{Visit{CreatedAt: entered, Number: 1, FirstAt: entered}, "Demo: new visitor · direct · desktop"},
+		{
+			Visit{CreatedAt: entered, Source: "linkedin", TimeZone: "Europe/Warsaw", Language: "pl-PL", Number: 1, FirstAt: entered},
+			"Demo: new visitor · linkedin · desktop · Europe/Warsaw, pl-PL",
+		},
+		{
+			Visit{CreatedAt: entered, Mobile: true, Language: "de", Number: 3, FirstAt: first},
+			"Demo: returning visitor (visit 3, first Oct 29) · direct · mobile · de",
+		},
+		{Visit{CreatedAt: entered, Owner: true, Number: 7, FirstAt: first}, "Demo: you · direct · desktop"},
+	} {
+		if got := VisitAnnouncement(test.visit, madrid); got != test.want {
+			t.Errorf("got %q, want %q", got, test.want)
+		}
+	}
+
+	returning := Visit{CreatedAt: entered, Owner: true, TimeZone: "Europe/Madrid", Number: 2, FirstAt: first, Actions: map[string]int{}}
+	want := "Demo visit (you) · direct · desktop · Europe/Madrid · visit 2, first Oct 29"
+	if got := VisitReport(returning, madrid); !strings.HasPrefix(got, want+"\n") {
+		t.Fatalf("got %q, want it to start with %q", got, want)
+	}
+}
+
 func TestReportQuietVisits(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -76,7 +111,7 @@ func TestReportQuietVisits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := RecordVisit(ctx, tx, visitor, VisitEntry{UTMSource: "report-test"}); err != nil {
+	if _, err := RecordVisit(ctx, tx, visitor, VisitEntry{UTMSource: "report-test", VisitorID: "report-test-browser", TimeZone: "Europe/Warsaw"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -117,7 +152,7 @@ func TestReportQuietVisits(t *testing.T) {
 		}
 	}
 	got := ours()
-	if len(got) != 1 || !strings.Contains(got[0], "Edited 1") {
+	if len(got) != 1 || !strings.Contains(got[0], "Edited 1") || !strings.Contains(got[0], "Europe/Warsaw") {
 		t.Fatalf("unexpected reports %v", got)
 	}
 }

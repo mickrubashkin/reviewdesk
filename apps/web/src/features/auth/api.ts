@@ -44,14 +44,56 @@ export function demoLogin(): Promise<{ ok: boolean }> {
   });
 }
 
-// Where the visitor came from, for the demo visit stats.
+const demoVisitorIdKey = "reviewdesk_demo_visitor_id";
+const demoOwnerKeyKey = "reviewdesk_demo_owner_key";
+
+// Where the visitor came from and what their browser tells, for the demo
+// visit stats: a random id kept across visits, the time zone and language
+// (a rough place, no IP), and the owner's key, which `?owner=<key>` keeps
+// in this browser once.
 function demoVisitEntry() {
   const referrer = document.referrer;
   const external = referrer !== "" && !referrer.startsWith(window.location.origin);
+  const params = new URLSearchParams(window.location.search);
+  const ownerParam = params.get("owner");
+  if (ownerParam) {
+    writeStored(demoOwnerKeyKey, ownerParam);
+    // Kept out of links copied from the address bar.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("owner");
+    window.history.replaceState(window.history.state, "", url);
+  }
+  let visitorId = readStored(demoVisitorIdKey);
+  if (!visitorId && typeof crypto.randomUUID === "function") {
+    visitorId = crypto.randomUUID();
+    writeStored(demoVisitorIdKey, visitorId);
+  }
   return {
     referrer: external ? referrer : "",
-    utm_source: new URLSearchParams(window.location.search).get("utm_source") ?? "",
+    utm_source: params.get("utm_source") ?? "",
+    visitor_id: visitorId,
+    owner_key: ownerParam ?? readStored(demoOwnerKeyKey),
+    time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "",
+    language: navigator.language ?? "",
   };
+}
+
+// Storage can be blocked (private windows, site data off); the stats then
+// go without it.
+function readStored(key: string) {
+  try {
+    return window.localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStored(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Not kept; the next visit counts as a new one.
+  }
 }
 
 export function fetchCurrentUser(): Promise<AuthUser> {

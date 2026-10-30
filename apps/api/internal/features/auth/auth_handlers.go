@@ -350,6 +350,10 @@ func demoLoginHandler(dbpool *pgxpool.Pool, limiter *httprate.RateLimiter) http.
 		var payload struct {
 			Referrer  string `json:"referrer"`
 			UTMSource string `json:"utm_source"`
+			VisitorID string `json:"visitor_id"`
+			OwnerKey  string `json:"owner_key"`
+			TimeZone  string `json:"time_zone"`
+			Language  string `json:"language"`
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload)
 
@@ -360,11 +364,16 @@ func demoLoginHandler(dbpool *pgxpool.Pool, limiter *httprate.RateLimiter) http.
 		}
 		defer tx.Rollback(r.Context())
 		visitor, err := demo.CreateSandbox(r.Context(), tx)
+		var visit demo.Visit
 		if err == nil {
-			err = demo.RecordVisit(r.Context(), tx, visitor, demo.VisitEntry{
+			visit, err = demo.RecordVisit(r.Context(), tx, visitor, demo.VisitEntry{
 				Referrer:  payload.Referrer,
 				UTMSource: payload.UTMSource,
 				UserAgent: r.UserAgent(),
+				VisitorID: payload.VisitorID,
+				OwnerKey:  payload.OwnerKey,
+				TimeZone:  payload.TimeZone,
+				Language:  payload.Language,
 			})
 		}
 		if err != nil {
@@ -376,7 +385,7 @@ func demoLoginHandler(dbpool *pgxpool.Pool, limiter *httprate.RateLimiter) http.
 			http.Error(w, "failed to sign in", http.StatusInternalServerError)
 			return
 		}
-		demo.AnnounceVisit(demo.VisitEntry{Referrer: payload.Referrer, UTMSource: payload.UTMSource, UserAgent: r.UserAgent()})
+		demo.AnnounceVisit(visit)
 		user := AuthUser{ID: visitor.ID, Email: visitor.Email, Role: visitor.Role}
 		logAuthEvent(r.Context(), dbpool, r, AuthEvent{
 			UserID:    &user.ID,

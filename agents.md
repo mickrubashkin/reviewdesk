@@ -35,7 +35,7 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - `VITE_AUTH_*` variables mirror `AUTH_*` for the frontend (exposed by Vite).
 - Portal sync: manual from Settings → Portal sync (or `cmd/portalsync`), nightly at 03:00 UTC+2 when `PORTAL_AUTOSYNC_ENABLED=true` and the board turns it on. One running sync per board (unique index).
 - OpenAI: `OPENAI_API_KEY` enables AI review; `AI_DEBUG_ENABLED=true` enables debug endpoint.
-- Demo visit messages: with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set, the demo server posts each entry and, once a visitor has been quiet for 30 minutes, a report of the visit (`internal/demo/notify.go`). `demo_visits.reported_at` marks the reported ones.
+- Demo visit messages: with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set, the demo server posts each entry and, once a visitor has been quiet for 30 minutes, a report of the visit (`internal/demo/notify.go`). `demo_visits.reported_at` marks the reported ones. The browser sends a random `visitor_id` kept in `localStorage` (returning visitors), its time zone and language (rough place; no IP is stored), and the owner's key: `?owner=<DEMO_OWNER_KEY>` once marks that browser's visits as the owner's.
 
 ## Product rules
 - Backend is the source of truth — write to DB, then serve via API.

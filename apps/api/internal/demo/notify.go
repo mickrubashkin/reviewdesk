@@ -23,6 +23,9 @@ type Sender interface {
 // Notifier gets the demo's messages; nil sends none.
 var Notifier Sender
 
+// ReportLocation is the time zone of the times in the messages.
+var ReportLocation = time.UTC
+
 const (
 	visitQuietAfter    = 30 * time.Minute
 	visitReportsEvery  = 5 * time.Minute
@@ -32,11 +35,11 @@ const (
 
 // AnnounceVisit tells the owner a visitor has just entered. It does not wait
 // for the chat.
-func AnnounceVisit(entry VisitEntry) {
+func AnnounceVisit(visit Visit) {
 	if Notifier == nil {
 		return
 	}
-	text := "Demo: new visitor · " + sourceLabel(visitSource(entry)) + " · " + deviceLabel(isMobile(entry.UserAgent))
+	text := VisitAnnouncement(visit, ReportLocation)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 		defer cancel()
@@ -47,12 +50,12 @@ func AnnounceVisit(entry VisitEntry) {
 }
 
 // RunVisitReports reports, every few minutes until ctx ends, the visits
-// that went quiet, with times in loc.
-func RunVisitReports(ctx context.Context, db *pgxpool.Pool, loc *time.Location) {
+// that went quiet.
+func RunVisitReports(ctx context.Context, db *pgxpool.Pool) {
 	ticker := time.NewTicker(visitReportsEvery)
 	defer ticker.Stop()
 	for {
-		if err := ReportQuietVisits(ctx, db, time.Now(), loc); err != nil {
+		if err := ReportQuietVisits(ctx, db, time.Now(), ReportLocation); err != nil {
 			fmt.Fprintf(os.Stderr, "demo visit reports: %v\n", err)
 		}
 		select {
@@ -73,11 +76,13 @@ func ReportQuietVisits(ctx context.Context, db *pgxpool.Pool, now time.Time, loc
 	// The visitor's last sign of life: their last request (kept every ten
 	// minutes) or their last change, whichever is later.
 	rows, err := db.Query(ctx, `
-		SELECT visitor_email, created_at, last_at, source, mobile, actions FROM (
-			SELECT v.visitor_email, v.created_at, v.source, v.mobile,
+		SELECT visitor_email, created_at, last_at, source, mobile, owner, time_zone, language,
+			number, first_at, actions FROM (
+			SELECT v.visitor_email, v.created_at, v.source, v.mobile, v.owner, v.time_zone, v.language,
 				GREATEST(v.created_at, v.last_seen_at, u.last_seen_at,
 					(SELECT max(created_at) FROM email_events WHERE actor_email = v.visitor_email)) AS last_at,
-				COALESCE(v.actions, `+visitActionsSQL+`) AS actions
+				COALESCE(v.actions, `+visitActionsSQL+`) AS actions,
+				`+visitHistorySQL+`
 			FROM demo_visits v
 			LEFT JOIN users u ON u.email = v.visitor_email
 			WHERE v.reported_at IS NULL
@@ -97,7 +102,9 @@ func ReportQuietVisits(ctx context.Context, db *pgxpool.Pool, now time.Time, loc
 		var quiet quietVisit
 		var lastAt time.Time
 		var actions []byte
-		if err := row.Scan(&quiet.email, &quiet.visit.CreatedAt, &lastAt, &quiet.visit.Source, &quiet.visit.Mobile, &actions); err != nil {
+		visit := &quiet.visit
+		if err := row.Scan(&quiet.email, &visit.CreatedAt, &lastAt, &visit.Source, &visit.Mobile, &visit.Owner,
+			&visit.TimeZone, &visit.Language, &visit.Number, &visit.FirstAt, &actions); err != nil {
 			return quietVisit{}, err
 		}
 		quiet.visit.LastSeenAt = &lastAt
@@ -129,11 +136,51 @@ func VisitReport(visit Visit, loc *time.Location) string {
 			stayed = fmt.Sprintf("about %d min", minutes)
 		}
 	}
+	title := "Demo visit"
+	if visit.Owner {
+		title += " (you)"
+	}
+	tags := visitTags(visit)
+	if visit.Returning() {
+		tags = append(tags, returnLabel(visit, loc))
+	}
 	return strings.Join([]string{
-		"Demo visit · " + sourceLabel(visit.Source) + " · " + deviceLabel(visit.Mobile),
+		title + " · " + strings.Join(tags, " · "),
 		visit.CreatedAt.In(loc).Format("Mon 15:04") + ", " + stayed,
 		describeActions(visit.Actions),
 	}, "\n")
+}
+
+// VisitAnnouncement is the line about a visitor who has just entered.
+func VisitAnnouncement(visit Visit, loc *time.Location) string {
+	title := "Demo: new visitor"
+	switch {
+	case visit.Owner:
+		title = "Demo: you"
+	case visit.Returning():
+		title = "Demo: returning visitor (" + returnLabel(visit, loc) + ")"
+	}
+	return title + " · " + strings.Join(visitTags(visit), " · ")
+}
+
+// visitTags name where the visitor came from, the device and, from the
+// browser, a rough place.
+func visitTags(visit Visit) []string {
+	tags := []string{sourceLabel(visit.Source), deviceLabel(visit.Mobile)}
+	place := []string{}
+	for _, value := range []string{visit.TimeZone, visit.Language} {
+		if value != "" {
+			place = append(place, value)
+		}
+	}
+	if len(place) > 0 {
+		tags = append(tags, strings.Join(place, ", "))
+	}
+	return tags
+}
+
+func returnLabel(visit Visit, loc *time.Location) string {
+	return fmt.Sprintf("visit %d, first %s", visit.Number, visit.FirstAt.In(loc).Format("Jan 2"))
 }
 
 // actionLabels names what the visitor did, in the order the demo guide goes.
