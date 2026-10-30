@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -68,7 +69,14 @@ type VisitEntry struct {
 	OwnerKey string
 	TimeZone string
 	Language string
+	// Address is the IP address the entry came from. It is kept only when
+	// the entry is the owner's.
+	Address string
 }
+
+// ownerAddressFor is how long entries from an address the owner used count
+// as the owner's.
+const ownerAddressFor = 30 * 24 * time.Hour
 
 // RecordVisit adds the visit of a new sandbox visitor and returns it, with
 // which visit of the browser it is.
@@ -79,6 +87,9 @@ func RecordVisit(ctx context.Context, tx pgx.Tx, visitor Visitor, entry VisitEnt
 		Owner:    isOwner(entry.OwnerKey),
 		TimeZone: browserValue(entry.TimeZone, timeZonePattern),
 		Language: browserValue(entry.Language, languagePattern),
+	}
+	if err := checkOwnerAddress(ctx, tx, &visit, entry.Address); err != nil {
+		return Visit{}, fmt.Errorf("record demo visit: %w", err)
 	}
 	err := tx.QueryRow(ctx, `
 		INSERT INTO demo_visits (visitor_email, source, mobile, visitor_id, owner, time_zone, language)
@@ -94,6 +105,28 @@ func RecordVisit(ctx context.Context, tx pgx.Tx, visitor Visitor, entry VisitEnt
 		return Visit{}, fmt.Errorf("record demo visit: %w", err)
 	}
 	return visit, nil
+}
+
+// checkOwnerAddress keeps the address of the owner's entry, and marks as the
+// owner's an entry from an address they used lately: a browser may load the
+// demo in a second context without the key, such as a private tab. A hidden
+// address (as with iCloud Private Relay, 0.0.0.0) is neither kept nor
+// matched.
+func checkOwnerAddress(ctx context.Context, tx pgx.Tx, visit *Visit, address string) error {
+	ip := net.ParseIP(strings.TrimSpace(address))
+	if ip == nil || ip.IsUnspecified() || strings.TrimSpace(os.Getenv("DEMO_OWNER_KEY")) == "" {
+		return nil
+	}
+	if visit.Owner {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO demo_owner_addresses (address) VALUES ($1)
+			ON CONFLICT (address) DO UPDATE SET seen_at = now();
+		`, ip.String())
+		return err
+	}
+	return tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM demo_owner_addresses WHERE address = $1 AND seen_at > $2);
+	`, ip.String(), time.Now().Add(-ownerAddressFor)).Scan(&visit.Owner)
 }
 
 // isOwner reports whether key is the owner's DEMO_OWNER_KEY.
