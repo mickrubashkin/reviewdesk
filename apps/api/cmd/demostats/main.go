@@ -1,5 +1,6 @@
 // Command demostats prints who visited the public demo and how far they went:
-// visits per day and per source, and with -visits each visit.
+// visits per day and per source, and with -visits each visit. The owner's own
+// visits (DEMO_OWNER_KEY) are left out.
 package main
 
 import (
@@ -73,10 +74,10 @@ func run(days int, zone string, listVisits bool) error {
 
 func printCounts(out io.Writer, label string, rows []demo.VisitCounts) {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintf(w, "%s\tVisitors\tLinkedIn\tMobile\tActive\tEdited\tCommented\tResolved\tReady\tAI\t\n", label)
+	fmt.Fprintf(w, "%s\tVisitors\tReturning\tLinkedIn\tMobile\tActive\tEdited\tCommented\tResolved\tReady\tAI\t\n", label)
 	for _, row := range rows {
-		fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\n",
-			row.Label, row.Visitors, row.LinkedIn, row.Mobile, row.Active,
+		fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\n",
+			row.Label, row.Visitors, row.Returning, row.LinkedIn, row.Mobile, row.Active,
 			row.Edited, row.Commented, row.Resolved, row.MarkedReady, row.UsedAI)
 	}
 	_ = w.Flush()
@@ -84,7 +85,7 @@ func printCounts(out io.Writer, label string, rows []demo.VisitCounts) {
 
 func printVisits(out io.Writer, visits []demo.Visit, loc *time.Location) {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "Entered\tStayed\tSource\tDevice\tActions")
+	fmt.Fprintln(w, "Entered\tStayed\tVisit\tSource\tDevice\tPlace\tActions")
 	for i := len(visits) - 1; i >= 0; i-- {
 		visit := visits[i]
 		stayed := "-"
@@ -98,8 +99,12 @@ func printVisits(out io.Writer, visits []demo.Visit, loc *time.Location) {
 		if visit.Mobile {
 			device = "mobile"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			visit.CreatedAt.In(loc).Format("2006-01-02 15:04"), stayed, source, device, formatActions(visit.Actions))
+		place := strings.Trim(visit.TimeZone+" "+visit.Language, " ")
+		if place == "" {
+			place = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
+			visit.CreatedAt.In(loc).Format("2006-01-02 15:04"), stayed, visit.Number, source, device, place, formatActions(visit.Actions))
 	}
 	_ = w.Flush()
 }

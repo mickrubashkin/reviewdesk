@@ -86,7 +86,8 @@ func main() {
 		// Each entry and each visit that went quiet go to the owner's chat.
 		if bot, ok := telegram.FromEnv(); ok {
 			demo.Notifier = bot
-			go demo.RunVisitReports(ctx, dbpool, demoReportLocation())
+			demo.ReportLocation = demoReportLocation()
+			go demo.RunVisitReports(ctx, dbpool)
 		}
 	}
 
