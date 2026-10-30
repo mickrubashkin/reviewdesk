@@ -47,22 +47,31 @@ export function demoLogin(): Promise<{ ok: boolean }> {
 const demoVisitorIdKey = "reviewdesk_demo_visitor_id";
 const demoOwnerKeyKey = "reviewdesk_demo_owner_key";
 
+// The owner's key from `?owner=<key>`, kept in this browser for its later
+// demo entries. It is taken on every page load, not only on an entry: a
+// browser that already has a demo session does not enter again.
+let demoOwnerKey = "";
+
+function keepDemoOwnerKey() {
+  const ownerParam = new URLSearchParams(window.location.search).get("owner");
+  if (!ownerParam) {
+    return;
+  }
+  demoOwnerKey = ownerParam;
+  writeStored(demoOwnerKeyKey, ownerParam);
+  // Kept out of links copied from the address bar.
+  const url = new URL(window.location.href);
+  url.searchParams.delete("owner");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 // Where the visitor came from and what their browser tells, for the demo
 // visit stats: a random id kept across visits, the time zone and language
-// (a rough place, no IP), and the owner's key, which `?owner=<key>` keeps
-// in this browser once.
+// (a rough place, no IP), and the owner's key.
 function demoVisitEntry() {
   const referrer = document.referrer;
   const external = referrer !== "" && !referrer.startsWith(window.location.origin);
   const params = new URLSearchParams(window.location.search);
-  const ownerParam = params.get("owner");
-  if (ownerParam) {
-    writeStored(demoOwnerKeyKey, ownerParam);
-    // Kept out of links copied from the address bar.
-    const url = new URL(window.location.href);
-    url.searchParams.delete("owner");
-    window.history.replaceState(window.history.state, "", url);
-  }
   let visitorId = readStored(demoVisitorIdKey);
   if (!visitorId && typeof crypto.randomUUID === "function") {
     visitorId = crypto.randomUUID();
@@ -72,7 +81,7 @@ function demoVisitEntry() {
     referrer: external ? referrer : "",
     utm_source: params.get("utm_source") ?? "",
     visitor_id: visitorId,
-    owner_key: ownerParam ?? readStored(demoOwnerKeyKey),
+    owner_key: demoOwnerKey || readStored(demoOwnerKeyKey),
     time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "",
     language: navigator.language ?? "",
   };
@@ -107,6 +116,9 @@ export const demoMode = import.meta.env.VITE_AUTH_DEMO_LOGIN_ENABLED === "true";
 // fetchCurrentUserOrEnterDemo is fetchCurrentUser that, in the demo, enters
 // the demo when there is no session yet.
 export async function fetchCurrentUserOrEnterDemo(): Promise<AuthUser> {
+  if (demoMode) {
+    keepDemoOwnerKey();
+  }
   try {
     return await fetchCurrentUser();
   } catch (error) {
