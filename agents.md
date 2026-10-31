@@ -51,6 +51,15 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - Dependencies: prefer a good, well-maintained existing library over a hand-written solution. Priority is maximum functionality with minimum pain, not a minimal dependency list. Still prefer what the stack already uses (Mantine, TanStack, Chi, pgx) when it covers the need.
 - Approval gates: an email cannot be approved while there are open blocking comments or pending required area approvals.
 
+## Domain model
+- Terms are defined in `GLOSSARY.md`; use them in code, docs and issues. Decisions are in `docs/adr/`.
+- Every email that is not a source has exactly one: a translation follows its EN master, an adaptation follows the reference email or an experiment's email (ADR 0001).
+- Draft/Ready is the review status set by people; Live is observed from the CRM and is not a status step (the old approval gates still exist in code).
+- In code a region's adaptation is `based_on`; `adaptation_key` and `variant = 'old'` are legacy (manager copies, old texts) and get no new uses.
+- `old` variants may still be live. Decide per email from portal sync data, don't assume they are dead.
+- Sending is manual: HTML is pasted into a Bitrix24 CRM robot. Bitrix24 access is read-only (inbound webhook).
+- `apps/api/cmd/slotplan` is the migration dry-run; re-run it on real data before any real migration.
+
 ## Board views
 - Views: `cards`, `matrix`, `timeline`, `archive`; `timeline` is the default. The view is in the URL (`?view=…`) and wins over the last one kept in `sessionStorage`. `?stage=<stage>` is a one-shot reveal: BoardHome scrolls to `[data-stage]` and drops the param; the timeline also unfolds that stage. Each timeline stage has a "Copy link" for it.
 - Timeline (`features/boards/BoardHome/Timeline/`): the stages are the nodes of a trunk (a deal's way through the pipeline) and each stage's emails a branch off it. Days count per stage from a deal entering it (`timingDays`, as in the first-send estimate); stages carry no timing between them, so the trunk has no time scale. On a board with regions a stage has one branch per region (reference first), lined up slot by slot with gaps, and waits that differ from the reference are marked; otherwise there is one branch per language.
