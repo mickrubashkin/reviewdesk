@@ -86,6 +86,7 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root, created as terms
 - Branches are merged into `main` with a merge commit (`Merge branch '…'`), no squash.
 - Assume anything committed can become public, because a public copy of this code is synced from it. Never commit secrets, `.env`, production data, or `personal-notes/` (gitignored), and keep company names, real people, domains and data out of code, docs, fixtures and screenshots. The sync checks text only: screenshots must come from the demo data, never from a real board.
 - Ending a session: `/wrap-up` (`.claude/skills/wrap-up`) brings open work to PRs, deletes merged branches (`scripts/wrap-up.sh`), leaves git clean and updates the plan. `/wrap-up merge` also merges once checks pass.
+- `/handoff` (an installed skill) is not the end of a session: it writes a one-off document for work that moves mid-task to another directory, tool or person. After `/wrap-up`, clear the context; the next session starts from «Передача» in `personal-notes/plan.md`.
 
 ## User help
 When a change alters what a user sees or does, update the help in the same PR:
