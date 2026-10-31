@@ -57,12 +57,26 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - Timeline previews are sandboxed iframes (`sandbox=""`, no scripts), kept only within 600px of the timeline's own scroll box; the HTML comes from the React Query cache (`["emails", id, "review"]`).
 - The logic is pure (`timeline.ts`) and tested (`timeline.test.ts`, Vitest); `BoardTimeline.tsx` and `TimelineNode.tsx` only draw it.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues, used through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root, created as terms and decisions are settled. See `docs/agents/domain.md`.
+
 ## Git workflow
 - Never commit to `main` directly. One branch per change: `feat/…`, `fix/…`, `perf/…`, `chore/…`.
 - Conventional commit subjects (`feat: …`, `fix: …`, `perf: …`, `chore: …`), lowercase, imperative.
 - Branches are merged into `main` with a merge commit (`Merge branch '…'`), no squash.
 - Assume anything committed can become public, because a public copy of this code is synced from it. Never commit secrets, `.env`, production data, or `personal-notes/` (gitignored), and keep company names, real people, domains and data out of code, docs, fixtures and screenshots. The sync checks text only: screenshots must come from the demo data, never from a real board.
-- Ending a session: `/handoff` (`.claude/skills/handoff`) brings open work to PRs, deletes merged branches (`scripts/handoff.sh`), leaves git clean and updates the plan. `/handoff merge` also merges once checks pass.
+- Ending a session: `/wrap-up` (`.claude/skills/wrap-up`) brings open work to PRs, deletes merged branches (`scripts/wrap-up.sh`), leaves git clean and updates the plan. `/wrap-up merge` also merges once checks pass.
 
 ## User help
 When a change alters what a user sees or does, update the help in the same PR:
