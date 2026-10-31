@@ -126,8 +126,27 @@ export async function fetchCurrentUserOrEnterDemo(): Promise<AuthUser> {
       throw error;
     }
   }
+  await whenVisible();
   await demoLogin();
   return fetchCurrentUser();
+}
+
+// whenVisible resolves once the page is shown. A browser may load a page
+// nobody sees (a preload from the address bar, a restored background tab);
+// it enters the demo, and counts as a visit, only when shown.
+function whenVisible(): Promise<void> {
+  if (document.visibilityState !== "hidden") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const onChange = () => {
+      if (document.visibilityState !== "hidden") {
+        document.removeEventListener("visibilitychange", onChange);
+        resolve();
+      }
+    };
+    document.addEventListener("visibilitychange", onChange);
+  });
 }
 
 // finishTour records that the tour of this version was finished or skipped.

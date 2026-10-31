@@ -122,8 +122,11 @@ func listAuthEvents(ctx context.Context, dbpool *pgxpool.Pool, filters AuthEvent
 	return events, nil
 }
 
+// RequestIPAddress is the address the request came from. Behind Cloudflare
+// (the demo's domain) X-Forwarded-For starts with Cloudflare's own server, so
+// CF-Connecting-IP, the visitor's address, comes first.
 func RequestIPAddress(r *http.Request) string {
-	for _, headerName := range []string{"X-Forwarded-For", "X-Real-IP"} {
+	for _, headerName := range []string{"CF-Connecting-IP", "X-Forwarded-For", "X-Real-IP"} {
 		value := strings.TrimSpace(r.Header.Get(headerName))
 		if value == "" {
 			continue
