@@ -31,8 +31,8 @@ const maxServerExport = 500;
 const formats: { value: ExportFormat; label: string; hint: string; adminOnly: boolean }[] = [
   {
     value: "table",
-    label: "Chain table",
-    hint: "One row per email in sequence order: slot, timing, language, status, subject, owner, link.",
+    label: "Board table",
+    hint: "One row per email in board order: slot, timing, language, status, subject, owner, link.",
     adminOnly: false,
   },
   {

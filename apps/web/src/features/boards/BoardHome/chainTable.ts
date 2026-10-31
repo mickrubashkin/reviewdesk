@@ -27,7 +27,7 @@ const headers = [
   "Uploaded version",
   "Portal sends",
   "Last sent",
-  "Translation outdated",
+  "Translation behind",
   "Subject",
   "Preheader",
   "Owner",

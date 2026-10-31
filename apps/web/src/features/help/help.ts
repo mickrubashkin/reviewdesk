@@ -68,7 +68,7 @@ export function helpRole(user: Pick<AuthUser, "role" | "languages" | "managed_bo
   anchor: string;
 } {
   if (user.role === "super_admin") return { label: "CRM operator", anchor: "crm-operator" };
-  if (user.role === "admin") return { label: "Sequence owner", anchor: "sequence-owner" };
+  if (user.role === "admin") return { label: "Board owner", anchor: "board-owner" };
   if ((user.managed_boards ?? []).length > 0) return { label: "Region manager", anchor: "region-manager" };
   if ((user.languages ?? []).length > 0) return { label: "Translator", anchor: "region-manager" };
   return { label: "Viewer", anchor: "viewer" };

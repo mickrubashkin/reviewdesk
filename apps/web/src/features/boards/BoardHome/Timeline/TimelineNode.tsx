@@ -81,7 +81,7 @@ export function TimelineNode({ step, regions, selected, first, showRegion, dimme
           {email.based_on_stale && !present ? (
             <Tooltip label="The reference email changed since this one last matched it" multiline maw={320}>
               <Badge color="yellow" size="xs" variant="light">
-                outdated
+                behind
               </Badge>
             </Tooltip>
           ) : null}

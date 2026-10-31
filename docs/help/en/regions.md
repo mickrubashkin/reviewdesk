@@ -1,6 +1,6 @@
 # Regions and the reference
 
-Some boards serve several regions. A region differs from the others in a few things (currency, links to contracts and rules, sometimes the timing), not in the whole email. One region is the **reference**: its chain is the one the other regions adapt.
+Some boards serve several regions. A region differs from the others in a few things (currency, links to contracts and rules, sometimes the timing), not in the whole email. One region is the **reference**: its emails are the ones the other regions adapt.
 
 ## Where to see the difference
 

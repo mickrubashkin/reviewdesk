@@ -201,7 +201,7 @@ export const highlightOptions = [
   { value: "to_upload", label: "To upload" },
   { value: "comments", label: "Open comments" },
   { value: "not_live", label: "Not live" },
-  { value: "outdated", label: "Outdated" },
+  { value: "outdated", label: "Behind" },
 ] as const;
 
 export type Highlight = (typeof highlightOptions)[number]["value"];

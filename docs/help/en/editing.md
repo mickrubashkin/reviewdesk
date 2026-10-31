@@ -1,6 +1,6 @@
 # Edit the text of an email
 
-Region managers and sequence owners edit the emails of the boards they work on. Edit the emails of your own region.
+Region managers and board owners edit the emails of the boards they work on. Edit the emails of your own region.
 
 ReviewDesk never changes the original HTML. You change the text fields of the email (subject, preheader, headings, paragraphs, buttons), and ReviewDesk builds the final HTML from them.
 
@@ -21,13 +21,13 @@ An email **built from blocks** shows its blocks in **Details → Blocks**. A cha
 
 ## Mark the email ready
 
-The **Draft** / **Ready** badge in the header is a menu for region managers and sequence owners.
+The **Draft** / **Ready** badge in the header is a menu for region managers and board owners.
 
 You cannot mark an email ready while it has open **blocking** comments or a required approval area is not approved. The menu says what is blocking it.
 
 When an email becomes ready, a CRM operator pastes it into Bitrix24: see [Bitrix24 upload](bitrix24-upload.md).
 
-## Other actions (region managers, sequence owners)
+## Other actions (region managers, board owners)
 
 In the **More** menu of the review page:
 
