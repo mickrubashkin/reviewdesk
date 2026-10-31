@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Git side of /handoff (.claude/skills/handoff): reports what is left before a
+# Git side of /wrap-up (.claude/skills/wrap-up): reports what is left before a
 # session can end, and removes branches that are already merged into main.
 #
 # Usage:
-#   scripts/handoff.sh status            report; exit 1 if git is not clean
-#   scripts/handoff.sh cleanup           show what cleanup would delete
-#   scripts/handoff.sh cleanup --apply   delete it
+#   scripts/wrap-up.sh status            report; exit 1 if git is not clean
+#   scripts/wrap-up.sh cleanup           show what cleanup would delete
+#   scripts/wrap-up.sh cleanup --apply   delete it
 #
 # Clean means: on main, level with origin/main, no changes, no stash, no extra
 # worktrees, no unpushed commits, no merged branches left (local or remote).
@@ -125,7 +125,7 @@ cleanup() {
 
   if [ "$apply" = 0 ]; then
     echo
-    echo "dry run; delete with: scripts/handoff.sh cleanup --apply"
+    echo "dry run; delete with: scripts/wrap-up.sh cleanup --apply"
     return 0
   fi
 
