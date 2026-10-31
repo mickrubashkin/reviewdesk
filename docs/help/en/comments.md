@@ -22,7 +22,7 @@ Type `@` and a name. The person sees the comment in **My tasks → Mentions**.
 ## Reply and resolve
 
 - Reply in the thread under the comment.
-- **Resolve** when it is done. The comment's author, region managers and sequence owners can resolve it.
+- **Resolve** when it is done. The comment's author, region managers and board owners can resolve it.
 - **Hide resolved** and **Only open comments** keep the list short.
 - **Next with open comments** jumps to the next email of the board that still has open comments.
 

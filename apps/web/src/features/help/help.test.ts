@@ -51,7 +51,7 @@ describe("helpHref", () => {
 describe("helpRole", () => {
   it("maps the account to the help's roles", () => {
     expect(helpRole({ role: "super_admin" }).anchor).toBe("crm-operator");
-    expect(helpRole({ role: "admin", managed_boards: ["a"] }).anchor).toBe("sequence-owner");
+    expect(helpRole({ role: "admin", managed_boards: ["a"] }).anchor).toBe("board-owner");
     expect(helpRole({ role: "reviewer", managed_boards: ["a"], languages: ["de"] }).label).toBe("Region manager");
     expect(helpRole({ role: "reviewer", languages: ["de"] })).toEqual({ label: "Translator", anchor: "region-manager" });
     expect(helpRole({ role: "reviewer", managed_boards: [], languages: null as unknown as string[] }).anchor).toBe("viewer");

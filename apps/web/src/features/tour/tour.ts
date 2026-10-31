@@ -35,7 +35,7 @@ export function tourSteps(user: TourUser): TourStep[] {
     {
       target: "board",
       title: "Boards",
-      description: "A board is one email sequence. Switch between them here.",
+      description: "A board is the emails deals receive through one CRM pipeline. Switch between them here.",
     },
     {
       target: "views",

@@ -3,7 +3,7 @@
 ## Find it
 
 - Pick the board in the header, then use **Search** in **Filters**: it matches the title, subject, preheader, stage, language and status.
-- **Filters** narrow the board by language, region, version (`current` / `old`), review status, whether it is live, whether it needs an upload, and open comments. **Clear filters** brings everything back.
+- **Filters** narrow the board by language, region, version (`current` / `old`: `old` is an earlier text of the email that some robots may still send), review status, whether it is live, whether it needs an upload, and open comments. **Clear filters** brings everything back.
 - **My tasks** (header) lists only what waits for you.
 - A link to an email or to a stage opens the board right there: use **Copy link** in the email's **More** menu or on a timeline stage.
 

@@ -1,26 +1,28 @@
 # Glossary
 
-**Board** — one email sequence, e.g. the onboarding of new partners. Has stages, slots and, optionally, regions.
+**Board** — the emails that deals receive as they move through the stages of a CRM pipeline, e.g. the onboarding of new partners. Has stages, slots and, optionally, regions.
 
 **Stage** — a stage of a deal in the CRM (e.g. *Registered*, *Activation*). A deal enters a stage, and the stage's emails go out to it one after another.
 
 **Slot** — one place in a stage: "the second email of *Activation*, 3 days after the deal enters it". A slot holds the same email in every language. Its name, position, timing and send condition are shared by all languages.
 
-**EN master** — the English email of a slot. EN is always the source of the content; other languages translate it.
+**EN master** — the English email of a slot on a board without regions: the source of the content; other languages translate it. On a board with regions the reference is the source instead.
 
-**Translation** — an email in another language linked to the EN email it came from. When the EN email changes after the translation, the translation shows **EN changed**.
+**Translation** — an email in another language linked to the EN email it came from. When the EN email changes after the translation, the translation is **behind** and shows **EN changed**.
 
 **Region** — a group of partners with their own managers and their own Bitrix24 robots (e.g. a country). A region differs from the others in a few things: currency, links to contracts and rules, sometimes timing.
 
-**Reference** — the region whose chain the other regions adapt. A region's email can be *based on* the reference email; when the reference changes, it shows **reference changed**.
+**Reference** — the region whose emails the other regions adapt. A region's email can be *based on* the reference email; when the reference changes, it is **behind** and shows **reference changed**.
 
 **Version** — every saved change to an email makes a new version (v1, v2, …). The history is in **History**; an old version can be restored.
 
-**Version label (`current` / `old`)** — `old` is the previous variant of an email that may still be sent by some robots. Do not assume `old` is dead: the status line tells whether it is still sent.
+**Uploaded version** — the version whose HTML was last pasted into a given robot. A robot whose uploaded version is older than the current one is **behind** and needs a re-upload.
 
-**Draft / Ready** — the review status. *Draft* is being edited; *Ready* is final and can go to Bitrix24.
+**Behind** — not caught up with a newer state: an email whose source (EN master or reference) changed since it last matched it, or a robot with an older version than the current one.
 
-**Live** — robots send this email: the nightly portal sync saw it sent, or a CRM operator marked it live by hand.
+**Draft / Ready** — the review status, set by people. *Draft* is being edited; *Ready* is final and can go to Bitrix24. It says nothing about what robots send.
+
+**Live** — robots send this email: the nightly portal sync saw it sent, or a CRM operator marked it live by hand. Live is seen, not set: it is not a step after *Ready*.
 
 **Robot** — the CRM automation rule in Bitrix24 that sends an email when a deal reaches a stage. The email's HTML is pasted into the robot by hand. On a board with regions every manager of a region can have their own robot.
 
@@ -35,6 +37,8 @@
 **Bitrix variable** — a placeholder that Bitrix24 fills in when it sends the email, e.g. the partner's name.
 
 **Blocking comment** — a comment that must be resolved before the email can be marked ready. A **suggestion** does not block.
+
+**Experiment** — a deliberate, temporary difference from the reference in some regions, made to test whether it works better (content, timing or which emails go out). It has its own emails, adapted by each of its regions. It ends one of three ways: *adopt* (its emails become the reference), *roll back* (its regions return to the reference) or *keep* (its regions keep the difference for good).
 
 **Approval area** — a part of the review someone has to approve (e.g. *Compliance*), set per board. An edit makes the approval stale.
 
