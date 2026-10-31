@@ -1,17 +1,17 @@
 ---
-name: handoff
-description: Wrap up the session so the context can be cleared or the work handed to another agent or session — commit and open PRs for open work, delete merged branches, leave git clean, and update personal-notes/plan.md with where we are and the next step. Use when the user types /handoff or asks to wrap up, hand off, or prepare to clear the context. `/handoff merge` also merges the PRs once checks pass.
+name: wrap-up
+description: Wrap up the session so the context can be cleared or the work handed to another agent or session — commit and open PRs for open work, delete merged branches, leave git clean, and update personal-notes/plan.md with where we are and the next step. Use when the user types /wrap-up or asks to wrap up, hand off, or prepare to clear the context. `/wrap-up merge` also merges the PRs once checks pass.
 ---
 
-# Handoff
+# Wrap-up
 
 Goal: the next session starts from `main`, a clean tree and `personal-notes/plan.md`, and needs nothing from this conversation.
 
-Arguments: `merge` — merge the PRs this handoff leaves open once their checks pass. Without it, stop at an open PR: merging is the user's decision.
+Arguments: `merge` — merge the PRs this wrap-up leaves open once their checks pass. Without it, stop at an open PR: merging is the user's decision.
 
 ## 1. Inventory
 
-Run `scripts/handoff.sh status`. It fetches, then lists: current branch, uncommitted changes, stashes, extra worktrees, unpushed commits, merged branches, unmerged remote branches, open PRs. Exit 1 means git is not clean.
+Run `scripts/wrap-up.sh status`. It fetches, then lists: current branch, uncommitted changes, stashes, extra worktrees, unpushed commits, merged branches, unmerged remote branches, open PRs. Exit 1 means git is not clean.
 
 Then recall from the conversation what was done, decided or left open this session. That is the material for step 5.
 
@@ -27,14 +27,14 @@ For each piece of unfinished or uncommitted work:
 - A stash or worktree: find out what it is. If it is work, bring it to a branch like above; if it is clearly stale, ask before dropping it.
 - Work that is half done and should not be a PR yet: commit it as a draft (`gh pr create --draft`) so it is not lost, and say in the plan what is missing.
 
-With `merge`: `gh pr checks <n> --watch`, then `git fetch` and check `origin/main` did not move under the PR, then `gh pr merge <n> --merge` (merge commit, no squash). Merge only PRs from this handoff and only with green checks.
+With `merge`: `gh pr checks <n> --watch`, then `git fetch` and check `origin/main` did not move under the PR, then `gh pr merge <n> --merge` (merge commit, no squash). Merge only PRs from this wrap-up and only with green checks.
 
 ## 3. Clean up git
 
 - `git checkout main && git pull --ff-only`.
-- `scripts/handoff.sh cleanup` (dry run), read the list, then `scripts/handoff.sh cleanup --apply`. It deletes only branches merged into `origin/main`, local and remote.
+- `scripts/wrap-up.sh cleanup` (dry run), read the list, then `scripts/wrap-up.sh cleanup --apply`. It deletes only branches merged into `origin/main`, local and remote.
 - Unmerged remote branches the script lists: do not delete them yourself. Look at each (`git log origin/main..origin/<branch>`, `gh pr list --head <branch> --state all`) and ask the user, one question for all of them, what to do: keep, open a PR, or delete.
-- Run `scripts/handoff.sh status` again; it must end with `git is clean`. If it cannot (an open PR, a branch the user wants to keep), say why in the report.
+- Run `scripts/wrap-up.sh status` again; it must end with `git is clean`. If it cannot (an open PR, a branch the user wants to keep), say why in the report.
 
 ## 4. Keep the plan short
 
@@ -47,7 +47,7 @@ In `personal-notes/plan.md`:
 - Header: today's date and the last PR in `main`.
 - «Где мы сейчас» and «Дальше по порядку»: strike through or move what is done, with PR numbers; add new items and decisions with their date.
 - «Ждёт тебя (руками)»: what only the user can do (deploy, prod checks, answers).
-- Section «Передача» right after the header, replaced on every handoff (not appended):
+- Section «Передача» right after the header, replaced on every wrap-up (not appended):
   - date, `main` @ short hash, open PRs and what each waits for;
   - what this session did and decided (short, with PRs);
   - open questions and what each one blocks;
