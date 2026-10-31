@@ -1,6 +1,6 @@
 ---
 name: wrap-up
-description: Wrap up the session so the context can be cleared or the work handed to another agent or session — commit and open PRs for open work, delete merged branches, leave git clean, and update personal-notes/plan.md with where we are and the next step. Use when the user types /wrap-up or asks to wrap up, hand off, or prepare to clear the context. `/wrap-up merge` also merges the PRs once checks pass.
+description: Wrap up the session so the context can be cleared or the work handed to another agent or session — commit and open PRs for open work, delete merged branches, leave git clean, close or open GitHub issues for the work, and update personal-notes/plan.md with the handoff and the next step. Use when the user types /wrap-up or asks to wrap up, hand off, or prepare to clear the context. `/wrap-up merge` also merges the PRs once checks pass.
 ---
 
 # Wrap-up
@@ -38,15 +38,19 @@ With `merge`: `gh pr checks <n> --watch`, then `git fetch` and check `origin/mai
 
 ## 4. Keep the plan short
 
-`personal-notes/plan.md` is gitignored, in Russian, written for the user (see the memory on it). If it is over ~20 KB, move the «Сделано» section and closed items to `personal-notes/archive/plan-<date>.md` and leave a link, as with `archive/plan-2026-10-16.md`.
+`personal-notes/plan.md` is gitignored, in Russian, written for the user (see the memory on it). It holds only «Передача», «Ждёт тебя (руками)» and «Полезное»; the queue of work is in GitHub Issues (`docs/agents/issue-tracker.md`). If it is over ~20 KB, move old notes to `personal-notes/archive/plan-<date>.md` and leave a link, as with `archive/plan-2026-10-31.md`.
 
-## 5. Update the plan
+## 5. Update the plan and the issues
+
+In GitHub Issues:
+
+- Work this session finished: the PR closes its issue (`Closes #n` in the PR body), or close it by hand with a comment.
+- New work found or deferred this session: open an issue for it, one per piece of work; a new feature goes into the milestone «After the colleagues' trial» while the freeze holds. Decisions go to `GLOSSARY.md` or `docs/adr/` (`/domain-modeling`), not to the plan.
 
 In `personal-notes/plan.md`:
 
 - Header: today's date and the last PR in `main`.
-- «Где мы сейчас» and «Дальше по порядку»: strike through or move what is done, with PR numbers; add new items and decisions with their date.
-- «Ждёт тебя (руками)»: what only the user can do (deploy, prod checks, answers).
+- «Ждёт тебя (руками)»: what only the user can do (deploy, prod checks, answers); new manual items go into `personal-notes/todo.html`.
 - Section «Передача» right after the header, replaced on every wrap-up (not appended):
   - date, `main` @ short hash, open PRs and what each waits for;
   - what this session did and decided (short, with PRs);
@@ -63,7 +67,7 @@ Save to memory only what holds beyond this task: a rule the user set for how to 
 Short, in the user's language:
 
 - state of git (`git is clean`, `main` @ hash) or what is left and why;
-- PRs opened or merged, with links;
+- PRs opened or merged and issues opened or closed, with links;
 - branches deleted (count) and the ones kept;
 - the next step from «Передача»;
 - one line to paste into the next session, e.g. «Прочитай personal-notes/plan.md, раздел «Передача», и начни со следующего шага.»
