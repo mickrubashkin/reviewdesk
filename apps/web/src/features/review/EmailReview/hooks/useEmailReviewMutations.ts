@@ -8,7 +8,6 @@ import {
   duplicateEmail,
   restoreEmail,
   restoreEmailVersion,
-  updateEmailAreaApproval,
   updateEmailEditableFields,
   updateEmailLayout,
   updateEmailPlanningFields,
@@ -165,42 +164,6 @@ export function useEmailReviewMutations({
     },
   });
 
-  const areaApprovalMutation = useMutation({
-    mutationFn: ({
-      area,
-      decisionNote,
-      status,
-    }: {
-      area: string;
-      decisionNote: string | null;
-      status: "approved" | "changes_requested";
-    }) =>
-      updateEmailAreaApproval(emailId, area, {
-        decision_note: decisionNote,
-        status,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["email-area-approvals", emailId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["email-activity", emailId],
-      });
-      notifications.show({
-        color: "green",
-        message: "Approval area updated.",
-        title: "Approval updated",
-      });
-    },
-    onError: () => {
-      notifications.show({
-        color: "red",
-        message: "Try again or check that you have admin access.",
-        title: "Approval update failed",
-      });
-    },
-  });
-
   const { createCommentMutation, createReplyMutation, resolveCommentMutation } =
     useCommentMutations(emailId);
 
@@ -235,9 +198,6 @@ export function useEmailReviewMutations({
       queryKey: ["emails", emailId, "versions"],
     });
     void queryClient.invalidateQueries({
-      queryKey: ["email-area-approvals", emailId],
-    });
-    void queryClient.invalidateQueries({
       queryKey: ["email-activity", emailId],
     });
     void queryClient.invalidateQueries({ queryKey: ["emails"] });
@@ -270,7 +230,6 @@ export function useEmailReviewMutations({
     restoreEmailMutation,
     reviewStatusMutation,
     planningFieldsMutation,
-    areaApprovalMutation,
     createCommentMutation,
     resolveCommentMutation,
     createReplyMutation,

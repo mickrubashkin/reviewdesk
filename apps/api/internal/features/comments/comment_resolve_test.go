@@ -39,7 +39,7 @@ func TestCanResolveComment(t *testing.T) {
 	}
 }
 
-func TestResolveBlockingCommentRequiresAuthorOrAdmin(t *testing.T) {
+func TestResolveCommentRequiresAuthorOrAdmin(t *testing.T) {
 	dbpool := testDBPool(t)
 	author := createTestUser(t, dbpool)
 	otherReviewer := createTestUserWithRole(t, dbpool, "comment-test-other@example.com", "reviewer")
@@ -49,7 +49,7 @@ func TestResolveBlockingCommentRequiresAuthorOrAdmin(t *testing.T) {
 	router := chi.NewRouter()
 	RegisterCommentRoutes(router, dbpool)
 
-	commentID := createBlockingComment(t, router, emailID, author)
+	commentID := createTestComment(t, router, emailID, author)
 
 	if code := resolveCommentAs(router, commentID, otherReviewer); code != http.StatusForbidden {
 		t.Fatalf("expected other reviewer to get 403, got %d", code)
@@ -72,7 +72,7 @@ func TestResolveBlockingCommentRequiresAuthorOrAdmin(t *testing.T) {
 	}
 }
 
-func createBlockingComment(t *testing.T, router chi.Router, emailID string, author AuthUser) string {
+func createTestComment(t *testing.T, router chi.Router, emailID string, author AuthUser) string {
 	t.Helper()
 
 	request := httptest.NewRequest(
@@ -83,7 +83,7 @@ func createBlockingComment(t *testing.T, router chi.Router, emailID string, auth
 			"selected_text": "selected text",
 			"start_offset": 0,
 			"end_offset": 13,
-			"severity": "blocking",
+			"severity": "issue",
 			"body": "Wrong currency for this market."
 		}`)),
 	)

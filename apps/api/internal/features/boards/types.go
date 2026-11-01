@@ -1,9 +1,9 @@
 package boards
 
 import (
-	"time"
 	"context"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -11,15 +11,11 @@ import (
 )
 
 const (
-	boardEventCreated                = "board_created"
-	boardEventStageCreated           = "board_stage_created"
-	boardEventStageRenamed           = "board_stage_renamed"
-	boardEventStageDeleted           = "board_stage_deleted"
-	boardEventStagesReordered        = "board_stages_reordered"
-	boardEventApprovalAreaCreated    = "board_approval_area_created"
-	boardEventApprovalAreaUpdated    = "board_approval_area_updated"
-	boardEventApprovalAreaDeleted    = "board_approval_area_deleted"
-	boardEventApprovalAreasReordered = "board_approval_areas_reordered"
+	boardEventCreated         = "board_created"
+	boardEventStageCreated    = "board_stage_created"
+	boardEventStageRenamed    = "board_stage_renamed"
+	boardEventStageDeleted    = "board_stage_deleted"
+	boardEventStagesReordered = "board_stages_reordered"
 )
 
 func stringFromPointer(value *string) string {
@@ -65,7 +61,6 @@ var Logger EventLogger
 // imports this one).
 var CopyEmails func(ctx context.Context, tx pgx.Tx, actor AuthUser, sourceBoardKey, targetBoardKey string) (int, error)
 
-
 type BoardItem struct {
 	ID        string    `json:"id"`
 	Key       string    `json:"key"`
@@ -79,17 +74,3 @@ type BoardItem struct {
 	// CopiedEmailCount is set only in the response to creating a board.
 	CopiedEmailCount *int `json:"copied_email_count,omitempty"`
 }
-
-type BoardApprovalAreaItem struct {
-	ID         string     `json:"id"`
-	Key        string     `json:"key"`
-	Name       string     `json:"name"`
-	Required   bool       `json:"required"`
-	SortOrder  int        `json:"sort_order"`
-	ArchivedAt *time.Time `json:"archived_at"`
-}
-
-
-
-
-

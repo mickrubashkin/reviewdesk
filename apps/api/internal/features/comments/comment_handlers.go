@@ -537,8 +537,7 @@ func resolveCommentHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// canResolveComment keeps reviewers from closing other people's comments,
-// blocking ones included, since open blocking comments gate approval.
+// canResolveComment keeps reviewers from closing other people's comments.
 func canResolveComment(user coreauth.AuthUser, authorID *string) bool {
 	if coreauth.IsAdmin(user) {
 		return true
@@ -550,7 +549,7 @@ func normalizeCommentSeverity(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "":
 		return "issue"
-	case "suggestion", "issue", "blocking":
+	case "suggestion", "issue":
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
 		return ""

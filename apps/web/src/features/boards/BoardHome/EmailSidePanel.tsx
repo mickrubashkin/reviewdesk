@@ -133,11 +133,7 @@ export function EmailSidePanel({
           <Tabs.Tab
             rightSection={
               email.open_comment_count > 0 ? (
-                <Badge
-                  color={email.open_blocking_comment_count > 0 ? "red" : "orange"}
-                  size="xs"
-                  variant="light"
-                >
+                <Badge color="orange" size="xs" variant="light">
                   {email.open_comment_count}
                 </Badge>
               ) : undefined

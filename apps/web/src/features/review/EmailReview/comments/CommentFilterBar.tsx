@@ -20,9 +20,6 @@ export function CommentFilterBar({
   const openCount = comments.filter(
     (comment) => comment.status === "open"
   ).length;
-  const blockingCount = comments.filter(
-    (comment) => comment.status === "open" && comment.severity === "blocking"
-  ).length;
   const resolvedCount = comments.filter(
     (comment) => comment.status === "resolved"
   ).length;
@@ -33,11 +30,6 @@ export function CommentFilterBar({
         <Badge color="yellow" size="sm" variant="light">
           Open {openCount}
         </Badge>
-        {blockingCount > 0 ? (
-          <Badge color="red" size="sm" variant="light">
-            Blocking {blockingCount}
-          </Badge>
-        ) : null}
         <Badge color="green" size="sm" variant="light">
           Resolved {resolvedCount}
         </Badge>

@@ -22,7 +22,6 @@ export type EmailListItem = {
   due_date: string | null;
   implementation_notes: string | null;
   open_comment_count: number;
-  open_blocking_comment_count: number;
   portal_send_count: number;
   portal_last_sent_at: string | null;
   // The EN master this email translates, and whether its text changed since.
@@ -174,7 +173,7 @@ export type EmailVariant = string;
 
 export type EmailReviewStatus = "draft" | "ready";
 
-export type EmailCommentSeverity = "suggestion" | "issue" | "blocking";
+export type EmailCommentSeverity = "suggestion" | "issue";
 
 export type Board = {
   id: string;
@@ -206,31 +205,6 @@ export type UpdateBoardStagePayload = {
 
 export type ReorderBoardStagesPayload = {
   stages: string[];
-};
-
-export type BoardApprovalArea = {
-  id: string;
-  key: string;
-  name: string;
-  required: boolean;
-  sort_order: number;
-  archived_at: string | null;
-};
-
-export type CreateBoardApprovalAreaPayload = {
-  name: string;
-  key?: string;
-  required?: boolean;
-};
-
-export type UpdateBoardApprovalAreaPayload = {
-  name?: string;
-  required?: boolean;
-  archived?: boolean;
-};
-
-export type ReorderBoardApprovalAreasPayload = {
-  areas: string[];
 };
 
 export type CreateEmailPayload = {
@@ -336,31 +310,6 @@ export type UpdateEmailReviewStatusPayload = {
 
 export type UpdateEmailReviewStatusResponse = {
   review_status: EmailReviewStatus;
-};
-
-export type EmailReviewArea = string;
-
-export type EmailAreaApprovalStatus =
-  | "pending"
-  | "approved"
-  | "changes_requested"
-  | "stale";
-
-export type EmailAreaApproval = {
-  board_approval_area_id: string;
-  area: EmailReviewArea;
-  name: string;
-  required: boolean;
-  status: EmailAreaApprovalStatus;
-  decision_note: string | null;
-  decided_by_email: string | null;
-  content_snapshot_hash: string | null;
-  decided_at: string | null;
-};
-
-export type UpdateEmailAreaApprovalPayload = {
-  status: "approved" | "changes_requested";
-  decision_note: string | null;
 };
 
 export type UpdateEmailPlanningFieldsPayload = {

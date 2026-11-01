@@ -27,7 +27,6 @@ function email(overrides: Partial<EmailListItem>): EmailListItem {
     due_date: null,
     implementation_notes: null,
     open_comment_count: 0,
-    open_blocking_comment_count: 0,
     portal_send_count: 0,
     portal_last_sent_at: null,
     translation_of: null,
@@ -196,7 +195,7 @@ describe("summarizeStage", () => {
         email({ region_key: "de", language: "de", production_status: "not_seen" }),
       ]),
       group(2, [
-        email({ region_key: "reference", send_timing: "5 days after previous email", open_blocking_comment_count: 1, open_comment_count: 1 }),
+        email({ region_key: "reference", send_timing: "5 days after previous email", open_comment_count: 1 }),
       ]),
     ]);
     const regions = [region("reference", "en", true), region("de", "de")];
@@ -204,7 +203,7 @@ describe("summarizeStage", () => {
     const [built] = buildTimeline([stage], { kind: "region", regions });
     const summary = summarizeStage(built);
 
-    expect(summary).toMatchObject({ emails: 3, live: 1, openComments: 3, blockingComments: 1, lastDay: 5, branches: 2 });
+    expect(summary).toMatchObject({ emails: 3, live: 1, openComments: 3, lastDay: 5, branches: 2 });
   });
 
   it("has no last day when no branch knows it", () => {

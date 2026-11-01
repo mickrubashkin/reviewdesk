@@ -12,7 +12,6 @@ function email(overrides: Partial<EmailListItem>): EmailListItem {
     language: "en",
     review_status: "draft",
     open_comment_count: 1,
-    open_blocking_comment_count: 1,
     latest_version: 1,
     ...overrides,
   } as EmailListItem;
@@ -39,10 +38,10 @@ describe("guideSteps", () => {
   });
 
   it("ticks steps off from the hero's state, in any order", () => {
-    expect(done(guideSteps(email({ open_blocking_comment_count: 0 }), true, false))).toEqual(["open", "resolve"]);
+    expect(done(guideSteps(email({ open_comment_count: 0 }), true, false))).toEqual(["open", "resolve"]);
     expect(
       done(
-        guideSteps(email({ latest_version: 2, open_blocking_comment_count: 0, review_status: "ready" }), true, true)
+        guideSteps(email({ latest_version: 2, open_comment_count: 0, review_status: "ready" }), true, true)
       )
     ).toEqual(["open", "ai", "edit", "resolve", "ready"]);
   });

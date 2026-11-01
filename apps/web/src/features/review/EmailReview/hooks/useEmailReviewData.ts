@@ -12,7 +12,6 @@ import {
   fetchEmailVersions,
   fetchRenderedEmail,
   fetchSharedEmailAnalysis,
-  listEmailAreaApprovals,
 } from "../../../emails/api";
 import {
   buildStageColumns,
@@ -74,12 +73,6 @@ export function useEmailReviewData({
   const activityQuery = useQuery({
     queryKey: ["email-activity", emailId],
     queryFn: () => fetchEmailActivity(emailId),
-    enabled: emailId.trim() !== "",
-  });
-
-  const areaApprovalsQuery = useQuery({
-    queryKey: ["email-area-approvals", emailId],
-    queryFn: () => listEmailAreaApprovals(emailId),
     enabled: emailId.trim() !== "",
   });
 
@@ -238,19 +231,9 @@ export function useEmailReviewData({
   const openCommentCount = comments.filter(
     (comment) => comment.status === "open"
   ).length;
-  const openBlockingCommentCount = comments.filter(
-    (comment) => comment.status === "open" && comment.severity === "blocking"
-  ).length;
-  const effectiveOpenBlockingCommentCount = Math.max(
-    openBlockingCommentCount,
-    email?.open_blocking_comment_count ?? 0
-  );
   const checks = email?.checks ?? [];
-  const approvalBlockedCount = effectiveOpenBlockingCommentCount + checks.length;
-  const approvalBlockedMessage = buildApprovalBlockedMessage(
-    effectiveOpenBlockingCommentCount,
-    checks
-  );
+  const approvalBlockedCount = checks.length;
+  const approvalBlockedMessage = buildApprovalBlockedMessage(checks);
 
   const filteredComments = useMemo(
     () =>
@@ -300,7 +283,6 @@ export function useEmailReviewData({
           ? {
               ...currentEmail,
               open_comment_count: openCommentCount,
-              open_blocking_comment_count: openBlockingCommentCount,
             }
           : currentEmail
       );
@@ -318,7 +300,6 @@ export function useEmailReviewData({
               ? {
                   ...currentEmail,
                   open_comment_count: openCommentCount,
-                  open_blocking_comment_count: openBlockingCommentCount,
                 }
               : currentEmail
           );
@@ -333,7 +314,6 @@ export function useEmailReviewData({
           ? {
               ...currentEmail,
               open_comment_count: openCommentCount,
-              open_blocking_comment_count: openBlockingCommentCount,
             }
           : currentEmail
     );
@@ -341,7 +321,6 @@ export function useEmailReviewData({
     commentsQuery.data,
     email?.sequence,
     emailId,
-    openBlockingCommentCount,
     openCommentCount,
     queryClient,
   ]);
@@ -354,11 +333,9 @@ export function useEmailReviewData({
     comments,
     filteredComments,
     openCommentCount,
-    openBlockingCommentCount,
     approvalBlockedCount,
     approvalBlockedMessage,
     activityQuery,
-    areaApprovalsQuery,
     renderedEmailQuery,
     versionsQuery,
     sharedAnalysisQuery,

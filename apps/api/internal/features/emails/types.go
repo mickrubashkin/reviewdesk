@@ -26,14 +26,13 @@ type EmailListItem struct {
 	AdaptationKey   string  `json:"adaptation_key"`
 	AdaptationLabel string  `json:"adaptation_label"`
 	// RegionKey is the board region the email belongs to; nil when not set.
-	RegionKey                *string `json:"region_key"`
-	ReviewStatus             string  `json:"review_status"`
-	OwnerEmail               *string `json:"owner_email"`
-	ReviewerEmail            *string `json:"reviewer_email"`
-	DueDate                  *string `json:"due_date"`
-	ImplementationNotes      *string `json:"implementation_notes"`
-	OpenCommentCount         int     `json:"open_comment_count"`
-	OpenBlockingCommentCount int     `json:"open_blocking_comment_count"`
+	RegionKey           *string `json:"region_key"`
+	ReviewStatus        string  `json:"review_status"`
+	OwnerEmail          *string `json:"owner_email"`
+	ReviewerEmail       *string `json:"reviewer_email"`
+	DueDate             *string `json:"due_date"`
+	ImplementationNotes *string `json:"implementation_notes"`
+	OpenCommentCount    int     `json:"open_comment_count"`
 	// From the last portal sync: how often the robots sent this email and
 	// when last; zero when it was not seen. LiveMarkedAt is a manual mark.
 	// TranslationOf is the EN master this email was translated from;
@@ -62,48 +61,47 @@ type EmailListItem struct {
 }
 
 type EmailDetail struct {
-	ID                       string          `json:"id"`
-	Slug                     string          `json:"slug"`
-	Sequence                 string          `json:"sequence"`
-	Title                    string          `json:"title"`
-	Subject                  *string         `json:"subject"`
-	Preheader                *string         `json:"preheader"`
-	SendTiming               *string         `json:"send_timing"`
-	SendCondition            *string         `json:"send_condition"`
-	Stage                    string          `json:"stage"`
-	SortOrder                int             `json:"sort_order"`
-	Language                 string          `json:"language"`
-	Variant                  string          `json:"variant"`
-	AdaptationKey            string          `json:"adaptation_key"`
-	AdaptationLabel          string          `json:"adaptation_label"`
-	RegionKey                *string         `json:"region_key"`
-	TranslationOf            *string         `json:"translation_of"`
-	BasedOn                  *string         `json:"based_on"`
-	ReviewStatus             string          `json:"review_status"`
-	OwnerEmail               *string         `json:"owner_email"`
-	ReviewerEmail            *string         `json:"reviewer_email"`
-	DueDate                  *string         `json:"due_date"`
-	ImplementationNotes      *string         `json:"implementation_notes"`
-	OpenCommentCount         int             `json:"open_comment_count"`
-	OpenBlockingCommentCount int             `json:"open_blocking_comment_count"`
-	LiveMarkedAt             *time.Time      `json:"live_marked_at"`
-	LiveMarkedBy             *string         `json:"live_marked_by"`
-	LiveNote                 *string         `json:"live_note"`
-	LatestVersion            *int            `json:"latest_version"`
-	UploadedVersion          *int            `json:"uploaded_version"`
-	UploadedAt               *time.Time      `json:"uploaded_at"`
-	UploadRobots             []RobotUpload   `json:"upload_robots"`
-	ArchivedAt               *time.Time      `json:"archived_at"`
-	ArchivedByEmail          *string         `json:"archived_by_email"`
-	BodyText                 *string         `json:"-"`
-	ContentParts             *string         `json:"-"`
-	UpdatedAt                time.Time       `json:"-"`
-	OriginalHTML             string          `json:"original_html"`
-	ReviewHTML               *string         `json:"review_html"`
-	TemplateHTML             string          `json:"template_html"`
-	TemplateHash             *string         `json:"template_hash"`
-	TemplateVersion          *string         `json:"template_version"`
-	EditableFields           json.RawMessage `json:"editable_fields"`
+	ID                  string          `json:"id"`
+	Slug                string          `json:"slug"`
+	Sequence            string          `json:"sequence"`
+	Title               string          `json:"title"`
+	Subject             *string         `json:"subject"`
+	Preheader           *string         `json:"preheader"`
+	SendTiming          *string         `json:"send_timing"`
+	SendCondition       *string         `json:"send_condition"`
+	Stage               string          `json:"stage"`
+	SortOrder           int             `json:"sort_order"`
+	Language            string          `json:"language"`
+	Variant             string          `json:"variant"`
+	AdaptationKey       string          `json:"adaptation_key"`
+	AdaptationLabel     string          `json:"adaptation_label"`
+	RegionKey           *string         `json:"region_key"`
+	TranslationOf       *string         `json:"translation_of"`
+	BasedOn             *string         `json:"based_on"`
+	ReviewStatus        string          `json:"review_status"`
+	OwnerEmail          *string         `json:"owner_email"`
+	ReviewerEmail       *string         `json:"reviewer_email"`
+	DueDate             *string         `json:"due_date"`
+	ImplementationNotes *string         `json:"implementation_notes"`
+	OpenCommentCount    int             `json:"open_comment_count"`
+	LiveMarkedAt        *time.Time      `json:"live_marked_at"`
+	LiveMarkedBy        *string         `json:"live_marked_by"`
+	LiveNote            *string         `json:"live_note"`
+	LatestVersion       *int            `json:"latest_version"`
+	UploadedVersion     *int            `json:"uploaded_version"`
+	UploadedAt          *time.Time      `json:"uploaded_at"`
+	UploadRobots        []RobotUpload   `json:"upload_robots"`
+	ArchivedAt          *time.Time      `json:"archived_at"`
+	ArchivedByEmail     *string         `json:"archived_by_email"`
+	BodyText            *string         `json:"-"`
+	ContentParts        *string         `json:"-"`
+	UpdatedAt           time.Time       `json:"-"`
+	OriginalHTML        string          `json:"original_html"`
+	ReviewHTML          *string         `json:"review_html"`
+	TemplateHTML        string          `json:"template_html"`
+	TemplateHash        *string         `json:"template_hash"`
+	TemplateVersion     *string         `json:"template_version"`
+	EditableFields      json.RawMessage `json:"editable_fields"`
 	// Layout is the blocks the email is built from; null for an email with
 	// its own template.
 	Layout emailblocks.Layout `json:"layout"`

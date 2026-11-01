@@ -183,7 +183,7 @@ function TaskRow({
         </Group>
         <Group gap={4} wrap="nowrap">
           {section.key === "comments" ? (
-            <Badge color={email.open_blocking_comment_count > 0 ? "red" : "orange"} size="sm" variant="light">
+            <Badge color="orange" size="sm" variant="light">
               {email.open_comment_count} open
             </Badge>
           ) : null}

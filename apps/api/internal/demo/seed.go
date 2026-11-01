@@ -285,8 +285,8 @@ func datasetEmails() ([]demoEmail, error) {
 	return dataset.emails, dataset.err
 }
 
-// Seed puts the demo scenario on board: its stages and approval areas, the
-// emails with their first versions, comments, approvals and history.
+// Seed puts the demo scenario on board: its stages, the emails with their
+// first versions, comments and history.
 // Seeding again updates the emails in place. It returns the email count.
 func Seed(ctx context.Context, tx pgx.Tx, board Board) (int, error) {
 	emails, err := datasetEmails()
@@ -298,11 +298,7 @@ func Seed(ctx context.Context, tx pgx.Tx, board Board) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	boardID, err := ensureDemoBoard(ctx, tx, board)
-	if err != nil {
-		return 0, err
-	}
-	if err := ensureDemoApprovalAreas(ctx, tx, boardID); err != nil {
+	if _, err := ensureDemoBoard(ctx, tx, board); err != nil {
 		return 0, err
 	}
 
@@ -556,7 +552,7 @@ func demoTemplateCopy(language string) demoTemplateText {
 	case "es":
 		return demoTemplateText{
 			Intro:           "Tu espacio de demostración está listo. Usa este paso para avanzar en la incorporación con una acción clara.",
-			RiskCopy:        "Este párrafo está escrito a propósito como texto de revisión, para que los comentarios, las aprobaciones y las aprobaciones caducadas se vean con facilidad.",
+			RiskCopy:        "Este párrafo está escrito a propósito como texto de revisión, para que los comentarios, las ediciones y los estados de revisión se vean con facilidad.",
 			ProofPoint:      "Los equipos pueden revisar el progreso, asignar responsables y preparar el siguiente hito antes del lanzamiento.",
 			SecondaryDetail: "Todos los nombres, enlaces y textos son genéricos y no contienen datos de producción.",
 			CTA:             "Abrir el siguiente paso",
@@ -564,7 +560,7 @@ func demoTemplateCopy(language string) demoTemplateText {
 	default:
 		return demoTemplateText{
 			Intro:           "Your demo workspace is ready. Use this step to keep the onboarding journey moving with a clear next action.",
-			RiskCopy:        "This paragraph is intentionally written as reviewable demo copy so comments, approvals, and stale approval behavior are easy to inspect.",
+			RiskCopy:        "This paragraph is intentionally written as reviewable demo copy so comments, edits, and the review status are easy to inspect.",
 			ProofPoint:      "Teams can review progress, assign ownership, and prepare the next milestone before launch.",
 			SecondaryDetail: "All names, links, and message content are generic and do not contain production data.",
 			CTA:             "Open next step",
@@ -779,56 +775,6 @@ func ensureDemoBoard(ctx context.Context, tx pgx.Tx, board Board) (string, error
 	return id, err
 }
 
-func ensureDemoApprovalAreas(ctx context.Context, tx pgx.Tx, boardID string) error {
-	areas := []struct {
-		Key       string
-		Name      string
-		Required  bool
-		SortOrder int
-	}{
-		{"product", "Product", true, 10},
-		{"brand", "Brand", true, 20},
-		{"legal", "Legal", true, 30},
-		{"crm-ops", "CRM ops", true, 40},
-	}
-
-	for _, area := range areas {
-		var areaID string
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO approval_areas (key, default_name)
-			VALUES ($1, $2)
-			ON CONFLICT (key) DO UPDATE SET
-				default_name = EXCLUDED.default_name,
-				updated_at = now()
-			RETURNING id::text;
-		`, area.Key, area.Name).Scan(&areaID); err != nil {
-			return err
-		}
-
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO board_approval_areas (
-				board_id,
-				approval_area_id,
-				name,
-				required,
-				sort_order,
-				archived_at
-			)
-			VALUES ($1, $2, $3, $4, $5, NULL)
-			ON CONFLICT (board_id, approval_area_id) DO UPDATE SET
-				name = EXCLUDED.name,
-				required = EXCLUDED.required,
-				sort_order = EXCLUDED.sort_order,
-				archived_at = NULL,
-				updated_at = now();
-		`, boardID, areaID, area.Name, area.Required, area.SortOrder); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func upsertDemoEmail(ctx context.Context, tx pgx.Tx, board Board, email demoEmail) (string, error) {
 	contentPartsJSON, err := json.Marshal(email.ContentParts)
 	if err != nil {
@@ -967,9 +913,9 @@ func seedDemoScenario(ctx context.Context, tx pgx.Tx, board Board, emailIDs map[
 		SelectedText: "reviewable copy",
 		StartOffset:  52,
 		EndOffset:    67,
-		Body:         "Blocking: this paragraph needs a clearer user benefit before approval.",
+		Body:         "This paragraph needs a clearer user benefit before it is ready.",
 		Status:       "open",
-		Severity:     "blocking",
+		Severity:     "issue",
 	}); err != nil {
 		return err
 	}
@@ -986,22 +932,6 @@ func seedDemoScenario(ctx context.Context, tx pgx.Tx, board Board, emailIDs map[
 		return err
 	}
 
-	if err := ensureDemoAreaApprovals(ctx, tx, heroID, admin, map[string]string{
-		"product": "approved",
-		"brand":   "stale",
-		"legal":   "pending",
-		"crm-ops": "pending",
-	}); err != nil {
-		return err
-	}
-	if err := ensureDemoAreaApprovals(ctx, tx, handoffID, admin, map[string]string{
-		"product": "approved",
-		"brand":   "approved",
-		"legal":   "approved",
-		"crm-ops": "approved",
-	}); err != nil {
-		return err
-	}
 	if err := seedSupportingDemoScenarios(ctx, tx, board, emailIDs, admin, reviewer); err != nil {
 		return err
 	}
@@ -1018,25 +948,9 @@ func seedDemoScenario(ctx context.Context, tx pgx.Tx, board Board, emailIDs map[
 			EmailTitle: heroTitle,
 			Metadata: map[string]any{
 				"review_block": "risk_copy",
-				"severity":     "blocking",
+				"severity":     "issue",
 			},
 			Changes: map[string]any{},
-		},
-		{
-			Key:        "hero-brand-stale",
-			Actor:      admin,
-			Action:     "email_area_approval_updated",
-			EmailID:    heroID,
-			EmailSlug:  board.slug(heroSlug),
-			EmailTitle: heroTitle,
-			Metadata: map[string]any{
-				"area":   "brand",
-				"status": "stale",
-				"reason": "approval_stale_after_edit",
-			},
-			Changes: map[string]any{
-				"area_approval_status": map[string]any{"before": "approved", "after": "stale"},
-			},
 		},
 		{
 			Key:        "hero-status-changes-requested",
@@ -1079,11 +993,10 @@ func seedDemoScenario(ctx context.Context, tx pgx.Tx, board Board, emailIDs map[
 
 func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, emailIDs map[string]string, admin demoActor, reviewer demoActor) error {
 	scenarios := []struct {
-		Slug      string
-		Title     string
-		Comment   demoComment
-		Approvals map[string]string
-		EventKey  string
+		Slug     string
+		Title    string
+		Comment  demoComment
+		EventKey string
 	}{
 		{
 			Slug:  demoEmailSlug("signup", "workspace-invite", "en"),
@@ -1097,8 +1010,7 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 				Status:       "open",
 				Severity:     "suggestion",
 			},
-			Approvals: map[string]string{"product": "approved", "brand": "pending", "legal": "pending", "crm-ops": "approved"},
-			EventKey:  "workspace-invite-comment",
+			EventKey: "workspace-invite-comment",
 		},
 		{
 			Slug:  demoEmailSlug("profile", "complete-profile", "es"),
@@ -1113,23 +1025,21 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 				Severity:     "suggestion",
 				ResolvedBy:   admin.ID,
 			},
-			Approvals: map[string]string{"product": "approved", "brand": "approved", "legal": "approved", "crm-ops": "approved"},
-			EventKey:  "complete-profile-approved",
+			EventKey: "complete-profile-approved",
 		},
 		{
 			Slug:  demoEmailSlug("integration", "sync-settings", "es"),
 			Title: "Sync Settings",
 			Comment: demoComment{
 				ReviewBlock:  "risk_copy",
-				SelectedText: "aprobaciones caducadas",
-				StartOffset:  111,
-				EndOffset:    133,
-				Body:         "Blocking: legal wants this automation claim softened before approval.",
+				SelectedText: "estados de revisión",
+				StartOffset:  108,
+				EndOffset:    127,
+				Body:         "Legal wants this automation claim softened before it is ready.",
 				Status:       "open",
-				Severity:     "blocking",
+				Severity:     "issue",
 			},
-			Approvals: map[string]string{"product": "approved", "brand": "approved", "legal": "changes_requested", "crm-ops": "stale"},
-			EventKey:  "sync-settings-changes-requested",
+			EventKey: "sync-settings-changes-requested",
 		},
 		{
 			Slug:  demoEmailSlug("first-value", "first-report", "es"),
@@ -1144,8 +1054,7 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 				Severity:     "suggestion",
 				ResolvedBy:   admin.ID,
 			},
-			Approvals: map[string]string{"product": "approved", "brand": "approved", "legal": "approved", "crm-ops": "approved"},
-			EventKey:  "first-report-production-approved",
+			EventKey: "first-report-production-approved",
 		},
 		{
 			Slug:  demoEmailSlug("retention", "renewal-reminder", "es"),
@@ -1155,12 +1064,11 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 				SelectedText: "datos de producción",
 				StartOffset:  65,
 				EndOffset:    84,
-				Body:         "Blocking: confirm this disclaimer stays visible in localized variants.",
+				Body:         "Confirm this disclaimer stays visible in every language.",
 				Status:       "open",
-				Severity:     "blocking",
+				Severity:     "issue",
 			},
-			Approvals: map[string]string{"product": "approved", "brand": "stale", "legal": "pending", "crm-ops": "approved"},
-			EventKey:  "renewal-reminder-stale",
+			EventKey: "renewal-reminder-stale",
 		},
 	}
 
@@ -1170,9 +1078,6 @@ func seedSupportingDemoScenarios(ctx context.Context, tx pgx.Tx, board Board, em
 			return fmt.Errorf("supporting demo email %s was not seeded", scenario.Slug)
 		}
 		if err := ensureDemoComment(ctx, tx, emailID, reviewer, scenario.Comment); err != nil {
-			return err
-		}
-		if err := ensureDemoAreaApprovals(ctx, tx, emailID, admin, scenario.Approvals); err != nil {
 			return err
 		}
 		if err := insertDemoEventIfMissing(ctx, tx, demoEvent{
@@ -1275,133 +1180,6 @@ func ensureDemoComment(ctx context.Context, tx pgx.Tx, emailID string, actor dem
 		VALUES ($1, $2, $3);
 	`, commentID, actor.ID, comment.Body)
 	return err
-}
-
-func ensureDemoAreaApprovals(ctx context.Context, tx pgx.Tx, emailID string, actor demoActor, statuses map[string]string) error {
-	currentHash, err := emailApprovalSnapshotHash(ctx, tx, emailID)
-	if err != nil {
-		return err
-	}
-	for areaKey, status := range statuses {
-		var boardApprovalAreaID string
-		err := tx.QueryRow(ctx, `
-			SELECT board_approval_areas.id::text
-			FROM emails
-			JOIN boards ON boards.key = emails.sequence
-			JOIN board_approval_areas ON board_approval_areas.board_id = boards.id
-				AND board_approval_areas.archived_at IS NULL
-			JOIN approval_areas ON approval_areas.id = board_approval_areas.approval_area_id
-			WHERE emails.id = $1
-				AND approval_areas.key = $2;
-		`, emailID, areaKey).Scan(&boardApprovalAreaID)
-		if err != nil {
-			return err
-		}
-
-		contentSnapshotHash := currentHash
-		decidedAt := any(nil)
-		decidedByUserID := any(nil)
-		decidedByEmail := any(nil)
-		decisionNote := any(nil)
-		if status == "approved" || status == "stale" || status == "changes_requested" {
-			decidedAt = "now()"
-			decidedByUserID = actor.ID
-			decidedByEmail = actor.Email
-			decisionNote = demoDecisionNote(areaKey, status)
-		}
-		if status == "stale" {
-			contentSnapshotHash = strings.Repeat("0", 64)
-		}
-
-		if decidedAt == nil {
-			_, err = tx.Exec(ctx, `
-				INSERT INTO email_area_approvals (
-					email_id,
-					board_approval_area_id,
-					status,
-					decided_by_user_id,
-					decided_by_email,
-					decision_note,
-					content_snapshot_hash,
-					decided_at
-				)
-				VALUES ($1, $2, $3, NULL, NULL, NULL, NULL, NULL)
-				ON CONFLICT (email_id, board_approval_area_id) DO UPDATE SET
-					status = EXCLUDED.status,
-					decided_by_user_id = EXCLUDED.decided_by_user_id,
-					decided_by_email = EXCLUDED.decided_by_email,
-					decision_note = EXCLUDED.decision_note,
-					content_snapshot_hash = EXCLUDED.content_snapshot_hash,
-					decided_at = EXCLUDED.decided_at,
-					updated_at = now();
-			`, emailID, boardApprovalAreaID, status)
-		} else {
-			_, err = tx.Exec(ctx, `
-				INSERT INTO email_area_approvals (
-					email_id,
-					board_approval_area_id,
-					status,
-					decided_by_user_id,
-					decided_by_email,
-					decision_note,
-					content_snapshot_hash,
-					decided_at
-				)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, now())
-				ON CONFLICT (email_id, board_approval_area_id) DO UPDATE SET
-					status = EXCLUDED.status,
-					decided_by_user_id = EXCLUDED.decided_by_user_id,
-					decided_by_email = EXCLUDED.decided_by_email,
-					decision_note = EXCLUDED.decision_note,
-					content_snapshot_hash = EXCLUDED.content_snapshot_hash,
-					decided_at = EXCLUDED.decided_at,
-					updated_at = now();
-			`, emailID, boardApprovalAreaID, status, decidedByUserID, decidedByEmail, decisionNote, contentSnapshotHash)
-		}
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func demoDecisionNote(areaKey string, status string) string {
-	if status == "stale" {
-		return "Demo approval is stale after a content edit."
-	}
-	return fmt.Sprintf("Demo %s approval is ready.", areaKey)
-}
-
-func emailApprovalSnapshotHash(ctx context.Context, tx pgx.Tx, emailID string) (string, error) {
-	var title string
-	var subject *string
-	var preheader *string
-	var templateHash *string
-	var templateHTML string
-	var editableFieldsText string
-	err := tx.QueryRow(ctx, `
-		SELECT title, subject, preheader, template_hash, template_html, editable_fields::text
-		FROM emails
-		WHERE id = $1;
-	`, emailID).Scan(&title, &subject, &preheader, &templateHash, &templateHTML, &editableFieldsText)
-	if err != nil {
-		return "", err
-	}
-
-	templateFingerprint := stringFromPointer(templateHash)
-	if templateFingerprint == "" {
-		templateFingerprint = contentHash(templateHTML)
-	}
-	editableFieldsHash := contentHash(editableFieldsText)
-	return contentHash(strings.Join([]string{
-		"approval-snapshot-v1",
-		title,
-		stringFromPointer(subject),
-		stringFromPointer(preheader),
-		templateFingerprint,
-		editableFieldsHash,
-	}, "\x00")), nil
 }
 
 type demoEvent struct {

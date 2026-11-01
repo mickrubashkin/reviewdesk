@@ -157,7 +157,6 @@ export function SelectionComposer({
               data={[
                 { label: "Suggestion", value: "suggestion" },
                 { label: "Issue", value: "issue" },
-                { label: "Blocking", value: "blocking" },
               ]}
               disabled={isCreatingComment}
               size="xs"

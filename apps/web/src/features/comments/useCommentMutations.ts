@@ -12,8 +12,8 @@ export function useCommentMutations(emailId: string) {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["email-comments", emailId] });
     void queryClient.invalidateQueries({ queryKey: ["email-activity", emailId] });
-    // The open and blocking comment counts live on the email lists and on the
-    // email itself (the approval gate); its preview and versions stay as they are.
+    // The open comment count lives on the email lists and on the email itself;
+    // its preview and versions stay as they are.
     void queryClient.invalidateQueries({
       queryKey: ["emails"],
       predicate: (query) =>

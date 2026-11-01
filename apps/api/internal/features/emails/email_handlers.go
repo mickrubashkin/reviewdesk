@@ -41,7 +41,6 @@ func RegisterEmailRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Post("/api/slots/move", moveSlotHandler(dbpool))
 	r.Get("/api/emails/{id}", getEmailHandler(dbpool))
 	r.Get("/api/emails/{id}/activity", listEmailActivityHandler(dbpool))
-	r.Get("/api/emails/{id}/area-approvals", listEmailAreaApprovalsHandler(dbpool))
 	r.Get("/api/emails/{id}/rendered", getRenderedEmailHandler(dbpool))
 	r.Put("/api/emails/{id}/layout", updateEmailLayoutHandler(dbpool))
 	r.Get("/api/emails/{id}/versions", listEmailVersionsHandler(dbpool))
@@ -50,7 +49,6 @@ func RegisterEmailRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Patch("/api/emails/{id}/editable-fields", updateEmailEditableFieldsHandler(dbpool))
 	r.Patch("/api/emails/{id}/planning-fields", updateEmailPlanningFieldsHandler(dbpool))
 	r.Patch("/api/emails/{id}/review-status", updateEmailReviewStatusHandler(dbpool))
-	r.Patch("/api/emails/{id}/area-approvals/{area}", updateEmailAreaApprovalHandler(dbpool))
 	r.Post("/api/emails/{id}/duplicate-as", duplicateEmailAsHandler(dbpool))
 	r.Post("/api/emails/{id}/duplicate", duplicateEmailHandler(dbpool))
 	r.Post("/api/emails/{id}/adaptations", createEmailAdaptationHandler(dbpool))
@@ -137,13 +135,6 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 					WHERE comments.email_id = emails.id
 						AND comments.status = 'open'
 				) AS open_comment_count,
-				(
-					SELECT count(*)::int
-					FROM comments
-					WHERE comments.email_id = emails.id
-						AND comments.status = 'open'
-						AND comments.severity = 'blocking'
-				) AS open_blocking_comment_count,
 				COALESCE(portal.send_count, 0),
 				portal.last_sent_at,
 				live_marked_at,
@@ -234,7 +225,6 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				&email.DueDate,
 				&email.ImplementationNotes,
 				&email.OpenCommentCount,
-				&email.OpenBlockingCommentCount,
 				&email.PortalSendCount,
 				&email.PortalLastSentAt,
 				&email.LiveMarkedAt,
@@ -309,13 +299,6 @@ func getEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 					WHERE comments.email_id = emails.id
 						AND comments.status = 'open'
 				) AS open_comment_count,
-				(
-					SELECT count(*)::int
-					FROM comments
-					WHERE comments.email_id = emails.id
-						AND comments.status = 'open'
-						AND comments.severity = 'blocking'
-				) AS open_blocking_comment_count,
 				live_marked_at,
 				live_marked_by,
 				live_note,
@@ -359,7 +342,6 @@ func getEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			&email.DueDate,
 			&email.ImplementationNotes,
 			&email.OpenCommentCount,
-			&email.OpenBlockingCommentCount,
 			&email.LiveMarkedAt,
 			&email.LiveMarkedBy,
 			&email.LiveNote,
@@ -1201,17 +1183,6 @@ func saveEmailContent(ctx context.Context, tx pgx.Tx, user AuthUser, id string, 
 	}); err != nil {
 		return false, fmt.Errorf("record email update event: %w", err)
 	}
-	if changed {
-		if err := markStaleAreaApprovalsAfterContentChange(
-			ctx,
-			tx,
-			id,
-			user,
-			"approval_stale_after_edit",
-		); err != nil {
-			return false, fmt.Errorf("mark stale area approvals: %w", err)
-		}
-	}
 	if approvalBecameStale {
 		if err := InsertEmailEvent(ctx, tx, EmailEventParam{
 			ActorUserID: user.ID,
@@ -1434,8 +1405,8 @@ type emailStatusBlockedError []string
 func (e emailStatusBlockedError) Error() string { return strings.Join(e, "; ") }
 
 // setEmailReviewStatus changes the status of one email inside tx and records
-// it in the history. Marking ready goes through the approval gates and the
-// checks of form, warnings included; a missing or archived email returns
+// it in the history. Marking ready goes through the checks of form,
+// warnings included; a missing or archived email returns
 // pgx.ErrNoRows.
 func setEmailReviewStatus(ctx context.Context, tx pgx.Tx, user AuthUser, id string, nextStatus string) error {
 	var slug string
@@ -1473,14 +1444,11 @@ func setEmailReviewStatus(ctx context.Context, tx pgx.Tx, user AuthUser, id stri
 
 	eventMetadata := map[string]any{}
 	if isApprovedEmailReviewStatus(nextStatus) {
-		blockers, err := emailApprovalGateBlockers(ctx, tx, id)
-		if err != nil {
-			return err
-		}
 		issues, err := checkStoredEmail(ctx, tx, currentLayoutJSON, []byte(currentEditableFieldsText), currentSubject, currentPreheader)
 		if err != nil {
 			return err
 		}
+		blockers := []string{}
 		for _, issue := range issues {
 			blockers = append(blockers, issue.Message)
 		}
@@ -1532,27 +1500,6 @@ func setEmailReviewStatus(ctx context.Context, tx pgx.Tx, user AuthUser, id stri
 			},
 		},
 	})
-}
-
-func emailApprovalGateBlockers(ctx context.Context, db emailEventExecutor, emailID string) ([]string, error) {
-	blockers := []string{}
-
-	var openBlockingCommentCount int
-	err := db.QueryRow(ctx, `
-		SELECT count(*)::int
-		FROM comments
-		WHERE email_id = $1
-			AND status = 'open'
-			AND severity = 'blocking';
-	`, emailID).Scan(&openBlockingCommentCount)
-	if err != nil {
-		return nil, err
-	}
-	if openBlockingCommentCount > 0 {
-		blockers = append(blockers, "resolve blocking comments before marking the email ready")
-	}
-
-	return blockers, nil
 }
 
 func latestReviewStatusEventMarkedApprovalStale(ctx context.Context, db emailEventExecutor, emailID string) (bool, error) {
@@ -2546,7 +2493,6 @@ func insertDuplicatedEmail(ctx context.Context, db emailEventExecutor, email dup
 			due_date::text,
 			implementation_notes,
 			0 AS open_comment_count,
-			0 AS open_blocking_comment_count,
 			original_html,
 			review_html,
 			template_html,
@@ -2574,7 +2520,6 @@ func insertDuplicatedEmail(ctx context.Context, db emailEventExecutor, email dup
 		&created.DueDate,
 		&created.ImplementationNotes,
 		&created.OpenCommentCount,
-		&created.OpenBlockingCommentCount,
 		&created.OriginalHTML,
 		&created.ReviewHTML,
 		&created.TemplateHTML,

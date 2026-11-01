@@ -41,7 +41,7 @@ Edit only your own region: ReviewDesk lets you edit every email of the board, so
 Everything a region manager does, on every board, plus:
 
 - **New → New board** — start a board of your own. A new board does not reach any CRM robot until a CRM operator pastes its emails, so you can try things freely.
-- **Board settings** — stages, regions and the reference, approval areas.
+- **Board settings** — stages, regions and the reference.
 - **New → New slot**, moving slots in the [Matrix](board-views.md#matrix), archiving: [Board views](board-views.md).
 - **Settings → Users** — add people, and set who works on which board and translates which language. See [Setting up people](#setting-up-people).
 

@@ -11,10 +11,7 @@ import {
   fetchEmails,
   updateEmailReviewStatus,
 } from "../../emails/api";
-import {
-  formatEmailReviewStatus,
-  isApprovedEmailReviewStatus,
-} from "../../emails/reviewStatus";
+import { formatEmailReviewStatus } from "../../emails/reviewStatus";
 import { buildStageColumns } from "../../emails/stages";
 import { getProductionStatus } from "../../emails/productionStatus";
 import { withFirstSendEstimates } from "../../emails/firstSend";
@@ -119,7 +116,7 @@ export function useBoardHomeData({
         color: "red",
         message:
           error instanceof ApiError && error.status === 409
-            ? "Resolve blocking comments before marking the email ready."
+            ? error.message.trim() || "Fix the email before marking it ready."
             : "Try again or check that you have admin access.",
         title:
           error instanceof ApiError && error.status === 409
@@ -219,20 +216,6 @@ export function useBoardHomeData({
     emailId: string,
     reviewStatus: EmailReviewStatus
   ) => {
-    const targetEmail = (emailsQuery.data ?? []).find((email) => email.id === emailId);
-    if (
-      isApprovedEmailReviewStatus(reviewStatus) &&
-      targetEmail &&
-      (targetEmail.open_blocking_comment_count ?? 0) > 0
-    ) {
-      notifications.show({
-        color: "red",
-        message: "Resolve blocking comments before marking the email ready.",
-        title: "Approval blocked",
-      });
-      return;
-    }
-
     reviewStatusMutation.mutate({ emailId, reviewStatus });
   };
 

@@ -49,12 +49,12 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - Direct SQL queries, no ORM.
 - Keep changes focused.
 - Dependencies: prefer a good, well-maintained existing library over a hand-written solution. Priority is maximum functionality with minimum pain, not a minimal dependency list. Still prefer what the stack already uses (Mantine, TanStack, Chi, pgx) when it covers the need.
-- Approval gates: an email cannot be approved while there are open blocking comments or pending required area approvals.
+- Marking an email ready runs the checks of form (`checkStoredEmail`); comments do not gate it, and editing a ready email moves it back to draft.
 
 ## Domain model
 - Terms are defined in `GLOSSARY.md`; use them in code, docs and issues. Decisions are in `docs/adr/`.
 - Every email that is not a source has exactly one: a translation follows its EN master, an adaptation follows the reference email or an experiment's email (ADR 0001).
-- Draft/Ready is the review status set by people; Live is observed from the CRM and is not a status step (the old approval gates still exist in code).
+- Draft/Ready is the review status set by people; Live is observed from the CRM and is not a status step.
 - In code a region's adaptation is `based_on`; `adaptation_key` and `variant = 'old'` are legacy (manager copies, old texts) and get no new uses.
 - `old` variants may still be live. Decide per email from portal sync data, don't assume they are dead.
 - Sending is manual: HTML is pasted into a Bitrix24 CRM robot. Bitrix24 access is read-only (inbound webhook).

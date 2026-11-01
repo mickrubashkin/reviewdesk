@@ -6,15 +6,15 @@ ReviewDesk is a focused review and approval layer for HTML email sequences befor
 
 ## Live Demo
 
-**[demo.reviewdesk.rubashkin.xyz](https://demo.reviewdesk.rubashkin.xyz/)** — opens straight on a demo board, no sign-up. A short guide walks you through one review loop: open an email, fix a paragraph, resolve a blocking comment, mark it ready.
+**[demo.reviewdesk.rubashkin.xyz](https://demo.reviewdesk.rubashkin.xyz/)** — opens straight on a demo board, no sign-up. A short guide walks you through one review loop: open an email, fix a paragraph, resolve a comment, mark it ready.
 
-- Synthetic data only: a generic SaaS onboarding sequence (8 stages, 40 emails: EN masters with linked ES translations) with comments, approval states, an outdated translation and handoff examples.
+- Synthetic data only: a generic SaaS onboarding sequence (8 stages, 40 emails: EN masters with linked ES translations) with comments, review statuses, a translation that is behind and handoff examples.
 - Every visitor gets their own copy of the board that resets in 24 hours, so feel free to comment, edit and resolve.
 - Visits are counted: where you came from, your device, your browser's time zone and language, and a random id kept in your browser to tell repeat visits apart. No visitor's IP address is stored.
 
 ![Review board: an onboarding sequence laid out as a timeline of stages, with per-email status, upload and open-comment badges](docs/screenshots/board.png)
 
-![A blocking comment anchored to a paragraph of the email under review](docs/screenshots/comments.png)
+![A comment anchored to a paragraph of the email under review](docs/screenshots/comments.png)
 
 ## Why It Exists
 
@@ -31,7 +31,7 @@ This repository is a cleaned-up public copy without company content; its git his
 - Review board for staged HTML email sequences, language versions, and adaptations.
 - Anchored comments on `data-review-block` content with severity and resolution state.
 - Template-backed editing through `data-edit-*` fields while preserving original HTML.
-- Required approval areas, stale approval behavior after edits, and production handoff state.
+- A Draft/Ready review status with checks of form before ready, a return to draft after an edit, and production handoff state.
 - CRM send reconciliation: a read-only sync pulls the emails CRM automation robots actually send, matches them to board emails by similarity, and suggests which approved version is live per robot.
 - @mentions with notifications, and shared text blocks reused across emails.
 - AI-assisted journey review for clarity, conversion friction, compliance risk, and handoff readiness.
@@ -67,7 +67,7 @@ Local walkthrough:
 1. Sign in with the local dev login and open the `Demo Onboarding Review` board.
 2. Add or resolve anchored comments in the review preview.
 3. Edit template-backed copy or planning metadata as an admin.
-4. Watch approvals go stale after content changes, then re-approve required areas.
+4. Mark an email ready, edit it, and watch it go back to draft.
 5. Inspect the production handoff package.
 
 Useful checks:
@@ -106,7 +106,7 @@ VITE_AUTH_DEMO_LOGIN_ENABLED=true
 
 ## Notes
 
-- Backend is the source of truth for review state, comments, approvals, versions, and handoff data.
+- Backend is the source of truth for review state, comments, versions, and handoff data.
 - Original HTML is preserved; edited output is rendered from template-backed fields.
 - Previewed third-party HTML is isolated in a sandboxed iframe.
 - Comments use frontend polling; AI analysis uses SSE/EventSource, not WebSocket.

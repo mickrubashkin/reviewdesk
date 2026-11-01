@@ -21,7 +21,7 @@ func testExportEmail(slug string) exportEmail {
 		TemplateHTML:   `<html><body><p data-review-block="a">Hi</p></body></html>`,
 		EditableFields: emailedit.EditableFields{},
 		BodyText:       "Hello there",
-		Comments:       []exportComment{{Severity: "blocking", Status: "open", Body: "Fix typo", SelectedText: "Hi"}},
+		Comments:       []exportComment{{Severity: "issue", Status: "open", Body: "Fix typo", SelectedText: "Hi"}},
 	}
 	return email
 }
@@ -56,7 +56,7 @@ func TestBuildExportArchiveMarkdown(t *testing.T) {
 		}
 	}
 	md := entries["onboarding/day-1/welcome.md"]
-	for _, want := range []string{"# Welcome email", "**Stage:** day-1", "Hello there", "[blocking, open] Fix typo"} {
+	for _, want := range []string{"# Welcome email", "**Stage:** day-1", "Hello there", "[issue, open] Fix typo"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("markdown missing %q:\n%s", want, md)
 		}

@@ -1,7 +1,7 @@
 import type { EmailListItem } from "../emails/types";
 
 // The demo scenario's hero: the EN "Complete Setup" email, seeded with a
-// blocking comment on one paragraph (apps/api/internal/demo/seed.go).
+// comment on one paragraph (apps/api/internal/demo/seed.go).
 export function findHeroEmail(emails: EmailListItem[]): EmailListItem | undefined {
   return emails.find(
     (email) =>
@@ -25,7 +25,7 @@ export function guideSteps(hero: EmailListItem, opened: boolean, analyzed: boole
     { key: "ai", done: analyzed },
     // The seed makes v1; saving edited text makes a new version.
     { key: "edit", done: (hero.latest_version ?? 1) > 1 },
-    { key: "resolve", done: hero.open_blocking_comment_count === 0 },
+    { key: "resolve", done: hero.open_comment_count === 0 },
     { key: "ready", done: hero.review_status === "ready" },
   ];
 }

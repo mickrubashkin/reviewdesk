@@ -111,7 +111,7 @@ func bulkEmailHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 // applyBulkEmailAction runs in one transaction: the selection changes as a
 // whole or not at all. The one exception is marking emails ready, where
-// emails held back by the approval gates are skipped and listed.
+// emails held back by the checks of form are skipped and listed.
 func applyBulkEmailAction(ctx context.Context, db *pgxpool.Pool, user AuthUser, request bulkEmailRequest) (bulkEmailResponse, error) {
 	request.Sequence = strings.TrimSpace(request.Sequence)
 	if request.Sequence == "" {

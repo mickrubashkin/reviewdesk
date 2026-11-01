@@ -39,7 +39,6 @@ func TestCreateBoardCopiesStages(t *testing.T) {
 	dbpool := testDBPool(t)
 	user := createTestUserWithRole(t, dbpool, "admin")
 	sourceKey := createTestBoard(t, dbpool, "source-board", []string{"registered", "qualified"})
-	createTestBoardApprovalArea(t, dbpool, sourceKey, "partnerships", "Partnerships", true, 10)
 
 	router := chi.NewRouter()
 	RegisterBoardRoutes(router, dbpool)
@@ -71,13 +70,6 @@ func TestCreateBoardCopiesStages(t *testing.T) {
 	if len(created.Stages) != 2 || created.Stages[0] != "registered" || created.Stages[1] != "qualified" {
 		t.Fatalf("expected copied stages, got %#v", created.Stages)
 	}
-	areas, err := testListBoardApprovalAreas(context.Background(), dbpool, created.Key, false)
-	if err != nil {
-		t.Fatalf("failed to load copied approval areas: %v", err)
-	}
-	if len(areas) != 1 || areas[0].Key != "partnerships" || areas[0].Name != "Partnerships" {
-		t.Fatalf("expected copied approval areas, got %#v", areas)
-	}
 
 	event := loadBoardEvent(t, dbpool, created.Key, "board_created")
 	if event.ActorEmail != user.Email {
@@ -85,150 +77,6 @@ func TestCreateBoardCopiesStages(t *testing.T) {
 	}
 	if event.Metadata["source_board_key"] != sourceKey {
 		t.Fatalf("expected source board key %s in event metadata, got %#v", sourceKey, event.Metadata["source_board_key"])
-	}
-}
-
-func TestManageBoardApprovalAreas(t *testing.T) {
-	dbpool := testDBPool(t)
-	user := createTestUserWithRole(t, dbpool, "admin")
-	boardKey := createTestBoard(t, dbpool, "approval-area-board", []string{"review"})
-
-	router := chi.NewRouter()
-	RegisterBoardRoutes(router, dbpool)
-
-	createRequest := httptest.NewRequest(
-		http.MethodPost,
-		"/api/boards/"+boardKey+"/approval-areas",
-		bytes.NewReader([]byte(`{"name":"Legal","required":true}`)),
-	)
-	createRequest = withAuthUser(createRequest, user)
-	createResponse := httptest.NewRecorder()
-	router.ServeHTTP(createResponse, createRequest)
-
-	if createResponse.Code != http.StatusCreated {
-		t.Fatalf("expected approval area create status 201, got %d: %s", createResponse.Code, createResponse.Body.String())
-	}
-	var created BoardApprovalAreaItem
-	if err := json.NewDecoder(createResponse.Body).Decode(&created); err != nil {
-		t.Fatalf("failed to decode created approval area: %v", err)
-	}
-	if created.Key != "legal" || created.Name != "Legal" || !created.Required || created.ArchivedAt != nil {
-		t.Fatalf("unexpected created approval area: %#v", created)
-	}
-
-	updateRequest := httptest.NewRequest(
-		http.MethodPatch,
-		"/api/boards/"+boardKey+"/approval-areas/legal",
-		bytes.NewReader([]byte(`{"name":"Compliance","required":false}`)),
-	)
-	updateRequest = withAuthUser(updateRequest, user)
-	updateResponse := httptest.NewRecorder()
-	router.ServeHTTP(updateResponse, updateRequest)
-
-	if updateResponse.Code != http.StatusOK {
-		t.Fatalf("expected approval area update status 200, got %d: %s", updateResponse.Code, updateResponse.Body.String())
-	}
-	var updated BoardApprovalAreaItem
-	if err := json.NewDecoder(updateResponse.Body).Decode(&updated); err != nil {
-		t.Fatalf("failed to decode updated approval area: %v", err)
-	}
-	if updated.Key != "legal" || updated.Name != "Compliance" || updated.Required {
-		t.Fatalf("unexpected updated approval area: %#v", updated)
-	}
-
-	event := loadBoardEvent(t, dbpool, boardKey, "board_approval_area_updated")
-	if event.ActorEmail != user.Email {
-		t.Fatalf("expected approval area event actor %s, got %s", user.Email, event.ActorEmail)
-	}
-	if event.Metadata["area_key"] != "legal" {
-		t.Fatalf("expected area key in event metadata, got %#v", event.Metadata)
-	}
-}
-
-func TestArchiveBoardApprovalArea(t *testing.T) {
-	dbpool := testDBPool(t)
-	user := createTestUserWithRole(t, dbpool, "admin")
-	boardKey := createTestBoard(t, dbpool, "approval-area-archive-board", []string{"review"})
-	createTestBoardApprovalArea(t, dbpool, boardKey, "sales", "Sales", true, 10)
-
-	router := chi.NewRouter()
-	RegisterBoardRoutes(router, dbpool)
-
-	request := httptest.NewRequest(http.MethodDelete, "/api/boards/"+boardKey+"/approval-areas/sales", nil)
-	request = withAuthUser(request, user)
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected approval area delete status 200, got %d: %s", response.Code, response.Body.String())
-	}
-	var archived BoardApprovalAreaItem
-	if err := json.NewDecoder(response.Body).Decode(&archived); err != nil {
-		t.Fatalf("failed to decode archived approval area: %v", err)
-	}
-	if archived.ArchivedAt == nil {
-		t.Fatalf("expected archived approval area, got %#v", archived)
-	}
-
-	areas, err := testListBoardApprovalAreas(context.Background(), dbpool, boardKey, false)
-	if err != nil {
-		t.Fatalf("failed to list approval areas: %v", err)
-	}
-	if len(areas) != 0 {
-		t.Fatalf("expected archived approval area to be hidden, got %#v", areas)
-	}
-}
-
-func TestReorderBoardApprovalAreas(t *testing.T) {
-	dbpool := testDBPool(t)
-	user := createTestUserWithRole(t, dbpool, "admin")
-	boardKey := createTestBoard(t, dbpool, "approval-area-reorder-board", []string{"review"})
-	createTestBoardApprovalArea(t, dbpool, boardKey, "legal", "Legal", true, 10)
-	createTestBoardApprovalArea(t, dbpool, boardKey, "sales", "Sales", true, 20)
-
-	router := chi.NewRouter()
-	RegisterBoardRoutes(router, dbpool)
-
-	request := httptest.NewRequest(
-		http.MethodPatch,
-		"/api/boards/"+boardKey+"/approval-areas",
-		bytes.NewReader([]byte(`{"areas":["sales","legal"]}`)),
-	)
-	request = withAuthUser(request, user)
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected approval area reorder status 200, got %d: %s", response.Code, response.Body.String())
-	}
-	var areas []BoardApprovalAreaItem
-	if err := json.NewDecoder(response.Body).Decode(&areas); err != nil {
-		t.Fatalf("failed to decode reordered approval areas: %v", err)
-	}
-	if len(areas) != 2 || areas[0].Key != "sales" || areas[1].Key != "legal" {
-		t.Fatalf("unexpected reordered approval areas: %#v", areas)
-	}
-}
-
-func TestCreateBoardApprovalAreaRejectsReviewer(t *testing.T) {
-	dbpool := testDBPool(t)
-	user := createTestUserWithRole(t, dbpool, "reviewer")
-	boardKey := createTestBoard(t, dbpool, "approval-area-reviewer-board", []string{"review"})
-
-	router := chi.NewRouter()
-	RegisterBoardRoutes(router, dbpool)
-
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"/api/boards/"+boardKey+"/approval-areas",
-		bytes.NewReader([]byte(`{"name":"Legal"}`)),
-	)
-	request = withAuthUser(request, user)
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("expected approval area create status 403, got %d: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -512,45 +360,6 @@ func createBoardTestEmail(t *testing.T, dbpool *pgxpool.Pool, sequence string, s
 	return emailID
 }
 
-func createTestBoardApprovalArea(t *testing.T, dbpool *pgxpool.Pool, boardKey string, areaKey string, name string, required bool, sortOrder int) string {
-	t.Helper()
-
-	var areaID string
-	if err := dbpool.QueryRow(context.Background(), `
-		INSERT INTO approval_areas (key, default_name)
-		VALUES ($1, $2)
-		ON CONFLICT (key) DO UPDATE SET updated_at = now()
-		RETURNING id;
-	`, areaKey, name).Scan(&areaID); err != nil {
-		t.Fatalf("failed to create approval area: %v", err)
-	}
-
-	var boardApprovalAreaID string
-	if err := dbpool.QueryRow(context.Background(), `
-		INSERT INTO board_approval_areas (
-			board_id,
-			approval_area_id,
-			name,
-			required,
-			sort_order
-		)
-		SELECT id, $2, $3, $4, $5
-		FROM boards
-		WHERE key = $1
-		ON CONFLICT (board_id, approval_area_id) DO UPDATE SET
-			name = EXCLUDED.name,
-			required = EXCLUDED.required,
-			sort_order = EXCLUDED.sort_order,
-			archived_at = NULL,
-			updated_at = now()
-		RETURNING id;
-	`, boardKey, areaID, name, required, sortOrder).Scan(&boardApprovalAreaID); err != nil {
-		t.Fatalf("failed to create board approval area: %v", err)
-	}
-
-	return boardApprovalAreaID
-}
-
 type boardEventRecord struct {
 	ActorEmail string
 	Metadata   map[string]any
@@ -583,36 +392,3 @@ func loadBoardEvent(t *testing.T, dbpool *pgxpool.Pool, boardKey string, action 
 	return event
 }
 
-func testListBoardApprovalAreas(ctx context.Context, dbpool *pgxpool.Pool, boardKey string, includeArchived bool) ([]struct {
-	Key  string
-	Name string
-}, error) {
-	rows, err := dbpool.Query(ctx, `
-		SELECT approval_areas.key, board_approval_areas.name
-		FROM board_approval_areas
-		JOIN boards ON boards.id = board_approval_areas.board_id
-		JOIN approval_areas ON approval_areas.id = board_approval_areas.approval_area_id
-		WHERE boards.key = $1
-			AND (board_approval_areas.archived_at IS NULL OR $2)
-		ORDER BY board_approval_areas.sort_order;
-	`, boardKey, includeArchived)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var areas []struct {
-		Key  string
-		Name string
-	}
-	for rows.Next() {
-		var a struct {
-			Key  string
-			Name string
-		}
-		if err := rows.Scan(&a.Key, &a.Name); err != nil {
-			return nil, err
-		}
-		areas = append(areas, a)
-	}
-	return areas, rows.Err()
-}

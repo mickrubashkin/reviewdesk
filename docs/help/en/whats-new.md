@@ -2,6 +2,10 @@
 
 The newest changes first. A dot on your account menu means there is something here you have not read yet.
 
+## 2026-11-01
+
+- A comment is an **Issue** or a **Suggestion**; **Blocking** is gone, and blocking comments became issues. Open comments no longer stop an email from being marked ready. See [Comments](comments.md).
+
 ## 2026-10-31
 
 - New words, the same things: the role that sets up boards is now **Board owner** (was Sequence owner); emails whose EN master or reference changed are **behind** (the timeline's **Highlight → Behind**, was Outdated); the export is **Board table** (was Chain table). The [glossary](glossary.md) has them all, plus **Uploaded version** and **Experiment**.

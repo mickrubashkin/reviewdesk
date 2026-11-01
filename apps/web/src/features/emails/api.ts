@@ -9,14 +9,12 @@ import type {
   DuplicateEmailPayload,
   EmailActivityItem,
   EmailAnalysis,
-  EmailAreaApproval,
   EmailComment,
   EmailReviewStatus,
   EmailCommentMessage,
   EmailDetail,
   EmailHTMLInspection,
   EmailListItem,
-  EmailReviewArea,
   EmailVersionDetail,
   RobotUpload,
   EmailVersionListItem,
@@ -26,7 +24,6 @@ import type {
   TranslationStatus,
   TranslationSuggestions,
   UpdateEditableFieldsPayload,
-  UpdateEmailAreaApprovalPayload,
   UpdateEmailPlanningFieldsPayload,
   UpdateEmailPlanningFieldsResponse,
   UpdateEmailReviewStatusPayload,
@@ -362,31 +359,6 @@ export function updateEmailReviewStatus(
 ): Promise<UpdateEmailReviewStatusResponse> {
   return fetchJson<UpdateEmailReviewStatusResponse>(
     `/api/emails/${encodeURIComponent(emailId)}/review-status`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    }
-  );
-}
-
-export function listEmailAreaApprovals(
-  emailId: string
-): Promise<EmailAreaApproval[]> {
-  return fetchJson<EmailAreaApproval[]>(
-    `/api/emails/${encodeURIComponent(emailId)}/area-approvals`
-  );
-}
-
-export function updateEmailAreaApproval(
-  emailId: string,
-  area: EmailReviewArea,
-  payload: UpdateEmailAreaApprovalPayload
-): Promise<EmailAreaApproval> {
-  return fetchJson<EmailAreaApproval>(
-    `/api/emails/${encodeURIComponent(emailId)}/area-approvals/${encodeURIComponent(area)}`,
     {
       method: "PATCH",
       headers: {
