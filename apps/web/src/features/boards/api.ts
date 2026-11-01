@@ -4,14 +4,10 @@ import { fetchJson } from "../../shared/api";
 import type {
   Board,
   BoardRegion,
-  BoardApprovalArea,
-  CreateBoardApprovalAreaPayload,
   CreateBoardPayload,
   CreateBoardStagePayload,
-  ReorderBoardApprovalAreasPayload,
   ReorderBoardStagesPayload,
   UpdateBoardStagePayload,
-  UpdateBoardApprovalAreaPayload,
 } from "../emails/types";
 
 export function fetchBoards(): Promise<Board[]> {
@@ -26,75 +22,6 @@ export function createBoard(payload: CreateBoardPayload): Promise<Board> {
     },
     body: JSON.stringify(payload),
   });
-}
-
-export function fetchBoardApprovalAreas(
-  boardKey: string
-): Promise<BoardApprovalArea[]> {
-  return fetchJson<BoardApprovalArea[]>(
-    `/api/boards/${encodeURIComponent(boardKey)}/approval-areas`
-  );
-}
-
-export function createBoardApprovalArea(
-  boardKey: string,
-  payload: CreateBoardApprovalAreaPayload
-): Promise<BoardApprovalArea> {
-  return fetchJson<BoardApprovalArea>(
-    `/api/boards/${encodeURIComponent(boardKey)}/approval-areas`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    }
-  );
-}
-
-export function updateBoardApprovalArea(
-  boardKey: string,
-  areaKey: string,
-  payload: UpdateBoardApprovalAreaPayload
-): Promise<BoardApprovalArea> {
-  return fetchJson<BoardApprovalArea>(
-    `/api/boards/${encodeURIComponent(boardKey)}/approval-areas/${encodeURIComponent(areaKey)}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    }
-  );
-}
-
-export function deleteBoardApprovalArea(
-  boardKey: string,
-  areaKey: string
-): Promise<BoardApprovalArea> {
-  return fetchJson<BoardApprovalArea>(
-    `/api/boards/${encodeURIComponent(boardKey)}/approval-areas/${encodeURIComponent(areaKey)}`,
-    {
-      method: "DELETE",
-    }
-  );
-}
-
-export function reorderBoardApprovalAreas(
-  boardKey: string,
-  payload: ReorderBoardApprovalAreasPayload
-): Promise<BoardApprovalArea[]> {
-  return fetchJson<BoardApprovalArea[]>(
-    `/api/boards/${encodeURIComponent(boardKey)}/approval-areas`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    }
-  );
 }
 
 export function createBoardStage(

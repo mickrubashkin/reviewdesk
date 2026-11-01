@@ -41,7 +41,7 @@ func TestEmailActivityIncludesReviewAndAnalysisEvents(t *testing.T) {
 			13,
 			'Please clarify.',
 			'resolved',
-			'blocking',
+			'issue',
 			now() - interval '5 minutes',
 			now() - interval '3 minutes',
 			$2

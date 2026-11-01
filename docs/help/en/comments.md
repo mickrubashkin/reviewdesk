@@ -12,8 +12,10 @@ To comment on the email as a whole, open **Comments** in the side panel and add 
 
 Choose the kind of comment:
 
-- **Blocking** — must be fixed. The email cannot be marked ready while a blocking comment is open.
-- **Suggestion** — nice to have; does not block.
+- **Issue** — something to fix.
+- **Suggestion** — nice to have.
+
+Open comments do not stop anyone from marking the email ready: resolve them first.
 
 ## Mention someone
 

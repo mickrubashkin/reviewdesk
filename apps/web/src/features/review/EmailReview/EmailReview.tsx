@@ -163,7 +163,6 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
     languageVersions,
     nextBoardEmail,
     nextEmailWithOpenComments,
-    openBlockingCommentCount,
     openCommentCount,
     previousBoardEmail,
     renderedEmailQuery,
@@ -603,7 +602,6 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
       onLiveChanged={() => void queryClient.invalidateQueries({ queryKey: ["emails", emailId] })}
       email={email}
       isLoadingRenderedHTML={renderedEmailQuery.isLoading}
-      openBlockingCommentCount={openBlockingCommentCount}
       openCommentCount={openCommentCount}
       renderedHTML={renderedEmailQuery.data?.html ?? ""}
       renderedHTMLError={renderedEmailQuery.isError}

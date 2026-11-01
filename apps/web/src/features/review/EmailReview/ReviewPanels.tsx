@@ -1,6 +1,5 @@
 export {
   ActivityPanel,
-  AreaApprovalsPanel,
   HandoffPanel,
   PlanningPanel,
   ReviewPreviewSkeleton,

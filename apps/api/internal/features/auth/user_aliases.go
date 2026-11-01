@@ -38,7 +38,6 @@ var userIDReferences = []struct{ table, column string }{
 	{"emails", "archived_by"},
 	{"email_events", "actor_user_id"},
 	{"email_versions", "created_by_user_id"},
-	{"email_area_approvals", "decided_by_user_id"},
 	{"ai_analysis_logs", "user_id"},
 	{"operational_events", "user_id"},
 }

@@ -290,7 +290,6 @@ export function buildSequenceHandoffManifest(
     id: email.id,
     implementation_notes: email.implementation_notes,
     language: email.language,
-    open_blocking_comment_count: email.open_blocking_comment_count,
     open_comment_count: email.open_comment_count,
     order: index + 1,
     preheader: email.preheader,
@@ -304,10 +303,6 @@ export function buildSequenceHandoffManifest(
   const readyCount = emails.filter((email) =>
     isApprovedEmailReviewStatus(email.review_status)
   ).length;
-  const openBlockingCommentCount = emails.reduce(
-    (total, email) => total + email.open_blocking_comment_count,
-    0
-  );
 
   return {
     ready_count: readyCount,
@@ -315,11 +310,7 @@ export function buildSequenceHandoffManifest(
     board_name: boardName,
     email_count: emails.length,
     emails,
-    open_blocking_comment_count: openBlockingCommentCount,
-    ready_for_handoff:
-      emails.length > 0 &&
-      readyCount === emails.length &&
-      openBlockingCommentCount === 0,
+    ready_for_handoff: emails.length > 0 && readyCount === emails.length,
   };
 }
 

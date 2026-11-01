@@ -26,7 +26,6 @@ import {
   getVersionForVariant,
   getVersionsForVariantAndAdaptation,
 } from "../stages";
-import { isApprovedEmailReviewStatus } from "../reviewStatus";
 import { useBoardRegions } from "../../boards/api";
 import { versionName } from "../../boards/regions";
 import { EmailCardMenu } from "./EmailCardMenu";
@@ -82,13 +81,6 @@ export function EmailCard({
     (count, email) => count + (email.open_comment_count ?? 0),
     0
   );
-  const openBlockingCommentCount = emailGroup.versions.reduce(
-    (count, email) => count + (email.open_blocking_comment_count ?? 0),
-    0
-  );
-  const selectedEmailApprovalBlocked =
-    !isApprovedEmailReviewStatus(selectedEmail.review_status) &&
-    (selectedEmail.open_blocking_comment_count ?? 0) > 0;
   const commentedVersions = emailGroup.versions.filter(
     (email) => (email.open_comment_count ?? 0) > 0
   );
@@ -143,9 +135,6 @@ export function EmailCard({
     reviewStatus: EmailReviewStatus
   ) => {
     event.stopPropagation();
-    if (isApprovedEmailReviewStatus(reviewStatus) && selectedEmailApprovalBlocked) {
-      return;
-    }
     if (reviewStatus !== selectedEmail.review_status) {
       onReviewStatusChange(selectedEmail.id, reviewStatus);
     }
@@ -185,7 +174,7 @@ export function EmailCard({
             {openCommentCount > 0 ? (
               <Badge
                 className={styles.openCommentCornerBadge}
-                color={openBlockingCommentCount > 0 ? "red" : "yellow"}
+                color="yellow"
                 radius="xl"
                 size="xs"
                 variant="light"
@@ -200,11 +189,9 @@ export function EmailCard({
               availableVariants={availableVariants}
               commentedVersions={commentedVersions}
               currentUser={currentUser}
-              openBlockingCommentCount={openBlockingCommentCount}
               openCommentCount={openCommentCount}
               selectedAdaptation={selectedAdaptation}
               selectedEmail={selectedEmail}
-              selectedEmailApprovalBlocked={selectedEmailApprovalBlocked}
               selectedVariant={selectedVariant}
               variantVersions={variantVersions}
               onAdaptationSelect={handleAdaptationSelect}

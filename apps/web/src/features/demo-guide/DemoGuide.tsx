@@ -12,7 +12,7 @@ import styles from "./DemoGuide.module.css";
 const stepText: Record<GuideStepKey, ReactNode> = {
   open: (
     <>
-      Open <b>Complete Setup</b>: a reviewer left a blocking comment on it.
+      Open <b>Complete Setup</b>: a reviewer left a comment on it.
     </>
   ),
   ai: (
@@ -26,7 +26,7 @@ const stepText: Record<GuideStepKey, ReactNode> = {
       click it in the email, then the pencil.
     </>
   ),
-  resolve: <>Resolve the blocking comment in the Comments tab.</>,
+  resolve: <>Resolve the comment in the Comments tab.</>,
   ready: (
     <>
       Mark the email <b>Ready</b> in the status menu at the top.

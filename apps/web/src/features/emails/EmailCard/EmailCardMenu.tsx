@@ -31,7 +31,6 @@ import {
   emailReviewStatusOptions,
   formatEmailReviewStatus,
   emailUploadState,
-  isApprovedEmailReviewStatus,
 } from "../reviewStatus";
 import type {
   EmailListItem,
@@ -57,11 +56,9 @@ type EmailCardMenuProps = {
   availableVariants: EmailVariant[];
   commentedVersions: EmailListItem[];
   currentUser: AuthUser;
-  openBlockingCommentCount: number;
   openCommentCount: number;
   selectedAdaptation: string;
   selectedEmail: EmailListItem;
-  selectedEmailApprovalBlocked: boolean;
   selectedVariant: EmailVariant;
   variantVersions: EmailListItem[];
   onAdaptationSelect: (
@@ -89,11 +86,9 @@ export function EmailCardMenu({
   availableVariants,
   commentedVersions,
   currentUser,
-  openBlockingCommentCount,
   openCommentCount,
   selectedAdaptation,
   selectedEmail,
-  selectedEmailApprovalBlocked,
   selectedVariant,
   variantVersions,
   onAdaptationSelect,
@@ -309,14 +304,8 @@ export function EmailCardMenu({
             <Menu.Sub.Target>
               <Menu.Sub.Item
                 rightSection={
-                  <Badge
-                    color={openBlockingCommentCount > 0 ? "red" : "yellow"}
-                    size="xs"
-                    variant="light"
-                  >
-                    {openBlockingCommentCount > 0
-                      ? `${openBlockingCommentCount} blocking`
-                      : openCommentCount}
+                  <Badge color="yellow" size="xs" variant="light">
+                    {openCommentCount}
                   </Badge>
                 }
               >
@@ -353,17 +342,11 @@ export function EmailCardMenu({
 
                         <Badge
                           className={styles.commentVersionBadge}
-                          color={
-                            (email.open_blocking_comment_count ?? 0) > 0
-                              ? "red"
-                              : "yellow"
-                          }
+                          color="yellow"
                           size="xs"
                           variant="light"
                         >
-                          {(email.open_blocking_comment_count ?? 0) > 0
-                            ? `${email.open_blocking_comment_count} blocking`
-                            : email.open_comment_count}
+                          {email.open_comment_count}
                         </Badge>
                       </Group>
                     </button>
@@ -391,19 +374,10 @@ export function EmailCardMenu({
           <Menu.Sub.Dropdown className={styles.cardMenuSubDropdown}>
             {emailReviewStatusOptions.map((option) => (
               <Menu.Item
-                disabled={
-                  isApprovedEmailReviewStatus(option.value) &&
-                  selectedEmailApprovalBlocked
-                }
                 key={option.value}
                 rightSection={
                   option.value === selectedEmail.review_status ? (
                     <CheckIcon aria-hidden="true" size={14} weight="bold" />
-                  ) : isApprovedEmailReviewStatus(option.value) &&
-                    selectedEmailApprovalBlocked ? (
-                    <Text c="red" size="xs">
-                      Resolve blockers
-                    </Text>
                   ) : null
                 }
                 onClick={(event) => onReviewStatusSelect(event, option.value)}

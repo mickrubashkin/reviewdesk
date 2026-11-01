@@ -87,12 +87,15 @@ func TestBulkEmailActions(t *testing.T) {
 		t.Fatalf("expected 400 for an unknown owner, got %d", response.Code)
 	}
 
-	// Status: an email with an open blocking comment is skipped, the rest
-	// become ready.
+	// Status: an email that fails the checks of form (no button) is skipped,
+	// the rest become ready; an open comment holds nothing back.
+	if _, err := dbpool.Exec(ctx, `UPDATE emails SET layout = '[{"block":"intro_body"}]' WHERE id = $1;`, aDE); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := dbpool.Exec(ctx, `
 		INSERT INTO comments (email_id, review_block, selected_text, start_offset, end_offset, body, status, severity)
-		VALUES ($1, 'body-001', 'x', 0, 1, 'Fix this', 'open', 'blocking');
-	`, aDE); err != nil {
+		VALUES ($1, 'body-001', 'x', 0, 1, 'Fix this', 'open', 'issue');
+	`, a); err != nil {
 		t.Fatal(err)
 	}
 	response, result := call(admin, map[string]any{"action": "status", "email_ids": []string{a, aDE}, "review_status": "ready"})

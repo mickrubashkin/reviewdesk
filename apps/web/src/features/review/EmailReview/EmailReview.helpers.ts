@@ -42,47 +42,13 @@ export function nullableTrimmed(value: string) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-export function formatAreaApprovalStatus(status: string) {
-  switch (status) {
-    case "pending":
-      return "Pending";
-    case "approved":
-      return "Approved";
-    case "changes_requested":
-      return "Changes requested";
-    case "stale":
-      return "Stale";
-    default:
-      return status.replaceAll("_", " ");
+// buildApprovalBlockedMessage says why the email cannot be marked ready: the
+// checks of form it fails, warnings included.
+export function buildApprovalBlockedMessage(checks: EmailCheck[] = []) {
+  if (checks.length === 0) {
+    return "";
   }
-}
-
-// buildApprovalBlockedMessage says why the email cannot be marked ready:
-// open blocking comments and the checks of form it fails, warnings included.
-export function buildApprovalBlockedMessage(openBlockingCommentCount: number, checks: EmailCheck[] = []) {
-  const reasons = [];
-  if (openBlockingCommentCount > 0) {
-    reasons.push("Resolve blocking comments before marking the email ready.");
-  }
-  if (checks.length > 0) {
-    reasons.push(`Fix before marking the email ready: ${checks.map((check) => check.message).join("; ")}.`);
-  }
-  return reasons.join(" ");
-}
-
-export function areaApprovalStatusColor(status: string) {
-  switch (status) {
-    case "approved":
-      return "green";
-    case "changes_requested":
-      return "yellow";
-    case "stale":
-      return "orange";
-    case "pending":
-      return "gray";
-    default:
-      return "gray";
-  }
+  return `Fix before marking the email ready: ${checks.map((check) => check.message).join("; ")}.`;
 }
 
 export function findNeighborEmail(
@@ -634,8 +600,6 @@ export function formatCommentSeverity(severity: EmailCommentSeverity) {
   switch (severity) {
     case "suggestion":
       return "Suggestion";
-    case "blocking":
-      return "Blocking";
     case "issue":
       return "Issue";
   }
@@ -645,8 +609,6 @@ export function commentSeverityColor(severity: EmailCommentSeverity) {
   switch (severity) {
     case "suggestion":
       return "blue";
-    case "blocking":
-      return "red";
     case "issue":
       return "yellow";
   }

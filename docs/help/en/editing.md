@@ -23,7 +23,7 @@ An email **built from blocks** shows its blocks in **Details → Blocks**. A cha
 
 The **Draft** / **Ready** badge in the header is a menu for region managers and board owners.
 
-You cannot mark an email ready while it has open **blocking** comments or a required approval area is not approved. The menu says what is blocking it.
+You cannot mark an email ready while it fails a check of form, such as a missing button or an empty required field. The menu says what to fix.
 
 When an email becomes ready, a CRM operator pastes it into Bitrix24: see [Bitrix24 upload](bitrix24-upload.md).
 

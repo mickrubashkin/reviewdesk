@@ -163,7 +163,6 @@ export type StageSummary = {
   live: number;
   toUpload: number;
   openComments: number;
-  blockingComments: number;
   // The day the last email goes out; null when a timing on the way is unknown.
   lastDay: number | null;
   branches: number;
@@ -183,7 +182,6 @@ export function summarizeStage(stage: TimelineStage): StageSummary {
     live: emails.filter((e) => e.production_status === "live" || e.production_status === "live_manual").length,
     toUpload: emails.filter((e) => needsBitrixUpload(e)).length,
     openComments: emails.reduce((sum, e) => sum + e.open_comment_count, 0),
-    blockingComments: emails.reduce((sum, e) => sum + e.open_blocking_comment_count, 0),
     lastDay: known.length > 0 ? Math.max(...known) : null,
     branches: stage.branches.length,
   };

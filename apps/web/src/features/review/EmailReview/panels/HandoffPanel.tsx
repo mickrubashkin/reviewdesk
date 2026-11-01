@@ -95,7 +95,6 @@ export function HandoffPanel({
   canMarkLive = false,
   email,
   isLoadingRenderedHTML,
-  openBlockingCommentCount,
   openCommentCount,
   renderedHTML,
   renderedHTMLError,
@@ -106,7 +105,6 @@ export function HandoffPanel({
   onLiveChanged?: () => void;
   email: EmailDetail | undefined;
   isLoadingRenderedHTML: boolean;
-  openBlockingCommentCount: number;
   openCommentCount: number;
   renderedHTML: string;
   renderedHTMLError: boolean;
@@ -153,12 +151,6 @@ export function HandoffPanel({
         </Alert>
       ) : null}
 
-      {openBlockingCommentCount > 0 ? (
-        <Alert color="red" title="Open blocking comments" variant="light">
-          Resolve blocking comments before marking the email ready.
-        </Alert>
-      ) : null}
-
       <BitrixUploadSection
         canMarkUploaded={canMarkLive}
         email={email}
@@ -198,10 +190,7 @@ export function HandoffPanel({
         </Text>
         <HandoffRow label="Status" value={formatEmailReviewStatus(email.review_status)} />
         {isReady ? <HandoffRow label="Marked ready by" value={approvalLabel} /> : null}
-        <HandoffRow
-          label="Open comments"
-          value={`${openCommentCount}${openBlockingCommentCount > 0 ? ` (${openBlockingCommentCount} blocking)` : ""}`}
-        />
+        <HandoffRow label="Open comments" value={`${openCommentCount}`} />
       </Stack>
 
       {email.implementation_notes ? (

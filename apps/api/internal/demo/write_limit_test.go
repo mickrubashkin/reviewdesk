@@ -81,18 +81,18 @@ func TestLimitVisitorWrites(t *testing.T) {
 
 func TestCreatesRows(t *testing.T) {
 	cases := map[string]bool{
-		"POST /api/emails/1/comments":                 true,
-		"POST /api/comments/1/messages":               true,
-		"POST /api/emails":                            true,
-		"POST /api/emails/1/duplicate":                true,
-		"POST /api/boards/demo/stages":                true,
-		"POST /api/emails/inspect-html":               false,
-		"POST /api/layout-preview":                    false,
-		"POST /api/blocks/footer/preview":             false,
-		"POST /api/emails/1/translation/suggestions":  false,
-		"POST /api/emails/1/versions/2/restore":       false,
-		"PATCH /api/emails/1/editable-fields":         false,
-		"DELETE /api/boards/demo/approval-areas/copy": false,
+		"POST /api/emails/1/comments":                true,
+		"POST /api/comments/1/messages":              true,
+		"POST /api/emails":                           true,
+		"POST /api/emails/1/duplicate":               true,
+		"POST /api/boards/demo/stages":               true,
+		"POST /api/emails/inspect-html":              false,
+		"POST /api/layout-preview":                   false,
+		"POST /api/blocks/footer/preview":            false,
+		"POST /api/emails/1/translation/suggestions": false,
+		"POST /api/emails/1/versions/2/restore":      false,
+		"PATCH /api/emails/1/editable-fields":        false,
+		"DELETE /api/boards/demo/stages/activation":  false,
 	}
 	for request, want := range cases {
 		method, path, _ := strings.Cut(request, " ")

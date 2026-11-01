@@ -291,7 +291,7 @@ function StageBranch({
                     </Badge>
                   ) : null}
                   {summary.openComments > 0 ? (
-                    <Badge color={summary.blockingComments > 0 ? "red" : "orange"} size="xs" variant="filled">
+                    <Badge color="orange" size="xs" variant="filled">
                       {summary.openComments} open
                     </Badge>
                   ) : null}

@@ -36,10 +36,8 @@
 
 **Bitrix variable** — a placeholder that Bitrix24 fills in when it sends the email, e.g. the partner's name.
 
-**Blocking comment** — a comment that must be resolved before the email can be marked ready. A **suggestion** does not block.
+**Issue / Suggestion** — the two kinds of comment: an issue is something to fix, a suggestion is nice to have. Neither stops the email from being marked ready.
 
 **Experiment** — a deliberate, temporary difference from the reference in some regions, made to test whether it works better (content, timing or which emails go out). It has its own emails, adapted by each of its regions. It ends one of three ways: *adopt* (its emails become the reference), *roll back* (its regions return to the reference) or *keep* (its regions keep the difference for good).
-
-**Approval area** — a part of the review someone has to approve (e.g. *Compliance*), set per board. An edit makes the approval stale.
 
 > ReviewDesk talks about "CRM robots" in general, but the portal sync, robots and variables are built for Bitrix24 and read it only. Other CRMs are not supported.

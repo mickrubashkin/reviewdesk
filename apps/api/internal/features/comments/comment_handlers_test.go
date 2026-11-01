@@ -40,7 +40,7 @@ func TestCommentHandlersCreateListResolve(t *testing.T) {
 		"selected_text": "selected text",
 		"start_offset": 0,
 		"end_offset": 13,
-		"severity": "blocking",
+		"severity": "suggestion",
 		"body": "Please clarify this sentence."
 	}`)
 
@@ -72,8 +72,8 @@ func TestCommentHandlersCreateListResolve(t *testing.T) {
 	if createdComment.Status != "open" {
 		t.Fatalf("expected open comment status, got %q", createdComment.Status)
 	}
-	if createdComment.Severity != "blocking" {
-		t.Fatalf("expected blocking comment severity, got %q", createdComment.Severity)
+	if createdComment.Severity != "suggestion" {
+		t.Fatalf("expected suggestion comment severity, got %q", createdComment.Severity)
 	}
 	if len(createdComment.Messages) != 1 {
 		t.Fatalf("expected one initial message, got %d", len(createdComment.Messages))
@@ -126,8 +126,8 @@ func TestCommentHandlersCreateListResolve(t *testing.T) {
 	if len(listedComments) != 1 {
 		t.Fatalf("expected one listed comment, got %d", len(listedComments))
 	}
-	if listedComments[0].Severity != "blocking" {
-		t.Fatalf("expected listed blocking comment severity, got %q", listedComments[0].Severity)
+	if listedComments[0].Severity != "suggestion" {
+		t.Fatalf("expected listed suggestion comment severity, got %q", listedComments[0].Severity)
 	}
 	if len(listedComments[0].Messages) != 2 {
 		t.Fatalf("expected two listed messages, got %d", len(listedComments[0].Messages))
@@ -308,4 +308,13 @@ func createTestEmail(t *testing.T, dbpool *pgxpool.Pool) string {
 	})
 
 	return emailID
+}
+
+func TestNormalizeCommentSeverityRejectsBlocking(t *testing.T) {
+	cases := map[string]string{"": "issue", " Suggestion ": "suggestion", "issue": "issue", "blocking": ""}
+	for input, want := range cases {
+		if got := normalizeCommentSeverity(input); got != want {
+			t.Errorf("normalizeCommentSeverity(%q) = %q, want %q", input, got, want)
+		}
+	}
 }

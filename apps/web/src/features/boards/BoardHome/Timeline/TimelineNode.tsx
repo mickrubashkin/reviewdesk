@@ -67,7 +67,7 @@ export function TimelineNode({ step, regions, selected, first, showRegion, dimme
             </Badge>
           ) : null}
           {email.open_comment_count > 0 && !present ? (
-            <Badge color={email.open_blocking_comment_count > 0 ? "red" : "orange"} size="xs" variant="filled">
+            <Badge color="orange" size="xs" variant="filled">
               {email.open_comment_count} open
             </Badge>
           ) : null}

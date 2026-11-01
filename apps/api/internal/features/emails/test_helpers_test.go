@@ -118,45 +118,6 @@ func createTestBoard(t *testing.T, dbpool *pgxpool.Pool, key string, stages []st
 	return key
 }
 
-func createTestBoardApprovalArea(t *testing.T, dbpool *pgxpool.Pool, boardKey string, areaKey string, name string, required bool, sortOrder int) string {
-	t.Helper()
-
-	var areaID string
-	if err := dbpool.QueryRow(context.Background(), `
-		INSERT INTO approval_areas (key, default_name)
-		VALUES ($1, $2)
-		ON CONFLICT (key) DO UPDATE SET updated_at = now()
-		RETURNING id;
-	`, areaKey, name).Scan(&areaID); err != nil {
-		t.Fatalf("failed to create approval area: %v", err)
-	}
-
-	var boardApprovalAreaID string
-	if err := dbpool.QueryRow(context.Background(), `
-		INSERT INTO board_approval_areas (
-			board_id,
-			approval_area_id,
-			name,
-			required,
-			sort_order
-		)
-		SELECT boards.id, $2, $3, $4, $5
-		FROM boards
-		WHERE boards.key = $1
-		ON CONFLICT (board_id, approval_area_id) DO UPDATE SET
-			name = EXCLUDED.name,
-			required = EXCLUDED.required,
-			sort_order = EXCLUDED.sort_order,
-			archived_at = NULL,
-			updated_at = now()
-		RETURNING id;
-	`, boardKey, areaID, name, required, sortOrder).Scan(&boardApprovalAreaID); err != nil {
-		t.Fatalf("failed to create board approval area: %v", err)
-	}
-
-	return boardApprovalAreaID
-}
-
 func createBoardTestEmail(t *testing.T, dbpool *pgxpool.Pool, sequence string, stage string) string {
 	t.Helper()
 
