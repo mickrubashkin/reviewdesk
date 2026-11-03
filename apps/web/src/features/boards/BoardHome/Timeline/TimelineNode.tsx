@@ -1,9 +1,9 @@
 import { Badge, Group, Loader, Modal, Text, Tooltip } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { fetchEmailDetail } from "../../../emails/api";
-import { emailStatusParts } from "../../../emails/statusSummary";
+import { emailStatusParts, lastSendLine, portalSendsText } from "../../../emails/statusSummary";
 import type { BoardRegion, EmailListItem } from "../../../emails/types";
 import { regionName } from "../../regions";
 import { formatDay, formatDelay, type TimelineStep } from "./timeline";
@@ -27,7 +27,11 @@ type TimelineNodeProps = {
 
 export function TimelineNode({ step, regions, selected, first, showRegion, dimmed, present, onOpen }: TimelineNodeProps) {
   const { email } = step;
-  const status = present ? undefined : emailStatusParts(email, step.versions)[0];
+  const status = present ? undefined : emailStatusParts(email, step.versions, { sendsInLabel: false })[0];
+  // A live email shows its sends: the count of 30 days on the preview, the
+  // last send under the subject. Yellow when it went quiet.
+  const live = !present && email.production_status === "live";
+  const sendColor = email.portal_quiet_days != null ? "yellow" : "green";
   const region = showRegion ? regionName(email, regions) : "";
 
   return (
@@ -58,8 +62,21 @@ export function TimelineNode({ step, regions, selected, first, showRegion, dimme
         type="button"
         onClick={onOpen}
       >
-        <TimelineThumb emailId={email.id} title={email.title} />
+        <TimelineThumb emailId={email.id} title={email.title}>
+          {live ? (
+            <Tooltip label={portalSendsText(email)} multiline maw={280}>
+              <Badge className={styles.thumbChip} color={sendColor} size="sm" tt="none" variant="filled">
+                {email.portal_sends_30d ?? 0}/30d
+              </Badge>
+            </Tooltip>
+          ) : null}
+        </TimelineThumb>
         <Text className={styles.subject}>{email.subject || email.title}</Text>
+        {live && lastSendLine(email) ? (
+          <Text c={`${sendColor}.8`} className={styles.lastSend}>
+            ● {lastSendLine(email)}
+          </Text>
+        ) : null}
         <Group gap={4}>
           {status ? (
             <Badge color={status.color === "dimmed" ? "gray" : status.color} size="xs" variant="light">
@@ -167,7 +184,7 @@ const thumbMargin = 600;
 // journey can hold dozens of emails and every live frame parses the HTML and
 // fetches its images, so frames far off screen are taken down; the HTML itself
 // stays in the query cache and comes back without a request.
-function TimelineThumb({ emailId, title }: { emailId: string; title: string }) {
+function TimelineThumb({ emailId, title, children }: { emailId: string; title: string; children?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
@@ -204,6 +221,7 @@ function TimelineThumb({ emailId, title }: { emailId: string; title: string }) {
           ) : null}
         </div>
       )}
+      {children}
     </div>
   );
 }
