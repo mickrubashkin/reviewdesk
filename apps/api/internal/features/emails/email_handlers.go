@@ -136,6 +136,7 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 						AND comments.status = 'open'
 				) AS open_comment_count,
 				COALESCE(portal.send_count, 0),
+				COALESCE(portal.sends_30d, 0),
 				portal.last_sent_at,
 				live_marked_at,
 				translation_of,
@@ -153,7 +154,16 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			LEFT JOIN LATERAL (
 				-- Sent emails the portal sync tied to this one: confirmed by a
 				-- person, or matched automatically with no decision yet.
-				SELECT sum(g.send_count)::int AS send_count, max(g.last_sent_at) AS last_sent_at
+				SELECT
+					sum(g.send_count)::int AS send_count,
+					max(g.last_sent_at) AS last_sent_at,
+					sum((
+						SELECT count(*)
+						FROM portal_sent_emails s
+						WHERE s.board_key = g.board_key
+							AND s.fingerprint = g.fingerprint
+							AND s.sent_at >= now() - interval '30 days'
+					))::int AS sends_30d
 				FROM portal_email_groups g
 				WHERE (g.decision IN ('confirmed', 'created') AND g.decision_email_id = emails.id)
 					OR (g.decision IS NULL AND g.match_status = 'matched' AND g.match_email_id = emails.id)
@@ -226,6 +236,7 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				&email.ImplementationNotes,
 				&email.OpenCommentCount,
 				&email.PortalSendCount,
+				&email.PortalSends30d,
 				&email.PortalLastSentAt,
 				&email.LiveMarkedAt,
 				&email.TranslationOf,

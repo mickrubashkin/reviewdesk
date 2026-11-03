@@ -41,9 +41,12 @@ type EmailListItem struct {
 	TranslationStale bool    `json:"translation_stale"`
 	// BasedOn is the reference email a region's email adapts; BasedOnStale
 	// is true when the reference's text changed since it last matched.
-	BasedOn          *string    `json:"based_on"`
-	BasedOnStale     bool       `json:"based_on_stale"`
+	BasedOn      *string `json:"based_on"`
+	BasedOnStale bool    `json:"based_on_stale"`
+	// PortalSendCount counts the sends the portal sync kept (up to
+	// portal.SendRetentionDays); PortalSends30d those of the last 30 days.
 	PortalSendCount  int        `json:"portal_send_count"`
+	PortalSends30d   int        `json:"portal_sends_30d"`
 	PortalLastSentAt *time.Time `json:"portal_last_sent_at"`
 	LiveMarkedAt     *time.Time `json:"live_marked_at"`
 	// LatestVersion is the current content version; UploadedVersion is the

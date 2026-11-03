@@ -178,7 +178,7 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 		return err
 	}
 	progress("Removing partner data from stored copies")
-	if err := minimizeSentEmails(ctx, db, options.BoardKey, sinceTime); err != nil {
+	if err := minimizeSentEmails(ctx, db, options.BoardKey, time.Now().UTC()); err != nil {
 		return err
 	}
 	_, err = db.Exec(ctx, `UPDATE portal_sync_runs SET groups_count = $2, progress = 'Done' WHERE id = $1;`, runID, groups)
