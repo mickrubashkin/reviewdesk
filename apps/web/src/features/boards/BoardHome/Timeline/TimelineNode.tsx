@@ -23,9 +23,21 @@ type TimelineNodeProps = {
   // comments or how it compares to the reference.
   present: boolean;
   onOpen: () => void;
+  // The sends count on the preview opens the email on its sends.
+  onOpenSends: () => void;
 };
 
-export function TimelineNode({ step, regions, selected, first, showRegion, dimmed, present, onOpen }: TimelineNodeProps) {
+export function TimelineNode({
+  step,
+  regions,
+  selected,
+  first,
+  showRegion,
+  dimmed,
+  present,
+  onOpen,
+  onOpenSends,
+}: TimelineNodeProps) {
   const { email } = step;
   const status = present ? undefined : emailStatusParts(email, step.versions, { sendsInLabel: false })[0];
   // A live email shows its sends: the count of 30 days on the preview, the
@@ -64,8 +76,20 @@ export function TimelineNode({ step, regions, selected, first, showRegion, dimme
       >
         <TimelineThumb emailId={email.id} title={email.title}>
           {live ? (
-            <Tooltip label={portalSendsText(email)} multiline maw={280}>
-              <Badge className={styles.thumbChip} color={sendColor} size="sm" tt="none" variant="filled">
+            <Tooltip label={`${portalSendsText(email)} Click to see the sends.`} multiline maw={280}>
+              <Badge
+                className={styles.thumbChip}
+                color={sendColor}
+                size="sm"
+                style={{ cursor: "pointer" }}
+                tt="none"
+                variant="filled"
+                onClick={(event) => {
+                  // The card around it opens the preview.
+                  event.stopPropagation();
+                  onOpenSends();
+                }}
+              >
                 {email.portal_sends_30d ?? 0}/30d
               </Badge>
             </Tooltip>

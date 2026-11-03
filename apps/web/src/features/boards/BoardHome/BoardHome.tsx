@@ -49,7 +49,7 @@ import { CreateBoardModal } from "./CreateBoardModal";
 import { ActiveBoardFilters } from "./ActiveBoardFilters";
 import { BoardAIExportModal } from "./BoardAIExportModal";
 import { ExportModal, type ExportScope } from "./ExportModal";
-import { EmailSidePanel } from "./EmailSidePanel";
+import { EmailSidePanel, type SidePanelTab } from "./EmailSidePanel";
 import { ArchiveList } from "./ArchiveList";
 import { SlotMatrix } from "./SlotMatrix";
 import { BoardTimeline } from "./Timeline/BoardTimeline";
@@ -186,6 +186,12 @@ function EmailBoardApp({
     null
   );
   const [panelEmailId, setPanelEmailId] = useState<string | null>(null);
+  const [panelTab, setPanelTab] = useState<SidePanelTab>("preview");
+  // A sends count opens the panel on Sends; anything else keeps its tab.
+  const openPanel = (emailId: string, tab?: SidePanelTab) => {
+    setPanelEmailId(emailId);
+    if (tab) setPanelTab(tab);
+  };
   // Live emails imported from the portal wait on the "<board>-portal" board
   // until they are placed into slots of this board from the matrix.
   const portalBoardKey = `${boardKey}-portal`;
@@ -419,7 +425,7 @@ function EmailBoardApp({
                       canTranslate={(language) => canEditEmailContent(currentUser, { language, sequence: boardKey })}
                       onEmailCreated={setPanelEmailId}
                       onExportSelected={(selected) => setExportRequest({ scope: "selected", selected })}
-                      onOpenEmail={(email) => setPanelEmailId(email.id)}
+                      onOpenEmail={(email, _slotEmails, tab) => openPanel(email.id, tab)}
                       byRegion={matrixByRegion && boardRegions.length > 0}
                       regions={boardRegions}
                       onByRegionChange={setMatrixByRegion}
@@ -434,7 +440,7 @@ function EmailBoardApp({
                     onPresentChange={setPresenting}
                     regions={boardRegions}
                     selectedEmailId={panelEmailId}
-                    onOpenEmail={setPanelEmailId}
+                    onOpenEmail={openPanel}
                   />
                 ) : (
                 <EmailBoard
@@ -469,8 +475,10 @@ function EmailBoardApp({
           currentUserEmail={currentUser.email}
           email={panelEmail}
           siblings={panelSiblings}
+          tab={panelTab}
           onClose={() => setPanelEmailId(null)}
           onSelect={(email) => setPanelEmailId(email.id)}
+          onTabChange={setPanelTab}
         />
       ) : null}
 

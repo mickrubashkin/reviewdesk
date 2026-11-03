@@ -14,7 +14,6 @@ import {
 } from "@mantine/core";
 import { ArrowSquareOutIcon, XIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchEmailDetail } from "../../emails/api";
@@ -30,6 +29,8 @@ import { pickPrimary } from "./slotHelpers";
 import { TranslationLinkSelect, TranslationSection } from "./TranslationSection";
 import styles from "./EmailSidePanel.module.css";
 
+export type SidePanelTab = "preview" | "comments" | "sends";
+
 // EmailSidePanel previews an email next to the board, so people can glance at
 // emails while moving around the board without leaving it.
 export function EmailSidePanel({
@@ -39,8 +40,10 @@ export function EmailSidePanel({
   currentUserEmail,
   email,
   siblings,
+  tab,
   onClose,
   onSelect,
+  onTabChange,
 }: {
   canManage: boolean;
   canOpenPortalSync: boolean;
@@ -50,15 +53,17 @@ export function EmailSidePanel({
   email: EmailListItem;
   // Other emails of the same slot, to switch language or version in place.
   siblings: EmailListItem[];
+  // The tab stays when switching emails, so people can go through comments;
+  // the board opens it on Sends from a sends count.
+  tab: SidePanelTab;
   onClose: () => void;
   onSelect: (email: EmailListItem) => void;
+  onTabChange: (tab: SidePanelTab) => void;
 }) {
   const detailQuery = useQuery({
     queryKey: ["emails", email.id, "review"],
     queryFn: () => fetchEmailDetail(email.id),
   });
-  // The tab stays when switching emails, so people can go through comments.
-  const [tab, setTab] = useState<string | null>("preview");
   const languages = [...new Set(siblings.map((s) => s.language))];
   const sameLanguage = siblings.filter((s) => s.language === email.language);
 
@@ -130,7 +135,7 @@ export function EmailSidePanel({
         </Group>
       </Stack>
 
-      <Tabs className={styles.tabs} value={tab} onChange={setTab}>
+      <Tabs className={styles.tabs} value={tab} onChange={(value) => onTabChange((value as SidePanelTab | null) ?? "preview")}>
         <Tabs.List className={styles.tabList}>
           <Tabs.Tab value="preview">Preview</Tabs.Tab>
           <Tabs.Tab

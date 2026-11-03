@@ -12,6 +12,7 @@ import {
   writeStoredTimelineCollapsed,
 } from "../BoardHome.storage";
 import { matrixLanguages } from "../slotHelpers";
+import type { SidePanelTab } from "../EmailSidePanel";
 import { TimelineEdge, TimelineGap, TimelineNode, TimelinePreview } from "./TimelineNode";
 import {
   buildTimeline,
@@ -37,7 +38,7 @@ type BoardTimelineProps = {
   onPresentChange: (present: boolean) => void;
   regions: BoardRegion[];
   selectedEmailId: string | null;
-  onOpenEmail: (emailId: string) => void;
+  onOpenEmail: (emailId: string, tab?: SidePanelTab) => void;
 };
 
 // BoardTimeline draws the board like a branch graph: the stages are the nodes
@@ -192,7 +193,7 @@ export function BoardTimeline({
             regions={regions}
             selectedEmailId={present ? null : selectedEmailId}
             stage={stage}
-            onOpenEmail={present ? setPreviewId : onOpenEmail}
+            onOpenEmail={present ? (emailId) => setPreviewId(emailId) : onOpenEmail}
             onToggle={() => toggle(stage.stage)}
           />
         ))}
@@ -224,7 +225,7 @@ type StageBranchProps = {
   present: boolean;
   regions: BoardRegion[];
   selectedEmailId: string | null;
-  onOpenEmail: (emailId: string) => void;
+  onOpenEmail: (emailId: string, tab?: SidePanelTab) => void;
   onToggle: () => void;
 };
 
@@ -346,7 +347,7 @@ type BranchProps = {
   present: boolean;
   regions: BoardRegion[];
   selectedEmailId: string | null;
-  onOpenEmail: (emailId: string) => void;
+  onOpenEmail: (emailId: string, tab?: SidePanelTab) => void;
 };
 
 function Branch({ branch, highlight, labelled, present, regions, selectedEmailId, onOpenEmail }: BranchProps) {
@@ -398,6 +399,7 @@ function Branch({ branch, highlight, labelled, present, regions, selectedEmailId
                     showRegion={!labelled}
                     step={cell}
                     onOpen={() => onOpenEmail(cell.email.id)}
+                    onOpenSends={() => onOpenEmail(cell.email.id, "sends")}
                   />
                 ) : (
                   <TimelineGap name={branch.name} />

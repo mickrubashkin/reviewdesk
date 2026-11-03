@@ -63,6 +63,7 @@ type ReviewHeaderProps = {
   onArchiveClick: () => void;
   onDuplicateClick: () => void;
   onNavigateToReview: (emailId: string) => void;
+  onOpenSends: () => void;
   onReviewStatusChange: (value: string | null) => void;
   onVariantSelect: (variant: EmailVariant) => void;
 };
@@ -101,6 +102,7 @@ export function ReviewHeader({
   onArchiveClick,
   onDuplicateClick,
   onNavigateToReview,
+  onOpenSends,
   onReviewStatusChange,
   onVariantSelect,
 }: ReviewHeaderProps) {
@@ -314,7 +316,7 @@ export function ReviewHeader({
               />
               {!isCompactReview && currentListEmail ? (
                 <>
-                  <ProductionBadge email={currentListEmail} versions={groupVersions} />
+                  <ProductionBadge email={currentListEmail} versions={groupVersions} onOpenSends={onOpenSends} />
                   <UploadBadge email={currentListEmail} />
                 </>
               ) : null}

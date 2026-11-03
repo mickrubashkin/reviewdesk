@@ -102,3 +102,21 @@ export function versionLabel(version: SlotVersionSends): string {
   }
   return `${version.language.toUpperCase()}${old || " · new"}`;
 }
+
+// The nightly sync leaves at most a day between runs; older than this, the
+// latest sends are likely missing.
+const staleSyncHours = 36;
+
+// syncNote says how recent the counts are, so a quiet chart can be told apart
+// from a sync that has not run.
+export function syncNote(syncedAt: string | null, now: Date): { text: string; stale: boolean } {
+  if (!syncedAt) {
+    return { text: "The portal sync has not run for this board yet.", stale: true };
+  }
+  const at = new Date(syncedAt);
+  const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(at);
+  if (now.getTime() - at.getTime() > staleSyncHours * 3_600_000) {
+    return { text: `Portal sync last ran ${when}: later sends are not counted yet.`, stale: true };
+  }
+  return { text: `Portal sync last ran ${when}.`, stale: false };
+}

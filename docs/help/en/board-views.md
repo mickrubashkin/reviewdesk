@@ -7,7 +7,7 @@ Switch views with **View** in the board header. The view is part of the link, so
 The way of a deal through the pipeline. Stages are the nodes of the trunk; each stage's emails branch off it, with the days counted from the deal entering that stage. There is no time scale between stages: each stage counts on its own.
 
 - One branch per language, or, on a board with regions, one per region with the reference first. **timing differs** on an email means its region waits longer or shorter there than the reference; hover it to see the reference's wait.
-- A live email shows its sends: the corner of its preview has the sends of the last 30 days (**8/30d**), and the line under the subject says when it was last sent. Both turn yellow when it has gone quiet (**no sends for 9 days**). Hover the count for the details.
+- A live email shows its sends: the corner of its preview has the sends of the last 30 days (**8/30d**), and the line under the subject says when it was last sent. Both turn yellow when it has gone quiet (**no sends for 9 days**). Hover the count for the details, or click it to open the email's **Sends** tab in the side panel.
 - **Highlight** picks out the emails that need something: **To upload**, **Open comments**, **Not live** or **Behind**.
 - **Copy link** on a stage gives a link that opens the board at that stage.
 - **Present** shows the board without the review tools, to walk someone through it: no statuses, comments, highlight or filters, just the emails, their days and the waits between them. Click an email to see it large. The link with present mode on opens the same for anyone who can see the board; **Exit present** brings the tools back.

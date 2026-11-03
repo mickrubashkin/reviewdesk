@@ -238,6 +238,8 @@ export type EmailSends = {
   deals: { deals: number; repeated: number; doubled: number };
   // The emails of the slot to compare, this one included.
   versions: SlotVersionSends[];
+  // When a sync up to now last finished for the board; null if none did.
+  synced_at: string | null;
 };
 
 export function fetchEmailSends(emailID: string, days: number): Promise<EmailSends> {

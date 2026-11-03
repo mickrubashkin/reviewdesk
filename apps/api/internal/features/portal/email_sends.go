@@ -86,6 +86,9 @@ type EmailSends struct {
 	Deals  SendDeals    `json:"deals"`
 	// Versions are the emails of the slot to compare, this one included.
 	Versions []SlotVersionSends `json:"versions"`
+	// SyncedAt is when a sync up to now last finished for the email's board:
+	// sends after it are not counted yet. Nil when none ever did.
+	SyncedAt *time.Time `json:"synced_at"`
 }
 
 // tiedEmailID is the email a portal group's sends count for, the same way the
@@ -148,7 +151,17 @@ func LoadEmailSends(ctx context.Context, db *pgxpool.Pool, emailID string, days 
 	if result.Deals, err = loadSendDeals(ctx, db, emailID, since); err != nil {
 		return result, err
 	}
-	result.Versions, err = loadSlotVersions(ctx, db, emailID, since)
+	if result.Versions, err = loadSlotVersions(ctx, db, emailID, since); err != nil {
+		return result, err
+	}
+	// A backfill (until_days > 0) loads an older range and says nothing
+	// about recent sends.
+	err = db.QueryRow(ctx, `
+		SELECT max(r.finished_at)
+		FROM portal_sync_runs r
+		JOIN emails e ON e.sequence = r.board_key
+		WHERE e.id = $1 AND r.status = 'done' AND r.until_days = 0;
+	`, emailID).Scan(&result.SyncedAt)
 	return result, err
 }
 
