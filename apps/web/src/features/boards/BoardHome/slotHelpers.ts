@@ -1,3 +1,4 @@
+import { liveSendsLabel } from "../../emails/statusSummary";
 import type { EmailListItem, StageColumn } from "../../emails/types";
 
 // pickPrimary is the email shown for a slot and language: the live one, then
@@ -31,3 +32,38 @@ export function matrixLanguages(columns: StageColumn[]) {
 
 // Languages the AI translates into; the API has the same list.
 export const aiTranslationLanguages = ["de", "es", "pl", "br"];
+
+type CellVersionFields = Pick<
+  EmailListItem,
+  | "id"
+  | "variant"
+  | "adaptation_key"
+  | "adaptation_label"
+  | "production_status"
+  | "portal_send_count"
+  | "portal_sends_30d"
+  | "portal_last_sent_at"
+  | "portal_quiet_days"
+>;
+
+export type CellVersion = { id: string; label: string; sends: string; live: boolean };
+
+// cellVersions sums up the sends of every version in a matrix cell, the shown
+// one first, so the cell can tell when an old text still goes out next to it.
+export function cellVersions(cellEmails: CellVersionFields[], primaryId: string): CellVersion[] {
+  const ordered = [...cellEmails].sort((a, b) => Number(b.id === primaryId) - Number(a.id === primaryId));
+  return ordered.map((email) => {
+    const label = `${email.variant}${email.adaptation_key !== "default" ? ` · ${email.adaptation_label}` : ""}`;
+    const last = email.portal_last_sent_at
+      ? `, last ${new Date(email.portal_last_sent_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
+      : "";
+    switch (email.production_status) {
+      case "live":
+        return { id: email.id, label, sends: `live · ${liveSendsLabel(email)}${last}`, live: true };
+      case "live_manual":
+        return { id: email.id, label, sends: "live (manual)", live: true };
+      default:
+        return { id: email.id, label, sends: email.portal_send_count > 0 ? `not sent lately${last}` : "not sent", live: false };
+    }
+  });
+}

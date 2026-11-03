@@ -44,7 +44,7 @@ import { BulkActionBar } from "./BulkActionBar";
 import type { SidePanelTab } from "./EmailSidePanel";
 import { CreateTranslationModal } from "./CreateTranslationModal";
 import { SlotEditModal } from "./SlotEditModal";
-import { aiTranslationLanguages, matrixLanguages, pickPrimary } from "./slotHelpers";
+import { aiTranslationLanguages, cellVersions, matrixLanguages, pickPrimary } from "./slotHelpers";
 import styles from "./SlotMatrix.module.css";
 
 const stageDropPrefix = "stage:";
@@ -637,11 +637,7 @@ function MatrixCell({
           <Text c="dimmed" size="xs">
             {primary.variant}
           </Text>
-          {others > 0 ? (
-            <Badge color="gray" size="xs" variant="outline">
-              +{others}
-            </Badge>
-          ) : null}
+          {others > 0 ? <OtherVersions cellEmails={cellEmails} primaryId={primary.id} /> : null}
           {primary.open_comment_count > 0 ? (
             <Badge color="orange" size="xs" variant="light">
               {primary.open_comment_count}
@@ -668,5 +664,38 @@ function MatrixCell({
         </Group>
       </Stack>
     </Table.Td>
+  );
+}
+
+// OtherVersions is the "+N" of a cell with more than one version: hovering it
+// lists every version and its sends. Green when another version goes out next
+// to the shown one, which a robot left on the old text does.
+function OtherVersions({ cellEmails, primaryId }: { cellEmails: EmailListItem[]; primaryId: string }) {
+  const versions = cellVersions(cellEmails, primaryId);
+  const otherLive = versions.slice(1).some((version) => version.live);
+  return (
+    <Tooltip
+      label={
+        <Stack gap={2}>
+          {versions.map((version) => (
+            <Text key={version.id} size="xs">
+              {version.label}: {version.sends}
+            </Text>
+          ))}
+          {otherLive ? (
+            <Text fw={600} size="xs">
+              More than one version goes out: a robot may still have an old one.
+            </Text>
+          ) : null}
+        </Stack>
+      }
+      multiline
+      maw={300}
+    >
+      <Badge color={otherLive ? "green" : "gray"} size="xs" variant={otherLive ? "light" : "outline"}>
+        +{versions.length - 1}
+        {otherLive ? " live" : ""}
+      </Badge>
+    </Tooltip>
   );
 }

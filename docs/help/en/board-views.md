@@ -20,6 +20,8 @@ Stages as columns, one card per email. Good for scanning statuses and comment co
 
 Slots as rows (grouped by stage), languages or regions as columns. It shows which email goes out in each language and where the gaps are.
 
+A cell shows one email, the one that goes out. **+1** next to it means the cell has more versions (old and new, or a manager's copy): hover it to see each version's sends. It turns green (**+1 live**) when another version goes out alongside the one shown, which usually means a robot still has the old text.
+
 Region managers and board owners can also:
 
 - edit a slot as a whole (name, place, timing for all languages),
