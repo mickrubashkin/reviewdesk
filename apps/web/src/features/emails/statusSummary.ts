@@ -57,17 +57,18 @@ export function emailStatusParts(email: EmailListItem, versions: EmailListItem[]
   const status = email.production_status;
 
   if (status === "live" || status === "live_manual") {
+    const quiet = status === "live" ? (email.portal_quiet_days ?? null) : null;
     const sends =
       status === "live"
-        ? portalSendsText(email)
-        : "Marked as live by hand";
+        ? `${quiet !== null ? `${quietText(quiet)} ` : ""}${portalSendsText(email)}`
+        : "Marked as live by hand."
     parts.push({
-      label: `Live${uploaded !== null ? ` v${uploaded}` : ""}${status === "live_manual" ? " (manual)" : ""}`,
-      color: status === "live" ? "green" : "teal",
+      label: `Live${uploaded !== null ? ` v${uploaded}` : ""}${status === "live_manual" ? " (manual)" : ` · ${liveSendsLabel(email)}`}`,
+      color: status === "live_manual" ? "teal" : quiet !== null ? "yellow" : "green",
       detail:
         uploaded !== null
-          ? `${sends}. Bitrix24 has version ${uploaded}.`
-          : `${sends}. Which version the robot has is not marked.`,
+          ? `${sends} Bitrix24 has version ${uploaded}.`
+          : `${sends} Which version the robot has is not marked.`,
     });
   } else if (status === "not_seen") {
     const others = liveOthersLabel(email, versions);
@@ -119,15 +120,36 @@ export function emailStatusParts(email: EmailListItem, versions: EmailListItem[]
   return parts;
 }
 
-// portalSendsText sums up what the portal sync saw sent: the last 30 days,
-// everything it keeps, and the last send.
-export function portalSendsText(email: {
-  portal_send_count: number;
-  portal_sends_30d?: number;
-  portal_last_sent_at: string | null;
-}) {
-  const last = email.portal_last_sent_at ? `, last on ${new Date(email.portal_last_sent_at).toLocaleDateString()}` : "";
-  return `Sent ${email.portal_sends_30d ?? 0} times in the last 30 days (${email.portal_send_count} in the last ${sendRetentionDays} days)${last}`;
+type SendFields = Pick<EmailListItem, "portal_send_count" | "portal_sends_30d" | "portal_last_sent_at" | "portal_quiet_days">;
+
+// liveSendsLabel is the short form on a live email: its sends in the last 30
+// days, or how long it has been quiet.
+export function liveSendsLabel(email: SendFields) {
+  const quiet = email.portal_quiet_days ?? null;
+  return quiet !== null ? `quiet ${quiet}d` : `${email.portal_sends_30d ?? 0}/30d`;
+}
+
+function quietText(days: number) {
+  return `No sends for ${days} days before the last portal sync, far longer than usual: is the robot still on?`;
+}
+
+// portalSendsText sums up what the portal sync saw sent: the last send, the
+// last 30 days and everything it keeps.
+export function portalSendsText(email: SendFields, now = new Date()) {
+  const last = email.portal_last_sent_at
+    ? `Last sent ${timeAgo(email.portal_last_sent_at, now)} (${new Date(email.portal_last_sent_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}). `
+    : "";
+  return `${last}Sent ${email.portal_sends_30d ?? 0} times in the last 30 days, ${email.portal_send_count} in the last ${sendRetentionDays} days.`;
+}
+
+// timeAgo says how long ago, in the largest whole unit.
+export function timeAgo(value: string, now = new Date()) {
+  const minutes = Math.max(0, Math.round((now.getTime() - Date.parse(value)) / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return `${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
 // sendRetentionDays mirrors portal.SendRetentionDays on the server.

@@ -1,6 +1,6 @@
 import { Badge, Tooltip } from "@mantine/core";
 
-import { firstSendPart, portalSendsText } from "./statusSummary";
+import { firstSendPart, liveSendsLabel, portalSendsText } from "./statusSummary";
 import type { EmailListItem } from "./types";
 
 // ProductionBadge shows whether robots actually send an email, from the last
@@ -28,11 +28,14 @@ export function ProductionBadge({ email, versions }: { email: EmailListItem; ver
   switch (email.production_status) {
     case "live":
       return (
-        <Tooltip
-          label={portalSendsText(email)}
-        >
-          <Badge color="green" size="xs" style={{ flexShrink: 0 }} variant="light">
-            Live · {email.portal_send_count}
+        <Tooltip label={portalSendsText(email)} multiline w={280}>
+          <Badge
+            color={email.portal_quiet_days != null ? "yellow" : "green"}
+            size="xs"
+            style={{ flexShrink: 0 }}
+            variant="light"
+          >
+            Live · {liveSendsLabel(email)}
           </Badge>
         </Tooltip>
       );

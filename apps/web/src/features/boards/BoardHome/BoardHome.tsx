@@ -56,7 +56,7 @@ import { BoardTimeline } from "./Timeline/BoardTimeline";
 import { UnsortedPanel } from "./UnsortedPanel";
 import matrixStyles from "./SlotMatrix.module.css";
 import { fetchEmails } from "../../emails/api";
-import { getProductionStatus } from "../../emails/productionStatus";
+import { withProductionStatus } from "../../emails/productionStatus";
 import { ManageStagesModal } from "./ManageStagesModal";
 import { canEditEmailContent } from "../../emails/permissions";
 import { useBoardHomeData } from "./useBoardHomeData";
@@ -315,10 +315,9 @@ function EmailBoardApp({
   const handleOpenVersionGroup = (_groupKey: string, emailId: string) => {
     setPanelEmailId(emailId);
   };
-  const unsortedEmails = (unsortedQuery.data ?? []).map((email) => ({
-    ...email,
-    production_status: getProductionStatus(email, activeBoard?.portal_synced_at),
-  }));
+  const unsortedEmails = (unsortedQuery.data ?? []).map((email) =>
+    withProductionStatus(email, activeBoard?.portal_synced_at)
+  );
   const boardGroup = panelEmailId
     ? columns.flatMap((c) => c.emailGroups).find((g) => g.versions.some((v) => v.id === panelEmailId))
     : undefined;
