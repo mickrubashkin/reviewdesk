@@ -6,6 +6,10 @@ The newest changes first. A dot on your account menu means there is something he
 
 - **Create from EN** in the Matrix view is always shown in an empty cell, not only when you point at the row. See [Translations](translations.md).
 
+## 2026-11-03
+
+- An email marked **Live (manual)** no longer shows **to upload** or sits in **My tasks → To upload to Bitrix24**. See [Mark live by hand](bitrix24-upload.md#mark-live-by-hand).
+
 ## 2026-11-01
 
 - A comment is an **Issue** or a **Suggestion**; **Blocking** is gone, and blocking comments became issues. Open comments no longer stop an email from being marked ready. See [Comments](comments.md).

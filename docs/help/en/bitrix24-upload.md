@@ -20,7 +20,7 @@ After the upload the status line shows **Expected from …**: the robot sends on
 
 ## Mark live by hand
 
-For an email the portal sync cannot see (sent some other way), a CRM operator can mark it live by hand in **Details**. It shows as **Live (manual)**.
+For an email the portal sync cannot see (sent some other way, e.g. from the admin panel), a CRM operator can mark it live by hand in **Details**. It shows as **Live (manual)** and no longer asks for an upload: no **to upload** or **re-upload**, and it leaves **My tasks → To upload to Bitrix24**. When you change such an email, paste the new version wherever it is sent from yourself.
 
 ## Portal sync
 
