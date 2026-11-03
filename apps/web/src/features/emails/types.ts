@@ -23,6 +23,7 @@ export type EmailListItem = {
   implementation_notes: string | null;
   open_comment_count: number;
   portal_send_count: number;
+  portal_sends_30d?: number;
   portal_last_sent_at: string | null;
   // The EN master this email translates, and whether its text changed since.
   translation_of: string | null;

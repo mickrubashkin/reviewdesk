@@ -1,6 +1,6 @@
 import { Badge, Tooltip } from "@mantine/core";
 
-import { firstSendPart } from "./statusSummary";
+import { firstSendPart, portalSendsText } from "./statusSummary";
 import type { EmailListItem } from "./types";
 
 // ProductionBadge shows whether robots actually send an email, from the last
@@ -29,9 +29,7 @@ export function ProductionBadge({ email, versions }: { email: EmailListItem; ver
     case "live":
       return (
         <Tooltip
-          label={`Sent ${email.portal_send_count} times in the synced period${
-            email.portal_last_sent_at ? `, last on ${new Date(email.portal_last_sent_at).toLocaleDateString()}` : ""
-          }`}
+          label={portalSendsText(email)}
         >
           <Badge color="green" size="xs" style={{ flexShrink: 0 }} variant="light">
             Live · {email.portal_send_count}
@@ -56,7 +54,7 @@ export function ProductionBadge({ email, versions }: { email: EmailListItem; ver
         );
       }
       return (
-        <Tooltip label="Not sent by CRM robots in the last synced period">
+        <Tooltip label="The portal sync has not seen CRM robots send it">
           <Badge color="gray" size="xs" style={{ flexShrink: 0 }} variant="outline">
             Not seen
           </Badge>

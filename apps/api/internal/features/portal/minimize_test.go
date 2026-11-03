@@ -67,7 +67,6 @@ func TestMinimizeSentEmailsKeepsOnlyRedactedSamples(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	now := time.Now().UTC()
-	since := now.AddDate(0, 0, -90)
 	body := `<p>Hi Maria,</p><p>Reply to maria@example.org</p>`
 	insert := func(id int64, sentAt time.Time) {
 		t.Helper()
@@ -79,8 +78,9 @@ func TestMinimizeSentEmailsKeepsOnlyRedactedSamples(t *testing.T) {
 		}
 	}
 	insert(9000001, now.AddDate(0, 0, -200)) // old sample: kept, redacted
-	insert(9000002, now.AddDate(0, 0, -150)) // old copy: deleted
-	insert(9000003, now.AddDate(0, 0, -10))  // recent copy: body cleared
+	insert(9000002, now.AddDate(0, 0, -SendRetentionDays-10)) // copy past retention: deleted
+	insert(9000003, now.AddDate(0, 0, -10))                    // recent copy: body cleared
+	insert(9000004, now.AddDate(0, 0, -SendRetentionDays+10)) // older than any sync window, within retention: kept
 
 	if _, err := db.Exec(ctx, `
 		INSERT INTO portal_email_groups (board_key, fingerprint, subject, sample_activity_id, first_sent_at, last_sent_at)
@@ -89,7 +89,7 @@ func TestMinimizeSentEmailsKeepsOnlyRedactedSamples(t *testing.T) {
 		t.Fatalf("insert group: %v", err)
 	}
 
-	if err := minimizeSentEmails(ctx, db, board, since); err != nil {
+	if err := minimizeSentEmails(ctx, db, board, now); err != nil {
 		t.Fatalf("minimize: %v", err)
 	}
 
@@ -110,6 +110,9 @@ func TestMinimizeSentEmailsKeepsOnlyRedactedSamples(t *testing.T) {
 
 	if _, ok := bodies[9000002]; ok {
 		t.Fatal("expected the old non-sample copy to be deleted")
+	}
+	if got, ok := bodies[9000004]; !ok || got != "" {
+		t.Fatalf("expected the copy within retention to be kept without its body, got %q %v", got, ok)
 	}
 	if got := bodies[9000003]; got != "" {
 		t.Fatalf("expected the recent non-sample body to be cleared, got %q", got)

@@ -15,7 +15,7 @@ Every email has one status line, read left to right: what goes out now, what is 
 
 | You see | It means |
 |---|---|
-| **Live v3** | Robots send it; Bitrix24 has version 3. |
+| **Live v3** | Robots send it; Bitrix24 has version 3. Hover it for the sends of the last 30 days and the last send. |
 | **Live (manual)** | A CRM operator marked it live; the portal does not see it sent. |
 | **v4 draft** | Version 4 is being edited. |
 | **v4 ready** | Version 4 is final and can go to Bitrix24. |
@@ -24,7 +24,7 @@ Every email has one status line, read left to right: what goes out now, what is 
 | **Expected from 12 Nov** | Just pasted into a robot. A robot sends only to deals that enter the stage after it was set up, so the first send cannot come earlier. |
 | **No send since 12 Nov** | It should have been sent by now. Maybe no deal reached the stage, the robot's condition did not hold or the robot is not set up. Check it in Bitrix24. |
 | **Other version live** | This one is not sent; another version of the same slot is. |
-| **Not sent** | The robots did not send it in the synced period. |
+| **Not sent** | The portal sync has not seen the robots send it. |
 | **EN changed** | The English email changed after this translation. See [Translations](translations.md). |
 | **reference changed** | The reference region's email changed after this one matched it. See [Regions](regions.md). |
 

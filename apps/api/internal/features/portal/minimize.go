@@ -57,11 +57,16 @@ func RedactPartnerData(body string) string {
 	})
 }
 
-// minimizeSentEmails runs at the end of a sync. It deletes copies sent before
-// the sync window, clears the bodies of all copies but each group's sample, and
-// redacts the samples. Samples are kept even when old: groups and their
-// decisions point at them.
-func minimizeSentEmails(ctx context.Context, db *pgxpool.Pool, boardKey string, since time.Time) error {
+// SendRetentionDays is how long a send is kept: its date, deal and stage feed
+// the send statistics. Only the group samples keep a body.
+const SendRetentionDays = 180
+
+// minimizeSentEmails runs at the end of a sync. It deletes copies sent more
+// than SendRetentionDays before now, clears the bodies of all copies but each
+// group's sample, and redacts the samples. Samples are kept even when old:
+// groups and their decisions point at them.
+func minimizeSentEmails(ctx context.Context, db *pgxpool.Pool, boardKey string, now time.Time) error {
+	since := now.AddDate(0, 0, -SendRetentionDays)
 	if _, err := db.Exec(ctx, `
 		DELETE FROM portal_sent_emails s
 		WHERE s.board_key = $1

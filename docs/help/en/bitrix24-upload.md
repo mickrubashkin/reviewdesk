@@ -24,4 +24,4 @@ For an email the portal sync cannot see (sent some other way, e.g. from the admi
 
 ## Portal sync
 
-**Settings → Portal sync** imports what the robots actually sent. It runs every night when it is turned on for the board, or by hand. One sync per board runs at a time.
+**Settings → Portal sync** imports what the robots actually sent. It runs every night when it is turned on for the board, or by hand. One sync per board runs at a time. Each send (its date, deal and stage, not the text) is kept for 180 days, for the send counts on the emails.

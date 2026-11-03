@@ -59,9 +59,7 @@ export function emailStatusParts(email: EmailListItem, versions: EmailListItem[]
   if (status === "live" || status === "live_manual") {
     const sends =
       status === "live"
-        ? `Sent ${email.portal_send_count} times in the synced period${
-            email.portal_last_sent_at ? `, last on ${new Date(email.portal_last_sent_at).toLocaleDateString()}` : ""
-          }`
+        ? portalSendsText(email)
         : "Marked as live by hand";
     parts.push({
       label: `Live${uploaded !== null ? ` v${uploaded}` : ""}${status === "live_manual" ? " (manual)" : ""}`,
@@ -78,7 +76,7 @@ export function emailStatusParts(email: EmailListItem, versions: EmailListItem[]
         ? { label: "Other version live", color: "orange", detail: `This version is not sent; live instead: ${others}.` }
         : email.first_send
           ? firstSendPart(email, email.first_send)
-          : { label: "Not sent", color: "dimmed", detail: "Not sent by CRM robots in the last synced period." }
+          : { label: "Not sent", color: "dimmed", detail: "The portal sync has not seen CRM robots send it." }
     );
     if (uploaded !== null) {
       parts.push({ label: `in Bitrix v${uploaded}`, color: "dimmed", detail: `Bitrix24 has version ${uploaded}.` });
@@ -120,3 +118,17 @@ export function emailStatusParts(email: EmailListItem, versions: EmailListItem[]
   }
   return parts;
 }
+
+// portalSendsText sums up what the portal sync saw sent: the last 30 days,
+// everything it keeps, and the last send.
+export function portalSendsText(email: {
+  portal_send_count: number;
+  portal_sends_30d?: number;
+  portal_last_sent_at: string | null;
+}) {
+  const last = email.portal_last_sent_at ? `, last on ${new Date(email.portal_last_sent_at).toLocaleDateString()}` : "";
+  return `Sent ${email.portal_sends_30d ?? 0} times in the last 30 days (${email.portal_send_count} in the last ${sendRetentionDays} days)${last}`;
+}
+
+// sendRetentionDays mirrors portal.SendRetentionDays on the server.
+const sendRetentionDays = 180;
