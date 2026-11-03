@@ -356,6 +356,7 @@ export function MailPreview({
         draftCommentSeverity={draftCommentSeverity}
         draftInlineEdit={draftInlineEdit}
         draftShared={draftShared}
+        emailId={email.id}
         fieldLimits={fieldLimits}
         inlineEditError={inlineEditError}
         inlineEditErrorMessage={inlineEditErrorMessage}

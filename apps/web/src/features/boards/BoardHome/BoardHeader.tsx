@@ -31,6 +31,7 @@ import {
 import {
   AccountMenu,
   CreateActions,
+  GlossaryMenuItem,
   HelpMenuItem,
   NewMenu,
   ReplayTourMenuItem,
@@ -324,6 +325,7 @@ function CompactHeaderMenu({
             <UserMenuLabel currentUser={currentUser} />
             {!canManage ? <Menu.Item onClick={onExport}>Export…</Menu.Item> : null}
             <HelpMenuItem />
+            <GlossaryMenuItem currentUser={currentUser} />
             <WhatsNewMenuItem currentUser={currentUser} />
             {demoMode ? null : <ReplayTourMenuItem />}
             {canManage ? (

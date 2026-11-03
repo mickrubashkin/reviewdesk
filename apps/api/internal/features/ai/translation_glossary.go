@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/auth"
@@ -80,8 +81,13 @@ func putGlossaryHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func loadGlossary(ctx context.Context, dbpool *pgxpool.Pool) ([]GlossaryTerm, error) {
-	rows, err := dbpool.Query(ctx, `
+// glossaryQuerier is a pool or a transaction.
+type glossaryQuerier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+func loadGlossary(ctx context.Context, db glossaryQuerier) ([]GlossaryTerm, error) {
+	rows, err := db.Query(ctx, `
 		SELECT term, translations, note FROM translation_glossary ORDER BY position;
 	`)
 	if err != nil {
@@ -109,7 +115,14 @@ func saveGlossary(ctx context.Context, dbpool *pgxpool.Pool, terms []GlossaryTer
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := replaceGlossary(ctx, tx, terms, updatedBy); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
+// replaceGlossary writes terms as the whole glossary, in order.
+func replaceGlossary(ctx context.Context, tx pgx.Tx, terms []GlossaryTerm, updatedBy string) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM translation_glossary;`); err != nil {
 		return err
 	}
@@ -125,7 +138,7 @@ func saveGlossary(ctx context.Context, dbpool *pgxpool.Pool, terms []GlossaryTer
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func normalizeGlossary(input []GlossaryTerm) ([]GlossaryTerm, error) {
