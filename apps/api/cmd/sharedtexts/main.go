@@ -7,6 +7,14 @@
 //
 //	go run ./cmd/sharedtexts                                  # dry run, reads DATABASE_URL
 //	go run ./cmd/sharedtexts -apply -actor you@company.com
+//
+// With -drop, -set or -relink it changes existing shared texts instead, and
+// the emails that use them get a new version (ready ones stay ready and wait
+// for a re-upload):
+//
+//	go run ./cmd/sharedtexts -drop signature,login_label   # stop sharing these keys
+//	go run ./cmd/sharedtexts -set values.json              # [{"key", "language", "value"}]
+//	go run ./cmd/sharedtexts -relink -skip-board misc      # fields with their own text take the shared one
 package main
 
 import (
@@ -20,20 +28,36 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/features/emails"
 )
 
 func main() {
 	apply := flag.Bool("apply", false, "write the changes; without it this is a dry run")
 	actor := flag.String("actor", "", "super admin email recorded as the author of new shared texts (required with -apply)")
+	drop := flag.String("drop", "", "comma-separated keys whose shared texts to remove; the fields keep their values")
+	setFile := flag.String("set", "", "JSON file with new values for shared texts: [{\"key\", \"language\", \"value\"}]")
+	relink := flag.Bool("relink", false, "give every field that has a shared text but keeps its own the shared value")
+	skipBoards := flag.String("skip-board", "", "comma-separated boards -relink leaves alone")
 	flag.Parse()
 
-	if err := run(*apply, strings.TrimSpace(*actor)); err != nil {
+	change := emails.SharedTextsChange{Drop: splitList(*drop), Relink: *relink, SkipBoards: splitList(*skipBoards)}
+	if *setFile != "" {
+		values, err := readSetFile(*setFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "sharedtexts: %v\n", err)
+			os.Exit(1)
+		}
+		change.Set = values
+	}
+
+	if err := run(*apply, strings.TrimSpace(*actor), change); err != nil {
 		fmt.Fprintf(os.Stderr, "sharedtexts: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(apply bool, actor string) error {
+func run(apply bool, actor string, change emails.SharedTextsChange) error {
 	if apply && actor == "" {
 		return fmt.Errorf("-actor is required with -apply")
 	}
@@ -48,6 +72,10 @@ func run(apply bool, actor string) error {
 		return err
 	}
 	defer dbpool.Close()
+
+	if len(change.Drop) > 0 || len(change.Set) > 0 || change.Relink {
+		return runChange(ctx, dbpool, change, apply, actor)
+	}
 
 	tx, err := dbpool.Begin(ctx)
 	if err != nil {
