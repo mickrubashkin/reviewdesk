@@ -31,3 +31,8 @@ A sync by hand loads the last **Days back** days. To load a long period, such as
 ## Sends of an email
 
 **Details → Sends** shows how many times the portal sent the email each day, over the last 30, 90 or 180 days, in your time zone. Each color is one text the portal sent: when a re-upload changes the text, the new text gets its own color, so you can see when it started and whether the old one stopped (a robot that was not updated keeps sending the old text). A text is named by the day it was first sent. With more than three texts the older ones are shown together in gray. A CRM operator can open each text in **Portal sync**.
+
+Under the chart:
+
+- **Sent to N deals** sets the sends against the deals they went to. A deal can get the email more than once when it comes back to the stage or a robot repeats the email. When a deal got the same text twice within a day, a yellow note warns that two robots may be sending the email.
+- **By deal stage** counts the sends by the stage the deal was in when the email went out. A stage marked **other stage** mostly sends the emails of another stage of the board: check the robot that sends this email from it. The mark appears only when the email also went out from a stage of its own, since an email sent only from one stage may just sit in a stage of the board named differently.
