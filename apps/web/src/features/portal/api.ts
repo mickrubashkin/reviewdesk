@@ -6,6 +6,7 @@ export type PortalSyncRun = {
   id: string;
   category_id: number;
   days: number;
+  until_days?: number;
   status: "running" | "done" | "failed";
   progress: string;
   activities_seen: number;
@@ -98,7 +99,7 @@ export function fetchPortalOverview(boardKey: string): Promise<PortalOverview> {
   return fetchJson<PortalOverview>(`/api/boards/${encodeURIComponent(boardKey)}/portal`);
 }
 
-export function startPortalSync(boardKey: string, payload: { category_id: number; days: number }) {
+export function startPortalSync(boardKey: string, payload: { category_id: number; days: number; until_days: number }) {
   return fetchJson<{ run_id: string }>(`/api/boards/${encodeURIComponent(boardKey)}/portal/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

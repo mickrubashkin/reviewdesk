@@ -71,6 +71,7 @@ func listCategoriesHandler() http.HandlerFunc {
 type startSyncRequest struct {
 	CategoryID int `json:"category_id"`
 	Days       int `json:"days"`
+	UntilDays  int `json:"until_days"`
 }
 
 func startSyncHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
@@ -84,8 +85,9 @@ func startSyncHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		if request.Days <= 0 || request.Days > 365 {
-			http.Error(w, "days must be between 1 and 365", http.StatusBadRequest)
+		options := SyncOptions{BoardKey: chi.URLParam(r, "boardKey"), CategoryID: request.CategoryID, Days: request.Days, UntilDays: request.UntilDays}
+		if err := options.ValidateRange(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		client, err := NewClientFromEnv()
@@ -94,7 +96,6 @@ func startSyncHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		options := SyncOptions{BoardKey: chi.URLParam(r, "boardKey"), CategoryID: request.CategoryID, Days: request.Days}
 		runID, err := BeginRun(r.Context(), dbpool, options, user.Email)
 		if errors.Is(err, ErrSyncRunning) {
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -150,6 +151,7 @@ type syncRun struct {
 	ID             string     `json:"id"`
 	CategoryID     int        `json:"category_id"`
 	Days           int        `json:"days"`
+	UntilDays      int        `json:"until_days"`
 	Status         string     `json:"status"`
 	Progress       string     `json:"progress"`
 	ActivitiesSeen int        `json:"activities_seen"`
@@ -239,10 +241,10 @@ func loadBoardOverview(ctx context.Context, db *pgxpool.Pool, boardKey string) (
 
 	var run syncRun
 	err := db.QueryRow(ctx, `
-		SELECT id, category_id, days, status, progress, activities_seen, emails_stored, groups_count,
+		SELECT id, category_id, days, until_days, status, progress, activities_seen, emails_stored, groups_count,
 			error, started_by_email, started_at, finished_at
 		FROM portal_sync_runs WHERE board_key = $1 ORDER BY started_at DESC LIMIT 1;
-	`, boardKey).Scan(&run.ID, &run.CategoryID, &run.Days, &run.Status, &run.Progress, &run.ActivitiesSeen,
+	`, boardKey).Scan(&run.ID, &run.CategoryID, &run.Days, &run.UntilDays, &run.Status, &run.Progress, &run.ActivitiesSeen,
 		&run.EmailsStored, &run.GroupsCount, &run.Error, &run.StartedBy, &run.StartedAt, &run.FinishedAt)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return overview, err

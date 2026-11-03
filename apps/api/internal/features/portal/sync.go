@@ -3,7 +3,9 @@ package portal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,7 +27,31 @@ const (
 type SyncOptions struct {
 	BoardKey   string
 	CategoryID int
-	Days       int
+	// Days and UntilDays bound the sends to load: from Days to UntilDays
+	// days ago. UntilDays 0 loads up to now.
+	Days      int
+	UntilDays int
+}
+
+// ValidateRange checks the days to load: at most a year back, and a range
+// that is not empty.
+func (o SyncOptions) ValidateRange() error {
+	switch {
+	case o.Days < 1 || o.Days > 365:
+		return errors.New("days must be between 1 and 365")
+	case o.UntilDays < 0 || o.UntilDays >= o.Days:
+		return errors.New("until days must be 0 or more and less than days")
+	}
+	return nil
+}
+
+// activityDateFilter limits crm.activity.list to the sends of the range.
+func activityDateFilter(now time.Time, options SyncOptions) map[string]any {
+	filter := map[string]any{">=CREATED": now.AddDate(0, 0, -options.Days).UTC().Format(time.RFC3339)}
+	if options.UntilDays > 0 {
+		filter["<CREATED"] = now.AddDate(0, 0, -options.UntilDays).UTC().Format(time.RFC3339)
+	}
+	return filter
 }
 
 // Sync mirrors the CRM robot emails of one deal category into the portal
@@ -62,8 +88,12 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 		return err
 	}
 
-	sinceTime := time.Now().AddDate(0, 0, -options.Days).UTC()
-	since := sinceTime.Format(time.RFC3339)
+	listFilter := map[string]any{
+		"OWNER_TYPE_ID": 2, // deal
+		"TYPE_ID":       4, // email
+		"DIRECTION":     2, // outgoing
+	}
+	maps.Copy(listFilter, activityDateFilter(time.Now(), options))
 	categoryByDeal := map[int64]int{}
 	dealsWithEmails := map[int64]bool{}
 	seen := 0
@@ -72,13 +102,8 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 	// Pass 1: a light list (no bodies) to find which emails belong to the
 	// funnel. Most outgoing deal emails are from other funnels.
 	err = client.List(ctx, "crm.activity.list", map[string]any{
-		"order": map[string]any{"ID": "ASC"},
-		"filter": map[string]any{
-			"OWNER_TYPE_ID": 2, // deal
-			"TYPE_ID":       4, // email
-			"DIRECTION":     2, // outgoing
-			">=CREATED":     since,
-		},
+		"order":  map[string]any{"ID": "ASC"},
+		"filter": listFilter,
 		"select": []string{"ID", "OWNER_ID"},
 	}, func(page json.RawMessage) error {
 		var activities []struct {
