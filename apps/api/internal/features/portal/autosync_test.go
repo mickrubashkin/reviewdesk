@@ -116,3 +116,44 @@ func TestSaveSyncSettings(t *testing.T) {
 		t.Fatalf("unknown board: got %v, want errBoardNotFound", err)
 	}
 }
+
+func TestFailInterruptedRunsClosesServerRunsOnly(t *testing.T) {
+	dbpool := testPool(t)
+	ctx := context.Background()
+	const serverBoard, cliBoard = "restart-test-server", "restart-test-cli"
+	cleanup := func() {
+		_, _ = dbpool.Exec(ctx, `DELETE FROM portal_sync_runs WHERE board_key IN ($1, $2);`, serverBoard, cliBoard)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	serverRun, err := BeginRun(ctx, dbpool, SyncOptions{BoardKey: serverBoard, CategoryID: 10, Days: 180, UntilDays: 120}, "a@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cliRun, err := BeginRun(ctx, dbpool, SyncOptions{BoardKey: cliBoard, CategoryID: 10, Days: 3}, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := FailInterruptedRuns(ctx, dbpool); err != nil {
+		t.Fatal(err)
+	}
+	status := func(id string) string {
+		var s string
+		if err := dbpool.QueryRow(ctx, `SELECT status FROM portal_sync_runs WHERE id = $1;`, id).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	if got := status(serverRun); got != "failed" {
+		t.Errorf("run of the stopped server: got %s, want failed", got)
+	}
+	if got := status(cliRun); got != "running" {
+		t.Errorf("cmd/portalsync run: got %s, want running", got)
+	}
+	// The board is free again at once, not half an hour later.
+	if _, err := BeginRun(ctx, dbpool, SyncOptions{BoardKey: serverBoard, CategoryID: 10, Days: 3}, "a@example.com"); err != nil {
+		t.Fatalf("run after the restart: %v", err)
+	}
+}

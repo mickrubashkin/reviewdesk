@@ -21,6 +21,19 @@ const syncTimeout = 30 * time.Minute
 
 var ErrSyncRunning = errors.New("a sync for this board is already running")
 
+// FailInterruptedRuns marks as failed the runs a previous server process left
+// "running": a sync runs inside the server, so a restart or deploy ends it
+// and nothing would ever finish the row, which blocks the board's next sync.
+// Runs of cmd/portalsync go on in their own process and are left alone.
+func FailInterruptedRuns(ctx context.Context, db *pgxpool.Pool) (int64, error) {
+	tag, err := db.Exec(ctx, `
+		UPDATE portal_sync_runs
+		SET status = 'failed', error = 'interrupted by a server restart', finished_at = now()
+		WHERE status = 'running' AND started_by_email <> 'cli';
+	`)
+	return tag.RowsAffected(), err
+}
+
 // BeginRun records a new running sync for the board. The database allows one
 // running sync per board, so a concurrent start gets ErrSyncRunning.
 func BeginRun(ctx context.Context, db *pgxpool.Pool, options SyncOptions, startedBy string) (string, error) {
