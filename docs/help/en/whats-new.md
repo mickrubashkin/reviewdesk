@@ -2,6 +2,10 @@
 
 The newest changes first. A dot on your account menu means there is something here you have not read yet.
 
+## 2026-11-03
+
+- **Create from EN** in the Matrix view is always shown in an empty cell, not only when you point at the row. See [Translations](translations.md).
+
 ## 2026-11-01
 
 - A comment is an **Issue** or a **Suggestion**; **Blocking** is gone, and blocking comments became issues. Open comments no longer stop an email from being marked ready. See [Comments](comments.md).

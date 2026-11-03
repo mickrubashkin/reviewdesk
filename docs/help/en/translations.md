@@ -5,7 +5,7 @@ EN is the source of every email. A translation is linked to the EN email it came
 ## Create a translation
 
 1. Open the board in the **Matrix** view. An empty cell is a language the slot does not have yet.
-2. Click **Create from EN** in the empty cell.
+2. Click the translate icon (**Create from EN**) in the empty cell. It is there for the languages AI translates into (DE, ES, PL, BR) when the slot has an EN email and you can edit that language.
 3. Choose:
    - **Translate and create** — AI translates the subject, the preheader and every text field into a new draft. Terms from the translation glossary are kept; fields where Bitrix24 expressions would break stay in English.
    - **Create with EN text** — a draft with the English text, to translate by hand.

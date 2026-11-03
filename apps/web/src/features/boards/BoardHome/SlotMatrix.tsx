@@ -589,7 +589,7 @@ function MatrixCell({
           </Text>
           {onTranslate ? (
             <Tooltip label="Create from EN">
-              <ActionIcon aria-label="Create from EN" className={styles.editSlot} color="gray" size="sm" variant="subtle" onClick={onTranslate}>
+              <ActionIcon aria-label="Create from EN" size="sm" variant="light" onClick={onTranslate}>
                 <TranslateIcon aria-hidden="true" size={14} />
               </ActionIcon>
             </Tooltip>
