@@ -78,6 +78,13 @@ func main() {
 	comments.Mailer = emails.NewNotificationSender()
 	comments.RegisterCommentRoutes(r, dbpool)
 	ai.RegisterAIRoutes(r, dbpool, aiService)
+	// A sync runs inside the server; one a restart cut off would block its
+	// board for half an hour.
+	if n, err := portal.FailInterruptedRuns(ctx, dbpool); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to close interrupted portal syncs: %v\n", err)
+	} else if n > 0 {
+		fmt.Printf("Closed %d portal syncs interrupted by the restart\n", n)
+	}
 	portal.RegisterRoutes(r, dbpool)
 	if os.Getenv("PORTAL_AUTOSYNC_ENABLED") == "true" {
 		go portal.RunAutoSync(ctx, dbpool)
