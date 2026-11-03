@@ -211,6 +211,20 @@ export type StageSends = {
   other: boolean;
 };
 
+// One email of the slot with its sends over the same period. region_name is
+// "" off a board with regions; last_sent_at is the last send ever seen.
+export type SlotVersionSends = {
+  email_id: string;
+  title: string;
+  language: string;
+  variant: string;
+  region_name: string;
+  reference: boolean;
+  sends: number;
+  deals: number;
+  last_sent_at: string | null;
+};
+
 // An email's sends per day and text, counted in the viewer's time zone;
 // since and until are the first and last day (YYYY-MM-DD). deals: repeated
 // got the email more than once, doubled got the same text twice in a day.
@@ -222,6 +236,8 @@ export type EmailSends = {
   daily: Array<{ date: string; group_id: string; sends: number }>;
   stages: StageSends[];
   deals: { deals: number; repeated: number; doubled: number };
+  // The emails of the slot to compare, this one included.
+  versions: SlotVersionSends[];
 };
 
 export function fetchEmailSends(emailID: string, days: number): Promise<EmailSends> {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { EmailSends, SentText } from "./api";
-import { buildSendsChart, earlierKey, periodDays, seriesTotals } from "./emailSends";
+import type { EmailSends, SentText, SlotVersionSends } from "./api";
+import { buildSendsChart, earlierKey, periodDays, seriesTotals, versionLabel } from "./emailSends";
 
 function text(id: string, firstSentAt: string): SentText {
   return {
@@ -20,7 +20,7 @@ describe("periodDays", () => {
   });
 });
 
-const noStagesOrDeals = { stages: [], deals: { deals: 0, repeated: 0, doubled: 0 } };
+const noStagesOrDeals = { stages: [], deals: { deals: 0, repeated: 0, doubled: 0 }, versions: [] };
 
 describe("buildSendsChart", () => {
   it("fills days without sends with zeros, one column per text", () => {
@@ -90,5 +90,31 @@ describe("seriesTotals", () => {
       ],
     };
     expect(seriesTotals(series)).toEqual({ sends: 5, lastSentAt: "2026-09-01T09:00:00Z" });
+  });
+});
+
+describe("versionLabel", () => {
+  const version = (fields: Partial<SlotVersionSends>): SlotVersionSends => ({
+    email_id: "1",
+    title: "Welcome",
+    language: "en",
+    variant: "new",
+    region_name: "",
+    reference: false,
+    sends: 0,
+    deals: 0,
+    last_sent_at: null,
+    ...fields,
+  });
+
+  it("names versions by language off a board with regions", () => {
+    expect(versionLabel(version({}))).toBe("EN · new");
+    expect(versionLabel(version({ variant: "old" }))).toBe("EN · old");
+  });
+
+  it("names versions by region on a board with regions", () => {
+    expect(versionLabel(version({ region_name: "Brazil", language: "br" }))).toBe("Brazil");
+    expect(versionLabel(version({ region_name: "Global", reference: true }))).toBe("Global (reference)");
+    expect(versionLabel(version({ region_name: "Brazil", variant: "old" }))).toBe("Brazil · old");
   });
 });

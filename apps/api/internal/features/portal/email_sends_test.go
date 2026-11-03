@@ -225,3 +225,108 @@ func TestLoadEmailSendsCountsStagesAndDeals(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadEmailSendsComparesSlotVersions(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is required for portal integration tests")
+	}
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	const plain, regional = "sends-slot-test", "sends-slot-regions"
+	cleanup := func() {
+		for _, board := range []string{plain, regional} {
+			_, _ = db.Exec(ctx, `DELETE FROM portal_email_groups WHERE board_key = $1;`, board)
+			_, _ = db.Exec(ctx, `DELETE FROM portal_sent_emails WHERE board_key = $1;`, board)
+			_, _ = db.Exec(ctx, `DELETE FROM emails WHERE sequence = $1;`, board)
+			_, _ = db.Exec(ctx, `DELETE FROM board_regions WHERE board_key = $1;`, board)
+			_, _ = db.Exec(ctx, `DELETE FROM boards WHERE key = $1;`, board)
+		}
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	email := func(board, slug, language, variant, region string, sortOrder int, archived bool) string {
+		t.Helper()
+		var id string
+		if err := db.QueryRow(ctx, `
+			INSERT INTO emails (slug, title, sequence, stage, sort_order, language, variant, region_key, original_html, template_html, archived_at)
+			VALUES ($1, $1, $2, 'intro', $3, $4, $5, NULLIF($6, ''), '<p>x</p>', '<p>x</p>', CASE WHEN $7 THEN now() END)
+			RETURNING id;
+		`, slug, board, sortOrder, language, variant, region, archived).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	var activity int64 = 9300000
+	sends := func(board, emailID string, deals ...int64) {
+		t.Helper()
+		fingerprint := "fp-" + emailID
+		if _, err := db.Exec(ctx, `
+			INSERT INTO portal_email_groups (board_key, fingerprint, sample_activity_id, first_sent_at, last_sent_at, match_email_id, match_status)
+			VALUES ($1, $2, 1, $3, $3, $4, 'matched');
+		`, board, fingerprint, now.AddDate(0, 0, -1), emailID); err != nil {
+			t.Fatal(err)
+		}
+		for _, deal := range deals {
+			activity++
+			if _, err := db.Exec(ctx, `
+				INSERT INTO portal_sent_emails (activity_id, board_key, deal_id, sent_at, body_html, fingerprint)
+				VALUES ($1, $2, $3, $4, '', $5);
+			`, activity, board, deal, now.AddDate(0, 0, -1), fingerprint); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	type version struct {
+		id    string
+		sends int
+		deals int
+	}
+	check := func(name, emailID string, want []version) {
+		t.Helper()
+		got, err := LoadEmailSends(ctx, db, emailID, 30, time.UTC, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Versions) != len(want) {
+			t.Fatalf("%s: versions = %+v", name, got.Versions)
+		}
+		for i, w := range want {
+			if v := got.Versions[i]; v.EmailID != w.id || v.Sends != w.sends || v.Deals != w.deals {
+				t.Errorf("%s: versions[%d] = %+v, want %+v", name, i, v, w)
+			}
+		}
+	}
+
+	// Without regions: the versions in the email's language, new first.
+	oldEN := email(plain, "sends-slot-old", "en", "old", "", 9990, false)
+	newEN := email(plain, "sends-slot-new", "en", "new", "", 9990, false)
+	email(plain, "sends-slot-es", "es", "new", "", 9990, false)
+	email(plain, "sends-slot-gone", "en", "new", "", 9990, true)
+	email(plain, "sends-slot-next", "en", "new", "", 9991, false)
+	sends(plain, oldEN, 1, 1, 2)
+	check("plain", newEN, []version{{newEN, 0, 0}, {oldEN, 3, 2}})
+
+	// With regions: every region's email, the reference first.
+	if _, err := db.Exec(ctx, `INSERT INTO boards (key, name) VALUES ($1, 'Regions');`, regional); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `
+		INSERT INTO board_regions (board_key, key, name, language, reference, sort_order)
+		VALUES ($1, 'br', 'Brazil', 'br', false, 1), ($1, 'ref', 'Reference', 'en', true, 2);
+	`, regional); err != nil {
+		t.Fatal(err)
+	}
+	br := email(regional, "sends-slot-br", "br", "new", "br", 9990, false)
+	ref := email(regional, "sends-slot-ref", "en", "new", "ref", 9990, false)
+	sends(regional, br, 5)
+	sends(regional, ref, 6, 7)
+	check("regions", br, []version{{ref, 2, 2}, {br, 1, 1}})
+}

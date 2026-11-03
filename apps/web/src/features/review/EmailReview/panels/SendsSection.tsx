@@ -1,11 +1,11 @@
-import { Alert, Anchor, Badge, Group, Loader, SegmentedControl, Stack, Text, Tooltip } from "@mantine/core";
+import { Alert, Anchor, Badge, Group, Loader, SegmentedControl, Stack, Table, Text, Tooltip } from "@mantine/core";
 import { BarChart } from "@mantine/charts";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchEmailSends, type EmailSends } from "../../../portal/api";
-import { buildSendsChart, formatDay, seriesTotals } from "../../../portal/emailSends";
+import { buildSendsChart, formatDay, seriesTotals, versionLabel } from "../../../portal/emailSends";
 import { formatCommentDate } from "../EmailReview.helpers";
 import styles from "../EmailReview.module.css";
 
@@ -46,9 +46,12 @@ export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync
           Sends could not be loaded.
         </Text>
       ) : total === 0 ? (
-        <Text c="dimmed" size="xs">
-          The portal sync saw no sends of this email in the last {days} days.
-        </Text>
+        <>
+          <Text c="dimmed" size="xs">
+            The portal sync saw no sends of this email in the last {days} days.
+          </Text>
+          <SlotVersions emailId={emailId} versions={query.data.versions} />
+        </>
       ) : (
         <>
           <Text c="dimmed" size="xs">
@@ -96,6 +99,7 @@ export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync
           </Stack>
           <SendDeals deals={query.data.deals} />
           <SendStages stages={query.data.stages} />
+          <SlotVersions emailId={emailId} versions={query.data.versions} />
         </>
       )}
     </Stack>
@@ -156,6 +160,62 @@ function SendStages({ stages }: { stages: EmailSends["stages"] }) {
           ) : null}
         </Group>
       ))}
+    </Stack>
+  );
+}
+
+const lastSendFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+
+// SlotVersions sets the email against the other emails of its slot over the
+// same period: old and new, or each region against the reference. It answers
+// whether an old text is still going out.
+function SlotVersions({ emailId, versions }: { emailId: string; versions: EmailSends["versions"] }) {
+  if (versions.length < 2) {
+    return null;
+  }
+  return (
+    <Stack gap={2}>
+      <Text fw={600} size="xs">
+        Versions of this slot
+      </Text>
+      <Table fz="xs" horizontalSpacing={4} verticalSpacing={2} withRowBorders={false}>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Version</Table.Th>
+            <Table.Th ta="right">Sends</Table.Th>
+            <Table.Th ta="right">Deals</Table.Th>
+            <Table.Th ta="right">Last send</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {versions.map((version) => {
+            const current = version.email_id === emailId;
+            return (
+              <Table.Tr key={version.email_id} fw={current ? 600 : undefined}>
+                <Table.Td>
+                  {current ? (
+                    `${versionLabel(version)} (this email)`
+                  ) : (
+                    <Anchor
+                      component={Link}
+                      fz="xs"
+                      title={version.title}
+                      to={`/emails/${encodeURIComponent(version.email_id)}/review`}
+                    >
+                      {versionLabel(version)}
+                    </Anchor>
+                  )}
+                </Table.Td>
+                <Table.Td ta="right">{version.sends}</Table.Td>
+                <Table.Td ta="right">{version.deals}</Table.Td>
+                <Table.Td ta="right">
+                  {version.last_sent_at ? lastSendFormat.format(new Date(version.last_sent_at)) : "Never"}
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
     </Stack>
   );
 }

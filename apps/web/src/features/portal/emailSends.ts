@@ -1,4 +1,4 @@
-import type { EmailSends, SentText } from "./api";
+import type { EmailSends, SentText, SlotVersionSends } from "./api";
 
 // Series colors: the first three slots of the categorical palette, which stay
 // apart for color-blind readers in any pair. Texts folded together are gray.
@@ -91,4 +91,14 @@ export function seriesTotals(series: SendsSeries) {
     sends: series.texts.reduce((sum, text) => sum + text.sends, 0),
     lastSentAt: series.texts.reduce((last, text) => (text.last_sent_at > last ? text.last_sent_at : last), ""),
   };
+}
+
+// versionLabel names an email among the versions of its slot: by region on a
+// board with regions, by language otherwise; old variants say so.
+export function versionLabel(version: SlotVersionSends): string {
+  const old = version.variant === "old" ? " · old" : "";
+  if (version.region_name) {
+    return `${version.region_name}${version.reference ? " (reference)" : ""}${old}`;
+  }
+  return `${version.language.toUpperCase()}${old || " · new"}`;
 }

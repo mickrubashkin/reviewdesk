@@ -58,6 +58,21 @@ type SendDeals struct {
 	Doubled int `json:"doubled"`
 }
 
+// SlotVersionSends counts the sends of one email of the slot over the same
+// period, to set the email against its other versions.
+type SlotVersionSends struct {
+	EmailID    string `json:"email_id"`
+	Title      string `json:"title"`
+	Language   string `json:"language"`
+	Variant    string `json:"variant"`
+	RegionName string `json:"region_name"`
+	Reference  bool   `json:"reference"`
+	Sends      int    `json:"sends"`
+	Deals      int    `json:"deals"`
+	// LastSentAt is the last send the sync saw, also before the period.
+	LastSentAt *time.Time `json:"last_sent_at"`
+}
+
 // EmailSends are an email's sends per day and text over the last Days days,
 // counted in the viewer's time zone. Since and Until are the first and last
 // day of the period.
@@ -69,6 +84,8 @@ type EmailSends struct {
 	Daily  []DailySends `json:"daily"`
 	Stages []StageSends `json:"stages"`
 	Deals  SendDeals    `json:"deals"`
+	// Versions are the emails of the slot to compare, this one included.
+	Versions []SlotVersionSends `json:"versions"`
 }
 
 // tiedEmailID is the email a portal group's sends count for, the same way the
@@ -85,12 +102,13 @@ func LoadEmailSends(ctx context.Context, db *pgxpool.Pool, emailID string, days 
 	local := now.In(loc)
 	since := time.Date(local.Year(), local.Month(), local.Day()-days+1, 0, 0, 0, 0, loc)
 	result := EmailSends{
-		Days:   days,
-		Since:  since.Format(time.DateOnly),
-		Until:  local.Format(time.DateOnly),
-		Texts:  []SentText{},
-		Daily:  []DailySends{},
-		Stages: []StageSends{},
+		Days:     days,
+		Since:    since.Format(time.DateOnly),
+		Until:    local.Format(time.DateOnly),
+		Texts:    []SentText{},
+		Daily:    []DailySends{},
+		Stages:   []StageSends{},
+		Versions: []SlotVersionSends{},
 	}
 
 	rows, err := db.Query(ctx, `
@@ -127,8 +145,56 @@ func LoadEmailSends(ctx context.Context, db *pgxpool.Pool, emailID string, days 
 	if result.Stages, err = loadSendStages(ctx, db, emailID, since); err != nil {
 		return result, err
 	}
-	result.Deals, err = loadSendDeals(ctx, db, emailID, since)
+	if result.Deals, err = loadSendDeals(ctx, db, emailID, since); err != nil {
+		return result, err
+	}
+	result.Versions, err = loadSlotVersions(ctx, db, emailID, since)
 	return result, err
+}
+
+// loadSlotVersions counts the sends since then of every email of the slot
+// the email can be set against: on a board with regions each region's email,
+// the reference first; otherwise the versions in the email's language, old
+// and new. Archived emails are left out, except the email itself.
+func loadSlotVersions(ctx context.Context, db *pgxpool.Pool, emailID string, since time.Time) ([]SlotVersionSends, error) {
+	rows, err := db.Query(ctx, `
+		WITH target AS (
+			SELECT sequence, stage, sort_order, language,
+				EXISTS (SELECT 1 FROM board_regions WHERE board_key = emails.sequence) AS regions
+			FROM emails WHERE id = $1
+		), versions AS (
+			SELECT e.id, e.title, e.language, e.variant, COALESCE(r.name, '') AS region_name,
+				COALESCE(r.reference, false) AS reference, r.sort_order AS region_order
+			FROM emails e
+			CROSS JOIN target t
+			LEFT JOIN board_regions r ON r.board_key = e.sequence AND r.key = e.region_key
+			WHERE e.sequence IS NOT DISTINCT FROM t.sequence AND e.stage IS NOT DISTINCT FROM t.stage
+				AND e.sort_order = t.sort_order
+				AND (e.archived_at IS NULL OR e.id = $1)
+				AND (t.regions OR e.language = t.language)
+		)
+		SELECT v.id::text, v.title, v.language, v.variant, v.region_name, v.reference,
+			count(s.activity_id)::int, count(DISTINCT s.deal_id)::int, max(g.last_sent_at)
+		FROM versions v
+		LEFT JOIN portal_email_groups g ON `+tiedEmailID+` = v.id
+		LEFT JOIN portal_sent_emails s ON s.board_key = g.board_key AND s.fingerprint = g.fingerprint AND s.sent_at >= $2
+		GROUP BY v.id, v.title, v.language, v.variant, v.region_name, v.reference, v.region_order
+		ORDER BY v.reference DESC, v.region_order NULLS LAST, v.region_name, v.variant = 'old', v.language, v.id;
+	`, emailID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	versions := []SlotVersionSends{}
+	for rows.Next() {
+		var version SlotVersionSends
+		if err := rows.Scan(&version.EmailID, &version.Title, &version.Language, &version.Variant, &version.RegionName,
+			&version.Reference, &version.Sends, &version.Deals, &version.LastSentAt); err != nil {
+			return nil, err
+		}
+		versions = append(versions, version)
+	}
+	return versions, rows.Err()
 }
 
 // loadSendStages counts the email's sends since then by the deal's stage at
