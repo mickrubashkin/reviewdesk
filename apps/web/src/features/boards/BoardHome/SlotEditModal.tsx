@@ -7,6 +7,7 @@ import { ApiError } from "../../../shared/api";
 import { updateSlot } from "../../emails/api";
 import { formatStageName } from "../../emails/stages";
 import type { Board, EmailListItem, EmailVersionGroup, StageColumn } from "../../emails/types";
+import { HelpLink } from "../../help/HelpLink";
 
 // SlotEditModal edits what a slot shares across languages: name, stage,
 // position, timing and condition. Saving writes them to every language.
@@ -124,7 +125,12 @@ export function SlotEditModal({
               allowNegative={false}
               description={stageChanged && position === "" ? "Empty: end of the stage" : undefined}
               error={takenBy ? `Taken by "${takenBy.versions[0]?.title}"` : undefined}
-              label="Position"
+              label={
+                <Group component="span" gap={4} wrap="nowrap">
+                  Position
+                  <HelpLink topic="slotPosition" />
+                </Group>
+              }
               value={position}
               onChange={setPosition}
             />
