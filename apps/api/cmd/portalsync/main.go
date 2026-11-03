@@ -2,6 +2,7 @@
 // category and matches them against a board. Read-only towards Bitrix24.
 //
 //	go run ./cmd/portalsync -board onboarding -category 10 -days 90
+//	go run ./cmd/portalsync -board onboarding -category 10 -days 180 -until-days 120
 //	go run ./cmd/portalsync -categories   # list deal categories
 package main
 
@@ -21,6 +22,7 @@ func main() {
 	board := flag.String("board", "onboarding", "board key to match against")
 	category := flag.Int("category", 10, "Bitrix24 deal category (funnel) ID")
 	days := flag.Int("days", 90, "how many days back to load sent emails")
+	untilDays := flag.Int("until-days", 0, "load sent emails up to this many days ago (0 = now)")
 	listCategories := flag.Bool("categories", false, "list deal categories and exit")
 	flag.Parse()
 
@@ -48,13 +50,16 @@ func main() {
 	}
 	defer dbpool.Close()
 
-	options := portal.SyncOptions{BoardKey: *board, CategoryID: *category, Days: *days}
+	options := portal.SyncOptions{BoardKey: *board, CategoryID: *category, Days: *days, UntilDays: *untilDays}
+	if err := options.ValidateRange(); err != nil {
+		fail(err)
+	}
 	runID, err := portal.BeginRun(ctx, dbpool, options, "cli")
 	if err != nil {
 		fail(err)
 	}
 
-	fmt.Printf("sync %s: board=%s category=%d days=%d\n", runID, *board, *category, *days)
+	fmt.Printf("sync %s: board=%s category=%d days=%d until-days=%d\n", runID, *board, *category, *days, *untilDays)
 	if err := portal.Sync(ctx, dbpool, client, runID, options); err != nil {
 		fail(err)
 	}

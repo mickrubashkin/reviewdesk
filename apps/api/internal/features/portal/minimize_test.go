@@ -77,9 +77,9 @@ func TestMinimizeSentEmailsKeepsOnlyRedactedSamples(t *testing.T) {
 			t.Fatalf("insert %d: %v", id, err)
 		}
 	}
-	insert(9000001, now.AddDate(0, 0, -200)) // old sample: kept, redacted
+	insert(9000001, now.AddDate(0, 0, -200))                  // old sample: kept, redacted
 	insert(9000002, now.AddDate(0, 0, -SendRetentionDays-10)) // copy past retention: deleted
-	insert(9000003, now.AddDate(0, 0, -10))                    // recent copy: body cleared
+	insert(9000003, now.AddDate(0, 0, -10))                   // recent copy: body cleared
 	insert(9000004, now.AddDate(0, 0, -SendRetentionDays+10)) // older than any sync window, within retention: kept
 
 	if _, err := db.Exec(ctx, `

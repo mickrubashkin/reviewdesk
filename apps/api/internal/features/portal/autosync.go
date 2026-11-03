@@ -33,10 +33,10 @@ func BeginRun(ctx context.Context, db *pgxpool.Pool, options SyncOptions, starte
 	}
 	var runID string
 	err := db.QueryRow(ctx, `
-		INSERT INTO portal_sync_runs (board_key, category_id, days, started_by_email)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO portal_sync_runs (board_key, category_id, days, until_days, started_by_email)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id;
-	`, options.BoardKey, options.CategoryID, options.Days, startedBy).Scan(&runID)
+	`, options.BoardKey, options.CategoryID, options.Days, options.UntilDays, startedBy).Scan(&runID)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return "", ErrSyncRunning

@@ -25,3 +25,5 @@ For an email the portal sync cannot see (sent some other way, e.g. from the admi
 ## Portal sync
 
 **Settings → Portal sync** imports what the robots actually sent. It runs every night when it is turned on for the board, or by hand. One sync per board runs at a time. Each send (its date, deal and stage, not the text) is kept for 180 days, for the send counts on the emails.
+
+A sync by hand loads the last **Days back** days. To load a long period, such as the first 180 days of history, run it in chunks with **Until days ago**: 180 to 120, then 120 to 60, then 60 to 0. Each chunk is shorter, and a chunk that fails can be run again alone. A chunk only adds sends; the counts on the emails always cover everything kept.

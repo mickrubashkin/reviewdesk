@@ -65,11 +65,17 @@ function matchesFilter(group: PortalGroup, filter: Filter) {
   }
 }
 
+// syncRange names the days a run loaded.
+function syncRange(days: number, untilDays: number) {
+  return untilDays > 0 ? `${days}–${untilDays} days ago` : `${days} days`;
+}
+
 export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
   const queryClient = useQueryClient();
   const [boardKey, setBoardKey] = useState("onboarding");
   const [categoryID, setCategoryID] = useState<string | null>(null);
   const [days, setDays] = useState<number | string>(90);
+  const [untilDays, setUntilDays] = useState<number | string>(0);
   const [filter, setFilter] = useState<Filter>("review");
   const [openGroupID, setOpenGroupID] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -92,7 +98,8 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
     refetchIntervalInBackground: true,
   });
   const syncMutation = useMutation({
-    mutationFn: (payload: { category_id: number; days: number }) => startPortalSync(boardKey, payload),
+    mutationFn: (payload: { category_id: number; days: number; until_days: number }) =>
+      startPortalSync(boardKey, payload),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["portal-overview", boardKey] }),
     onError: (error) =>
       notifications.show({ color: "red", message: error.message, title: "Sync did not start" }),
@@ -170,11 +177,24 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
               onChange={setCategoryID}
             />
             <NumberInput label="Days back" max={365} min={1} value={days} w={110} onChange={setDays} />
+            <NumberInput
+              label="Until days ago"
+              max={364}
+              min={0}
+              title="0 loads up to now"
+              value={untilDays}
+              w={120}
+              onChange={setUntilDays}
+            />
             <Button
               disabled={!selectedCategory || run?.status === "running"}
               loading={syncMutation.isPending}
               onClick={() =>
-                syncMutation.mutate({ category_id: Number(selectedCategory), days: Number(days) || 90 })
+                syncMutation.mutate({
+                  category_id: Number(selectedCategory),
+                  days: Number(days) || 90,
+                  until_days: Number(untilDays) || 0,
+                })
               }
             >
               Load sent emails
@@ -188,7 +208,7 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
               <Text size="sm">
                 {run.status === "running"
                   ? run.progress
-                  : `${new Date(run.started_at).toLocaleString()}${run.started_by_email === "auto" ? " · nightly" : ""} · ${run.days} days · ${run.emails_stored} emails from the funnel · ${run.groups_count} distinct`}
+                  : `${new Date(run.started_at).toLocaleString()}${run.started_by_email === "auto" ? " · nightly" : ""} · ${syncRange(run.days, run.until_days ?? 0)} · ${run.emails_stored} emails from the funnel · ${run.groups_count} distinct`}
               </Text>
               {run.status === "running" ? <Loader size="xs" /> : null}
               {run.error ? <Text c="red" size="sm">{run.error}</Text> : null}
