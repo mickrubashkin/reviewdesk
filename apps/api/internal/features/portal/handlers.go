@@ -31,6 +31,7 @@ func RegisterRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Patch("/api/portal/groups/{id}", decideGroupHandler(dbpool))
 	r.Get("/api/portal/groups/{id}/reconstruct", reconstructGroupHandler(dbpool))
 	r.Post("/api/boards/{boardKey}/portal/import-missing", importMissingHandler(dbpool))
+	r.Get("/api/emails/{id}/sends", emailSendsHandler(dbpool))
 }
 
 func requireSuperAdmin(w http.ResponseWriter, r *http.Request) (auth.AuthUser, bool) {

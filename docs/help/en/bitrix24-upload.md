@@ -27,3 +27,7 @@ For an email the portal sync cannot see (sent some other way, e.g. from the admi
 **Settings → Portal sync** imports what the robots actually sent. It runs every night when it is turned on for the board, or by hand. One sync per board runs at a time. Each send (its date, deal and stage, not the text) is kept for 180 days, for the send counts on the emails.
 
 A sync by hand loads the last **Days back** days. To load a long period, such as the first 180 days of history, run it in chunks with **Until days ago**: 180 to 120, then 120 to 60, then 60 to 0. Each chunk is shorter, and a chunk that fails can be run again alone. A chunk only adds sends; the counts on the emails always cover everything kept.
+
+## Sends of an email
+
+**Details → Sends** shows how many times the portal sent the email each day, over the last 30, 90 or 180 days, in your time zone. Each color is one text the portal sent: when a re-upload changes the text, the new text gets its own color, so you can see when it started and whether the old one stopped (a robot that was not updated keeps sending the old text). A text is named by the day it was first sent. With more than three texts the older ones are shown together in gray. A CRM operator can open each text in **Portal sync**.
