@@ -223,6 +223,19 @@
   height: 100%;
 }
 
+.thumbChip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  box-shadow: var(--mantine-shadow-xs);
+}
+
+.lastSend {
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.3;
+}
+
 .subject {
   font-size: var(--mantine-font-size-xs);
   font-weight: 600;

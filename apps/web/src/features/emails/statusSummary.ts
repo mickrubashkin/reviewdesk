@@ -50,7 +50,13 @@ export function firstSendPart(email: EmailListItem, estimate: FirstSendEstimate,
   };
 }
 
-export function emailStatusParts(email: EmailListItem, versions: EmailListItem[] = []): StatusPart[] {
+// sendsInLabel off leaves the sends out of the Live label, for a view that
+// shows them on its own (the timeline).
+export function emailStatusParts(
+  email: EmailListItem,
+  versions: EmailListItem[] = [],
+  { sendsInLabel = true }: { sendsInLabel?: boolean } = {}
+): StatusPart[] {
   const parts: StatusPart[] = [];
   const uploaded = email.uploaded_version ?? null;
   const latest = email.latest_version ?? null;
@@ -63,7 +69,7 @@ export function emailStatusParts(email: EmailListItem, versions: EmailListItem[]
         ? `${quiet !== null ? `${quietText(quiet)} ` : ""}${portalSendsText(email)}`
         : "Marked as live by hand."
     parts.push({
-      label: `Live${uploaded !== null ? ` v${uploaded}` : ""}${status === "live_manual" ? " (manual)" : ` · ${liveSendsLabel(email)}`}`,
+      label: `Live${uploaded !== null ? ` v${uploaded}` : ""}${status === "live_manual" ? " (manual)" : sendsInLabel ? ` · ${liveSendsLabel(email)}` : ""}`,
       color: status === "live_manual" ? "teal" : quiet !== null ? "yellow" : "green",
       detail:
         uploaded !== null
@@ -127,6 +133,14 @@ type SendFields = Pick<EmailListItem, "portal_send_count" | "portal_sends_30d" |
 export function liveSendsLabel(email: SendFields) {
   const quiet = email.portal_quiet_days ?? null;
   return quiet !== null ? `quiet ${quiet}d` : `${email.portal_sends_30d ?? 0}/30d`;
+}
+
+// lastSendLine is the timeline's line under a live email: when it was last
+// sent, or how long it has been quiet.
+export function lastSendLine(email: SendFields, now = new Date()) {
+  const quiet = email.portal_quiet_days ?? null;
+  if (quiet !== null) return `no sends for ${quiet} days`;
+  return email.portal_last_sent_at ? `last sent ${timeAgo(email.portal_last_sent_at, now)}` : "";
 }
 
 function quietText(days: number) {
