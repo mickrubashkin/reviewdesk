@@ -712,6 +712,10 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
           setDuplicateModalOpened(true);
         }}
         onNavigateToReview={navigateToReview}
+        onOpenSends={() => {
+          setActivePanelTab("sends");
+          setActiveContentTab("sends");
+        }}
         onReviewStatusChange={handleReviewStatusChange}
         onVariantSelect={handleVariantClick}
       />

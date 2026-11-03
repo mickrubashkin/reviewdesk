@@ -16,7 +16,7 @@ Every email has one status line, read left to right: what goes out now, what is 
 | You see | It means |
 |---|---|
 | **Live v3 · 120/30d** | Robots send it, 120 times in the last 30 days; Bitrix24 has version 3. Hover it for the last send. |
-| **Live v3 · quiet 9d** (yellow) | It used to go out, but the portal saw no send for 9 days, far longer than its usual gap. Check that the robot is still on. |
+| **Live v3 · quiet 9d** (yellow) | It used to go out, but the portal saw no send for 9 days, far longer than its usual gap. Check that the robot is still on. In the Matrix view, the chart icon next to it opens its sends. |
 | **Live (manual)** | A CRM operator marked it live; the portal does not see it sent. |
 | **v4 draft** | Version 4 is being edited. |
 | **v4 ready** | Version 4 is final and can go to Bitrix24. |

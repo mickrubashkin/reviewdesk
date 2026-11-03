@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EmailSends, SentText, SlotVersionSends } from "./api";
-import { buildSendsChart, earlierKey, periodDays, seriesTotals, versionLabel } from "./emailSends";
+import { buildSendsChart, earlierKey, periodDays, seriesTotals, syncNote, versionLabel } from "./emailSends";
 
 function text(id: string, firstSentAt: string): SentText {
   return {
@@ -20,7 +20,7 @@ describe("periodDays", () => {
   });
 });
 
-const noStagesOrDeals = { stages: [], deals: { deals: 0, repeated: 0, doubled: 0 }, versions: [] };
+const noStagesOrDeals = { stages: [], deals: { deals: 0, repeated: 0, doubled: 0 }, versions: [], synced_at: null };
 
 describe("buildSendsChart", () => {
   it("fills days without sends with zeros, one column per text", () => {
@@ -116,5 +116,19 @@ describe("versionLabel", () => {
     expect(versionLabel(version({ region_name: "Brazil", language: "br" }))).toBe("Brazil");
     expect(versionLabel(version({ region_name: "Global", reference: true }))).toBe("Global (reference)");
     expect(versionLabel(version({ region_name: "Brazil", variant: "old" }))).toBe("Brazil · old");
+  });
+});
+
+describe("syncNote", () => {
+  const now = new Date("2026-11-03T12:00:00Z");
+
+  it("is stale when the sync never ran or ran over a day and a half ago", () => {
+    expect(syncNote(null, now).stale).toBe(true);
+    expect(syncNote("2026-11-01T12:00:00Z", now)).toMatchObject({ stale: true });
+    expect(syncNote("2026-11-01T12:00:00Z", now).text).toContain("later sends are not counted yet");
+  });
+
+  it("is fresh after last night's sync", () => {
+    expect(syncNote("2026-11-03T01:00:00Z", now).stale).toBe(false);
   });
 });

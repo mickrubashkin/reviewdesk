@@ -368,8 +368,9 @@ func listBoards(ctx context.Context, dbpool *pgxpool.Pool) ([]BoardItem, error) 
 	rows, err := dbpool.Query(ctx, `
 		SELECT id, key, name, stages, created_at, updated_at,
 			(
+				-- A backfill (until_days > 0) loads an older range, not recent sends.
 				SELECT max(finished_at) FROM portal_sync_runs r
-				WHERE r.board_key = boards.key AND r.status = 'done'
+				WHERE r.board_key = boards.key AND r.status = 'done' AND r.until_days = 0
 			)
 		FROM boards
 		ORDER BY created_at, name;

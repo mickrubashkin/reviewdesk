@@ -33,6 +33,7 @@ func TestLoadEmailSendsSplitsDaysByText(t *testing.T) {
 	cleanup := func() {
 		_, _ = db.Exec(ctx, `DELETE FROM portal_email_groups WHERE board_key = $1;`, board)
 		_, _ = db.Exec(ctx, `DELETE FROM portal_sent_emails WHERE board_key = $1;`, board)
+		_, _ = db.Exec(ctx, `DELETE FROM portal_sync_runs WHERE board_key = $1;`, board)
 		_, _ = db.Exec(ctx, `DELETE FROM emails WHERE slug = 'sends-test-email';`)
 	}
 	cleanup()
@@ -91,10 +92,27 @@ func TestLoadEmailSendsSplitsDaysByText(t *testing.T) {
 	if got.Since != "2026-09-21" || got.Until != "2026-10-20" {
 		t.Errorf("period = %s..%s", got.Since, got.Until)
 	}
+	if got.SyncedAt != nil {
+		t.Errorf("synced at %v with no sync run", got.SyncedAt)
+	}
 	if len(got.Texts) != 2 || got.Texts[0].Subject != "Old text" || got.Texts[0].Sends != 2 ||
 		got.Texts[1].Subject != "New text" || got.Texts[1].Sends != 2 {
 		t.Fatalf("texts = %+v", got.Texts)
 	}
+	// The last sync up to now counts; a later backfill of an older range does not.
+	synced := now.Add(-2 * time.Hour)
+	if _, err := db.Exec(ctx, `
+		INSERT INTO portal_sync_runs (board_key, category_id, days, until_days, status, started_at, finished_at)
+		VALUES ($1, 1, 3, 0, 'done', $2, $2), ($1, 1, 60, 30, 'done', $3, $3), ($1, 1, 3, 0, 'failed', $3, $3);
+	`, board, synced, now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if withRuns, err := LoadEmailSends(ctx, db, emailID, 30, berlin, now); err != nil {
+		t.Fatal(err)
+	} else if withRuns.SyncedAt == nil || !withRuns.SyncedAt.Equal(synced) {
+		t.Errorf("synced at %v, want %v", withRuns.SyncedAt, synced)
+	}
+
 	old, newer := got.Texts[0].GroupID, got.Texts[1].GroupID
 	want := []DailySends{
 		{"2026-10-10", old, 1}, {"2026-10-18", old, 1},

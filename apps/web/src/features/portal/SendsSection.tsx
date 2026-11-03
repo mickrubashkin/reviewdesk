@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 
 import { formatCommentDate } from "../review/EmailReview/EmailReview.helpers";
 import { fetchEmailSends, type EmailSends } from "./api";
-import { buildSendsChart, formatDay, seriesTotals, versionLabel } from "./emailSends";
+import { buildSendsChart, formatDay, seriesTotals, syncNote, versionLabel } from "./emailSends";
 import styles from "./SendsSection.module.css";
 
 const periods = ["30", "90", "180"];
@@ -37,6 +37,7 @@ export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync
           onChange={setDays}
         />
       </Group>
+      {query.data ? <SyncNote syncedAt={query.data.synced_at} /> : null}
       {query.isLoading ? (
         <Loader size="xs" />
       ) : query.isError || !chart || !query.data ? (
@@ -101,6 +102,15 @@ export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync
         </>
       )}
     </Stack>
+  );
+}
+
+function SyncNote({ syncedAt }: { syncedAt: string | null }) {
+  const note = syncNote(syncedAt, new Date());
+  return (
+    <Text c={note.stale ? "yellow.8" : "dimmed"} size="xs">
+      {note.text}
+    </Text>
   );
 }
 

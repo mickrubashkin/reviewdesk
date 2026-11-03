@@ -26,7 +26,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { DotsSixVerticalIcon, PencilSimpleIcon, TranslateIcon } from "@phosphor-icons/react";
+import { ChartBarIcon, DotsSixVerticalIcon, PencilSimpleIcon, TranslateIcon } from "@phosphor-icons/react";
 
 import { ApiError } from "../../../shared/api";
 import { fetchReferenceDifferences, moveSlot } from "../../emails/api";
@@ -41,6 +41,7 @@ import type {
   StageColumn,
 } from "../../emails/types";
 import { BulkActionBar } from "./BulkActionBar";
+import type { SidePanelTab } from "./EmailSidePanel";
 import { CreateTranslationModal } from "./CreateTranslationModal";
 import { SlotEditModal } from "./SlotEditModal";
 import { aiTranslationLanguages, matrixLanguages, pickPrimary } from "./slotHelpers";
@@ -78,7 +79,7 @@ export function SlotMatrix({
   canTranslate: (language: string) => boolean;
   onEmailCreated: (emailId: string) => void;
   onExportSelected: (emails: EmailListItem[]) => void;
-  onOpenEmail: (email: EmailListItem, slotEmails: EmailListItem[]) => void;
+  onOpenEmail: (email: EmailListItem, slotEmails: EmailListItem[], tab?: SidePanelTab) => void;
   // byRegion shows the board's regions as columns: a map of who differs
   // from the reference. Offered when the board has regions.
   byRegion: boolean;
@@ -478,7 +479,7 @@ function SlotRow({
   canTranslate: (language: string) => boolean;
   onEdit: () => void;
   onTranslate: (master: EmailListItem, language: string) => void;
-  onOpenEmail: (email: EmailListItem, slotEmails: EmailListItem[]) => void;
+  onOpenEmail: (email: EmailListItem, slotEmails: EmailListItem[], tab?: SidePanelTab) => void;
 }) {
   const { attributes, listeners, setNodeRef: setHandleRef } = useDraggable({ id: group.key, disabled: !canDrag });
   const { setNodeRef: setRowRef } = useDroppable({ id: group.key, disabled: !canEdit });
@@ -549,7 +550,7 @@ function SlotRow({
             isChecked={isChecked}
             selectedEmailId={selectedEmailId}
             onCheck={onCheck}
-            onOpen={(email) => onOpenEmail(email, group.versions)}
+            onOpen={(email, tab) => onOpenEmail(email, group.versions, tab)}
           />
         );
       })}
@@ -575,7 +576,7 @@ function MatrixCell({
   isChecked: (emailId: string) => boolean;
   selectedEmailId: string | null;
   onCheck?: (email: EmailListItem, checked: boolean) => void;
-  onOpen: (email: EmailListItem) => void;
+  onOpen: (email: EmailListItem, tab?: SidePanelTab) => void;
   // onTranslate is set when the user can fill this empty cell from EN.
   onTranslate?: () => void;
 }) {
@@ -645,6 +646,24 @@ function MatrixCell({
             <Badge color="orange" size="xs" variant="light">
               {primary.open_comment_count}
             </Badge>
+          ) : null}
+          {/* A live email that went quiet: the first question is why. */}
+          {primary.production_status === "live" && primary.portal_quiet_days != null ? (
+            <Tooltip label="See sends">
+              <ActionIcon
+                aria-label="See sends"
+                color="yellow"
+                size="xs"
+                variant="light"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpen(primary, "sends");
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <ChartBarIcon aria-hidden="true" size={12} />
+              </ActionIcon>
+            </Tooltip>
           ) : null}
         </Group>
       </Stack>
