@@ -34,3 +34,13 @@ Emails taken off the board: who did it, when, and how often the portal saw them 
 ## New slot, new email (region managers, board owners)
 
 **New → New slot (all languages)** adds a place in a stage: build it from blocks, paste the HTML from a robot, or take emails the portal has seen sent. **New → New email** adds one email to an existing slot.
+
+## Slot position
+
+Every slot has a number, shown as **#101**, **#205** and so on. It is the slot's place in its stage:
+
+- The hundreds give the stage, the rest gives the order: the first stage starts at 101, 102, 103…, the second at 201, 202…, the tenth at 1001. A new slot gets the next free number on its own. The numbering is a convention: ReviewDesk does not enforce it.
+- All emails with the same stage and number form one slot. That is how ReviewDesk knows which EN email a translation follows and which reference email a region's email is compared with, and how the timeline and the matrix line them up.
+- The number does not change what the robot sends or when. **Send timing** and **Send condition** describe that, and the robot itself decides it.
+
+To change the number, use **Edit slot** in the [Matrix](#matrix): it moves every language and region of the slot together, so nothing gets detached. A number that is already taken is refused. An email at **#0** has no proper place yet: give its slot a number in the range of its stage.

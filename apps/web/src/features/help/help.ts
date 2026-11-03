@@ -52,6 +52,7 @@ export const helpTopics = {
   regions: { path: "regions", label: "Regions and the reference" },
   reference: { path: "regions#when-the-reference-changed", label: "When the reference changed" },
   timeline: { path: "board-views#timeline-default", label: "The timeline, Highlight and Copy link" },
+  slotPosition: { path: "board-views#slot-position", label: "What the slot number means" },
 } as const;
 
 export type HelpTopic = keyof typeof helpTopics;
