@@ -30,6 +30,7 @@ type UploadFields = {
   latest_version?: number | null;
   uploaded_version?: number | null;
   upload_robots?: RobotUpload[];
+  live_marked_at?: string | null;
 };
 
 export type UploadState = "not_ready" | "to_upload" | "uploaded" | "changed_since_upload";
@@ -66,8 +67,13 @@ export function emailUploadState(email: UploadFields): UploadState {
 }
 
 // needsBitrixUpload: the email is ready and a robot does not have this
-// version. Drafts never need an upload, even when Bitrix24 has an older one.
+// version. Drafts never need an upload, even when Bitrix24 has an older one,
+// and neither does an email marked live by hand: it is sent from somewhere
+// other than the robots.
 export function needsBitrixUpload(email: UploadFields) {
+  if (email.live_marked_at) {
+    return false;
+  }
   const state = emailUploadState(email);
   return email.review_status === "ready" && (state === "to_upload" || state === "changed_since_upload");
 }
