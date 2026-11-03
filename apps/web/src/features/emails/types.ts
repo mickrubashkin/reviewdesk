@@ -46,6 +46,9 @@ export type EmailListItem = {
   archived_by_email?: string | null;
   // Derived on the board from the fields above and the board's last sync.
   production_status?: ProductionStatus;
+  // Days since the last send when the robot seems to have stopped (see
+  // sendQuietDays); set with production_status.
+  portal_quiet_days?: number | null;
   // For an email pasted into a robot and not seen sent yet: from when the
   // portal can show its first send (see firstSendEstimate).
   first_send?: FirstSendEstimate;

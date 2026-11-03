@@ -29,7 +29,7 @@ import type {
 } from "../../../emails/types";
 import type { CommentStatusFilter } from "../EmailReview.types";
 import { canManageBoard } from "../../../emails/permissions";
-import { getProductionStatus } from "../../../emails/productionStatus";
+import { withProductionStatus } from "../../../emails/productionStatus";
 import { withFirstSendEstimates } from "../../../emails/firstSend";
 import {
   buildApprovalBlockedMessage,
@@ -124,10 +124,7 @@ export function useEmailReviewData({
   const boardEmails = useMemo(
     () =>
       withFirstSendEstimates(
-        (emailsQuery.data ?? []).map((listEmail) => ({
-          ...listEmail,
-          production_status: getProductionStatus(listEmail, portalSyncedAt),
-        }))
+        (emailsQuery.data ?? []).map((listEmail) => withProductionStatus(listEmail, portalSyncedAt))
       ),
     [emailsQuery.data, portalSyncedAt]
   );

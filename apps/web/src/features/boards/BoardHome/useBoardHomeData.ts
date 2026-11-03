@@ -13,7 +13,7 @@ import {
 } from "../../emails/api";
 import { formatEmailReviewStatus } from "../../emails/reviewStatus";
 import { buildStageColumns } from "../../emails/stages";
-import { getProductionStatus } from "../../emails/productionStatus";
+import { withProductionStatus } from "../../emails/productionStatus";
 import { withFirstSendEstimates } from "../../emails/firstSend";
 import type {
   AuthUser,
@@ -136,10 +136,7 @@ export function useBoardHomeData({
   const boardEmails = useMemo(
     () =>
       withFirstSendEstimates(
-        (emailsQuery.data ?? []).map((email) => ({
-          ...email,
-          production_status: getProductionStatus(email, activeBoard?.portal_synced_at),
-        }))
+        (emailsQuery.data ?? []).map((email) => withProductionStatus(email, activeBoard?.portal_synced_at))
       ),
     [activeBoard?.portal_synced_at, emailsQuery.data]
   );
