@@ -36,6 +36,7 @@ import {
   updateAdminUserRole,
 } from "../api";
 import type { UserAdminItem, UserRole } from "../../emails/types";
+import { helpRole, helpRoles, type HelpRole } from "../helpRole";
 import { userLabel } from "../userLabel";
 import { UserAccountActions, UserAliases } from "./UserAccountActions";
 import styles from "../../auth-events/AuthEvents/AuthEvents.module.css";
@@ -447,28 +448,38 @@ function buildColumns({
       size: 300,
     },
     {
-      accessorKey: "role",
+      // The role as the help names it; the stored one is under Change role.
+      accessorFn: (user) => helpRoles.indexOf(helpRole(user)),
       cell: ({ row }) => (
-        <Badge color={getRoleColor(row.original.role)} variant="light">
-          {formatRole(row.original.role)}
+        <Badge color={getRoleColor(helpRole(row.original))} variant="light">
+          {helpRole(row.original)}
         </Badge>
       ),
       header: "Role",
       id: "role",
-      maxSize: 180,
-      minSize: 110,
-      size: 140,
+      maxSize: 220,
+      minSize: 170,
+      size: 180,
     },
     {
+      // Admins edit every email anyway: for them the languages only fill
+      // Translations to update in My tasks.
       cell: ({ row }) => (
-        <MultiSelect
-          aria-label={`Languages ${userLabel(row.original)} translates`}
-          data={languageOptions}
-          placeholder={(row.original.languages ?? []).length === 0 ? "None" : undefined}
-          size="xs"
-          value={row.original.languages ?? []}
-          onChange={(languages) => onLanguagesChange(row.original.id, languages)}
-        />
+        <Stack gap={2}>
+          <MultiSelect
+            aria-label={`Languages ${userLabel(row.original)} translates`}
+            data={languageOptions}
+            placeholder={(row.original.languages ?? []).length === 0 ? "None" : undefined}
+            size="xs"
+            value={row.original.languages ?? []}
+            onChange={(languages) => onLanguagesChange(row.original.id, languages)}
+          />
+          {row.original.role !== "reviewer" ? (
+            <Text c="dimmed" size="xs">
+              For My tasks only
+            </Text>
+          ) : null}
+        </Stack>
       ),
       enableSorting: false,
       header: "Translates",
@@ -584,12 +595,14 @@ function formatRole(role: UserRole) {
   return role.replaceAll("_", " ");
 }
 
-function getRoleColor(role: UserRole) {
+function getRoleColor(role: HelpRole) {
   switch (role) {
-    case "super_admin":
+    case "CRM operator":
       return "violet";
-    case "admin":
+    case "Board owner":
       return "blue";
+    case "Region manager":
+      return "teal";
     default:
       return "gray";
   }

@@ -9,6 +9,7 @@ Find your role below, then use the task pages when you need them. Words you do n
 | You are… | You… |
 |---|---|
 | **[Viewer](#viewer)** | look at the boards and their status, and comment now and then |
+| **[Translator](translations.md)** | keep the translations in your languages in step with the EN email |
 | **[Region manager](#region-manager)** | keep your region's emails and translations up to date and mark them ready |
 | **[Board owner](#board-owner)** | set up boards: stages, slots, regions, who works on what |
 | **[CRM operator](#crm-operator)** | paste ready emails into the Bitrix24 robots and keep ReviewDesk in step with what is sent |
@@ -25,7 +26,7 @@ You can open every board and every email, and comment on any of them.
 
 ### Region manager
 
-Everything a viewer does, plus editing the emails of your region.
+Everything a viewer does, plus working on the boards you manage (**Manages** in Settings → Users). There you can do what a board owner does, except start new boards and set up people: edit and mark emails ready, add slots, change **Board settings**, archive, export.
 
 1. Start in **My tasks**: mentions, open comments on your emails, your drafts, and **Translations to update**.
 2. [Edit the text of an email](editing.md), then [mark it ready](editing.md#mark-the-email-ready).
@@ -56,16 +57,17 @@ Everything a board owner does, plus:
 
 ## Setting up people
 
-How the roles above are set in **Settings → Users**. Board owners add people and set **Manages** and **Translates**; only a CRM operator changes someone's role.
+How the roles above are set in **Settings → Users**. Board owners add people and set **Manages** and **Translates**; only a CRM operator changes someone's role. The **Role** column shows the role of this help; **Change role** shows the role it comes from.
 
-| Role | Role in Users | Also set |
+| Role | Change role | Also set |
 |---|---|---|
 | Viewer | `reviewer` | — |
+| Translator | `reviewer` | **Translates**: their languages |
 | Region manager | `reviewer` | **Manages**: the board; **Translates**: their languages, so translations that are behind show in their **My tasks** |
 | Board owner | `admin` | — |
 | CRM operator | `super_admin` | — |
 
-Someone who only translates (no region of their own) is a `reviewer` with **Translates** set: they edit emails in those languages but do not mark them ready.
+A translator has no region of their own: they edit emails in their languages on every board but do not mark them ready. Board owners and CRM operators manage every board; **Translates** only fills their **My tasks**.
 
 ## All task pages
 
