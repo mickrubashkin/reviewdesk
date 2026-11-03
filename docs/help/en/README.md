@@ -51,7 +51,7 @@ Everything a board owner does, plus:
 
 - [Paste into Bitrix24 and mark the upload](bitrix24-upload.md), and mark an email live by hand.
 - **Settings → Portal sync** — what the robots actually send.
-- **Settings → Content** — shared texts, blocks, Bitrix variables, translation glossary, AI rules.
+- **Settings → Content** — shared texts, blocks, Bitrix variables, translation glossary (with the suggested terms), AI rules.
 - Editing the template HTML of an email.
 
 ## Setting up people

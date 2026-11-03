@@ -11,12 +11,13 @@ import {
   Tooltip,
 } from "@mantine/core";
 import {
+  BookOpenTextIcon,
   ChatTextIcon,
   CodeIcon,
   PencilSimpleIcon,
 } from "@phosphor-icons/react";
 
-import { useRef, type Dispatch, type SetStateAction } from "react";
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import type { BitrixVariable } from "../../bitrix-variables/api";
 import type { SharedText } from "../../shared-texts/api";
@@ -26,6 +27,9 @@ import type { InlineEditInput, SelectionMenuState } from "./MailPreview";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { VariableInsertMenu } from "./VariableInsertMenu";
 import { MentionTextarea } from "../../comments/MentionTextarea";
+import type { GlossarySuggestionInput } from "../../translation-glossary/api";
+import { SuggestTermModal } from "../../translation-glossary/SuggestTermModal";
+import { suggestionFromSelection } from "../../translation-glossary/suggestion";
 import styles from "../EmailPreviewDrawer.module.css";
 
 type SelectionComposerProps = {
@@ -36,6 +40,7 @@ type SelectionComposerProps = {
   draftCommentSeverity: EmailCommentSeverity;
   draftInlineEdit: Record<string, string | number>;
   draftShared: Record<string, boolean>;
+  emailId: string;
   fieldLimits: Record<string, number>;
   inlineEditError: boolean;
   inlineEditErrorMessage?: string;
@@ -66,6 +71,7 @@ export function SelectionComposer({
   draftCommentSeverity,
   draftInlineEdit,
   draftShared,
+  emailId,
   fieldLimits,
   inlineEditError,
   inlineEditErrorMessage,
@@ -88,6 +94,7 @@ export function SelectionComposer({
   onSubmitComment,
 }: SelectionComposerProps) {
   const textareas = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const [glossaryDraft, setGlossaryDraft] = useState<GlossarySuggestionInput | null>(null);
   const variableMenu = (input: InlineEditInput) => {
     if (input.type === "number" || variables.length === 0) {
       return undefined;
@@ -113,290 +120,307 @@ export function SelectionComposer({
   };
 
   return (
-    <Popover
-      opened={selectionMenu !== null}
-      position={selectionMenu?.placement ?? "top"}
-      shadow="md"
-      styles={{
-        dropdown: {
-          maxWidth: 340,
-          width: 340,
-        },
-      }}
-      withArrow
-    >
-      <Popover.Target>
-        <div
-          className={styles.selectionMenuAnchor}
-          style={{
-            left: selectionMenu?.x ?? 0,
-            top: selectionMenu?.y ?? 0,
-          }}
-        />
-      </Popover.Target>
-      <Popover.Dropdown className={styles.selectionMenuDropdown}>
-        {selectionMenu?.mode === "comment" ? (
-          <Stack gap="xs">
-            <Text c="dimmed" size="xs">
-              {selectionMenu.reviewBlock}
-            </Text>
-            <Text className={styles.selectionMenuQuote} size="sm" lineClamp={3}>
-              {selectionMenu.selectedText}
-            </Text>
-            <MentionTextarea
-              autosize
-              data-autofocus
-              disabled={isCreatingComment}
-              minRows={3}
-              placeholder="Add a comment, @ to mention"
-              value={draftComment}
-              withinPortal={false}
-              onChange={onDraftCommentChange}
-            />
-            <SegmentedControl
-              data={[
-                { label: "Suggestion", value: "suggestion" },
-                { label: "Issue", value: "issue" },
-              ]}
-              disabled={isCreatingComment}
-              size="xs"
-              value={draftCommentSeverity}
-              onChange={(value) =>
-                onDraftCommentSeverityChange(value as EmailCommentSeverity)
-              }
-            />
-            {createCommentError ? (
-              <Text c="red" size="xs">
-                Failed to create comment.
+    <>
+      <SuggestTermModal initial={glossaryDraft} onClose={() => setGlossaryDraft(null)} />
+      <Popover
+        opened={selectionMenu !== null}
+        position={selectionMenu?.placement ?? "top"}
+        shadow="md"
+        styles={{
+          dropdown: {
+            maxWidth: 340,
+            width: 340,
+          },
+        }}
+        withArrow
+      >
+        <Popover.Target>
+          <div
+            className={styles.selectionMenuAnchor}
+            style={{
+              left: selectionMenu?.x ?? 0,
+              top: selectionMenu?.y ?? 0,
+            }}
+          />
+        </Popover.Target>
+        <Popover.Dropdown className={styles.selectionMenuDropdown}>
+          {selectionMenu?.mode === "comment" ? (
+            <Stack gap="xs">
+              <Text c="dimmed" size="xs">
+                {selectionMenu.reviewBlock}
               </Text>
-            ) : null}
-            <Group justify="flex-end" gap="xs">
-              <Button
+              <Text className={styles.selectionMenuQuote} size="sm" lineClamp={3}>
+                {selectionMenu.selectedText}
+              </Text>
+              <MentionTextarea
+                autosize
+                data-autofocus
+                disabled={isCreatingComment}
+                minRows={3}
+                placeholder="Add a comment, @ to mention"
+                value={draftComment}
+                withinPortal={false}
+                onChange={onDraftCommentChange}
+              />
+              <SegmentedControl
+                data={[
+                  { label: "Suggestion", value: "suggestion" },
+                  { label: "Issue", value: "issue" },
+                ]}
                 disabled={isCreatingComment}
                 size="xs"
-                variant="subtle"
-                onClick={onClose}
-              >
-                Cancel
-              </Button>
-              <Button
-                disabled={!trimmedDraft}
-                loading={isCreatingComment}
-                size="xs"
-                onClick={onSubmitComment}
-              >
-                Add comment
-              </Button>
-            </Group>
-          </Stack>
-        ) : selectionMenu?.mode === "edit" && selectionMenu.editableTarget ? (
-          <Stack gap="xs">
-            <Text fw={700} size="sm">
-              {selectionMenu.editableTarget.label}
-            </Text>
-            {selectionMenu.editableTarget.inputs.map((input, index) => {
-              const sharedText = input.field ? sharedTexts[input.key] : undefined;
-              const linkable = sharedText !== undefined && sharedText.type === input.field?.type;
-              const isShared = draftShared[input.key] ?? Boolean(input.field?.shared);
-              const value = isShared
-                ? (sharedText?.value ?? String(input.value))
-                : String(draftInlineEdit[input.key] ?? input.value);
-              const disabled = isApplyingInlineEdit || isShared;
-              const rightSection = isShared ? undefined : variableMenu(input);
-              const limit = input.type === "text" && !isShared ? fieldLimits[input.key] : undefined;
-              const counter = limit ? (
-                <Text c={value.length > limit ? "red" : "dimmed"} component="span" size="xs">
-                  {value.length} / {limit}
+                value={draftCommentSeverity}
+                onChange={(value) =>
+                  onDraftCommentSeverityChange(value as EmailCommentSeverity)
+                }
+              />
+              {createCommentError ? (
+                <Text c="red" size="xs">
+                  Failed to create comment.
                 </Text>
-              ) : undefined;
-
-              return (
-                <Stack gap={4} key={input.key}>
-                  {input.formattable && !isShared ? (
-                    <MarkdownToolbar
-                      disabled={disabled}
-                      getTextarea={() => textareas.current[input.key] ?? null}
-                      value={value}
-                      onChange={(nextValue) =>
-                        onDraftInlineEditChange((current) => ({ ...current, [input.key]: nextValue }))
-                      }
-                    />
-                  ) : null}
-                  {input.type === "text" && shouldUseInlineTextarea(input) ? (
-                    <Textarea
-                      ref={(element) => {
-                        textareas.current[input.key] = element;
-                      }}
-                      autosize
-                      data-autofocus={(index === 0 && !isShared) || undefined}
-                      description={counter}
-                      disabled={disabled}
-                      inputWrapperOrder={["label", "input", "description"]}
-                      label={input.label}
-                      minRows={3}
-                      rightSection={rightSection}
-                      value={value}
-                      onChange={(event) => {
-                        const nextValue = event.currentTarget.value;
-                        onDraftInlineEditChange((current) => ({
-                          ...current,
-                          [input.key]: nextValue,
-                        }));
-                      }}
-                    />
-                  ) : (
-                    <TextInput
-                      data-autofocus={(index === 0 && !isShared) || undefined}
-                      description={counter}
-                      disabled={disabled}
-                      inputWrapperOrder={["label", "input", "description"]}
-                      label={input.label}
-                      rightSection={rightSection}
-                      type={input.type === "number" ? "number" : "text"}
-                      value={value}
-                      onChange={(event) => {
-                        const nextValue = event.currentTarget.value;
-                        onDraftInlineEditChange((current) => ({
-                          ...current,
-                          [input.key]:
-                            input.type === "number"
-                              ? Number(nextValue) || 0
-                              : nextValue,
-                        }));
-                      }}
-                    />
-                  )}
-                  {isShared ? (
-                    <Stack align="flex-start" gap={2}>
-                      <Text c="dimmed" size="xs">
-                        Shared text for {language.toUpperCase() || "this language"}
-                        {sharedText?.board ? " on this board" : ""}
-                        {sharedText ? `, used in ${sharedText.linked_emails} emails` : ""}. Edit
-                        it in Settings → Shared texts.
-                      </Text>
-                      <Button
-                        disabled={isApplyingInlineEdit}
-                        px={0}
-                        size="compact-xs"
-                        variant="transparent"
-                        onClick={() => {
-                          onDraftInlineEditChange((current) => ({ ...current, [input.key]: value }));
-                          onDraftSharedChange((current) => ({ ...current, [input.key]: false }));
-                        }}
-                      >
-                        Use own text
-                      </Button>
-                    </Stack>
-                  ) : linkable ? (
-                    <Stack align="flex-start" gap={2}>
-                      <Text c="dimmed" size="xs">
-                        {value === sharedText.value
-                          ? "Same as the shared text, but not linked to it."
-                          : "Differs from the shared text."}
-                      </Text>
-                      <Button
-                        disabled={isApplyingInlineEdit}
-                        px={0}
-                        size="compact-xs"
-                        variant="transparent"
-                        onClick={() =>
-                          onDraftSharedChange((current) => ({ ...current, [input.key]: true }))
-                        }
-                      >
-                        Use shared text
-                      </Button>
-                    </Stack>
-                  ) : null}
-                </Stack>
-              );
-            })}
-            {inlineEditError ? (
-              <Text c="red" size="xs">
-                {inlineEditErrorMessage || "Failed to save edit."}
+              ) : null}
+              <Group justify="flex-end" gap="xs">
+                <Button
+                  disabled={isCreatingComment}
+                  size="xs"
+                  variant="subtle"
+                  onClick={onClose}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!trimmedDraft}
+                  loading={isCreatingComment}
+                  size="xs"
+                  onClick={onSubmitComment}
+                >
+                  Add comment
+                </Button>
+              </Group>
+            </Stack>
+          ) : selectionMenu?.mode === "edit" && selectionMenu.editableTarget ? (
+            <Stack gap="xs">
+              <Text fw={700} size="sm">
+                {selectionMenu.editableTarget.label}
               </Text>
-            ) : null}
-            <Group justify="flex-end" gap="xs">
-              <Button
-                disabled={isApplyingInlineEdit}
-                size="xs"
-                variant="subtle"
-                onClick={onClose}
-              >
-                Cancel
-              </Button>
-              <Button
-                loading={isApplyingInlineEdit}
-                size="xs"
-                onClick={onApplyInlineEdit}
-              >
-                Apply
-              </Button>
-            </Group>
-          </Stack>
-        ) : (
-          <Stack gap="xs">
-            <Text c="dimmed" size="xs">
-              {selectionMenu?.reviewBlock}
-            </Text>
-            <Text className={styles.selectionMenuQuote} size="sm" lineClamp={3}>
-              {selectionMenu?.selectedText}
-            </Text>
-            <Group gap="xs" justify="center">
-              <Tooltip label="Comment">
-                <ActionIcon
-                  aria-label="Comment"
-                  size="lg"
-                  variant="light"
-                  onClick={onOpenCommentComposer}
+              {selectionMenu.editableTarget.inputs.map((input, index) => {
+                const sharedText = input.field ? sharedTexts[input.key] : undefined;
+                const linkable = sharedText !== undefined && sharedText.type === input.field?.type;
+                const isShared = draftShared[input.key] ?? Boolean(input.field?.shared);
+                const value = isShared
+                  ? (sharedText?.value ?? String(input.value))
+                  : String(draftInlineEdit[input.key] ?? input.value);
+                const disabled = isApplyingInlineEdit || isShared;
+                const rightSection = isShared ? undefined : variableMenu(input);
+                const limit = input.type === "text" && !isShared ? fieldLimits[input.key] : undefined;
+                const counter = limit ? (
+                  <Text c={value.length > limit ? "red" : "dimmed"} component="span" size="xs">
+                    {value.length} / {limit}
+                  </Text>
+                ) : undefined;
+
+                return (
+                  <Stack gap={4} key={input.key}>
+                    {input.formattable && !isShared ? (
+                      <MarkdownToolbar
+                        disabled={disabled}
+                        getTextarea={() => textareas.current[input.key] ?? null}
+                        value={value}
+                        onChange={(nextValue) =>
+                          onDraftInlineEditChange((current) => ({ ...current, [input.key]: nextValue }))
+                        }
+                      />
+                    ) : null}
+                    {input.type === "text" && shouldUseInlineTextarea(input) ? (
+                      <Textarea
+                        ref={(element) => {
+                          textareas.current[input.key] = element;
+                        }}
+                        autosize
+                        data-autofocus={(index === 0 && !isShared) || undefined}
+                        description={counter}
+                        disabled={disabled}
+                        inputWrapperOrder={["label", "input", "description"]}
+                        label={input.label}
+                        minRows={3}
+                        rightSection={rightSection}
+                        value={value}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          onDraftInlineEditChange((current) => ({
+                            ...current,
+                            [input.key]: nextValue,
+                          }));
+                        }}
+                      />
+                    ) : (
+                      <TextInput
+                        data-autofocus={(index === 0 && !isShared) || undefined}
+                        description={counter}
+                        disabled={disabled}
+                        inputWrapperOrder={["label", "input", "description"]}
+                        label={input.label}
+                        rightSection={rightSection}
+                        type={input.type === "number" ? "number" : "text"}
+                        value={value}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          onDraftInlineEditChange((current) => ({
+                            ...current,
+                            [input.key]:
+                              input.type === "number"
+                                ? Number(nextValue) || 0
+                                : nextValue,
+                          }));
+                        }}
+                      />
+                    )}
+                    {isShared ? (
+                      <Stack align="flex-start" gap={2}>
+                        <Text c="dimmed" size="xs">
+                          Shared text for {language.toUpperCase() || "this language"}
+                          {sharedText?.board ? " on this board" : ""}
+                          {sharedText ? `, used in ${sharedText.linked_emails} emails` : ""}. Edit
+                          it in Settings → Shared texts.
+                        </Text>
+                        <Button
+                          disabled={isApplyingInlineEdit}
+                          px={0}
+                          size="compact-xs"
+                          variant="transparent"
+                          onClick={() => {
+                            onDraftInlineEditChange((current) => ({ ...current, [input.key]: value }));
+                            onDraftSharedChange((current) => ({ ...current, [input.key]: false }));
+                          }}
+                        >
+                          Use own text
+                        </Button>
+                      </Stack>
+                    ) : linkable ? (
+                      <Stack align="flex-start" gap={2}>
+                        <Text c="dimmed" size="xs">
+                          {value === sharedText.value
+                            ? "Same as the shared text, but not linked to it."
+                            : "Differs from the shared text."}
+                        </Text>
+                        <Button
+                          disabled={isApplyingInlineEdit}
+                          px={0}
+                          size="compact-xs"
+                          variant="transparent"
+                          onClick={() =>
+                            onDraftSharedChange((current) => ({ ...current, [input.key]: true }))
+                          }
+                        >
+                          Use shared text
+                        </Button>
+                      </Stack>
+                    ) : null}
+                  </Stack>
+                );
+              })}
+              {inlineEditError ? (
+                <Text c="red" size="xs">
+                  {inlineEditErrorMessage || "Failed to save edit."}
+                </Text>
+              ) : null}
+              <Group justify="flex-end" gap="xs">
+                <Button
+                  disabled={isApplyingInlineEdit}
+                  size="xs"
+                  variant="subtle"
+                  onClick={onClose}
                 >
-                  <ChatTextIcon aria-hidden="true" size={18} />
-                </ActionIcon>
-              </Tooltip>
-              {canEditContent && selectionMenu?.editableTarget ? (
-                <Tooltip
-                  label={
-                    isApplyingInlineEdit
-                      ? "Preview is refreshing"
-                      : "Edit"
-                  }
+                  Cancel
+                </Button>
+                <Button
+                  loading={isApplyingInlineEdit}
+                  size="xs"
+                  onClick={onApplyInlineEdit}
                 >
+                  Apply
+                </Button>
+              </Group>
+            </Stack>
+          ) : (
+            <Stack gap="xs">
+              <Text c="dimmed" size="xs">
+                {selectionMenu?.reviewBlock}
+              </Text>
+              <Text className={styles.selectionMenuQuote} size="sm" lineClamp={3}>
+                {selectionMenu?.selectedText}
+              </Text>
+              <Group gap="xs" justify="center">
+                <Tooltip label="Comment">
                   <ActionIcon
-                    aria-label="Edit"
-                    disabled={isApplyingInlineEdit}
+                    aria-label="Comment"
                     size="lg"
                     variant="light"
-                    onClick={onOpenInlineEditor}
+                    onClick={onOpenCommentComposer}
                   >
-                    <PencilSimpleIcon aria-hidden="true" size={18} />
+                    <ChatTextIcon aria-hidden="true" size={18} />
                   </ActionIcon>
                 </Tooltip>
-              ) : null}
-              {canEditHTML ? (
-                <Tooltip
-                  label={
-                    isApplyingInlineEdit
-                      ? "Preview is refreshing"
-                      : "Edit template HTML"
-                  }
-                >
+                <Tooltip label="Suggest for the glossary">
                   <ActionIcon
-                    aria-label="Edit template HTML"
-                    disabled={isApplyingInlineEdit}
+                    aria-label="Suggest for the glossary"
                     size="lg"
                     variant="light"
                     onClick={() => {
+                      const text = selectionMenu?.selectedText ?? "";
                       onClose();
-                      onEditSourceHTML?.();
+                      setGlossaryDraft(suggestionFromSelection(text, language, emailId));
                     }}
                   >
-                    <CodeIcon aria-hidden="true" size={18} />
+                    <BookOpenTextIcon aria-hidden="true" size={18} />
                   </ActionIcon>
                 </Tooltip>
-              ) : null}
-            </Group>
-          </Stack>
-        )}
-      </Popover.Dropdown>
-    </Popover>
+                {canEditContent && selectionMenu?.editableTarget ? (
+                  <Tooltip
+                    label={
+                      isApplyingInlineEdit
+                        ? "Preview is refreshing"
+                        : "Edit"
+                    }
+                  >
+                    <ActionIcon
+                      aria-label="Edit"
+                      disabled={isApplyingInlineEdit}
+                      size="lg"
+                      variant="light"
+                      onClick={onOpenInlineEditor}
+                    >
+                      <PencilSimpleIcon aria-hidden="true" size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                ) : null}
+                {canEditHTML ? (
+                  <Tooltip
+                    label={
+                      isApplyingInlineEdit
+                        ? "Preview is refreshing"
+                        : "Edit template HTML"
+                    }
+                  >
+                    <ActionIcon
+                      aria-label="Edit template HTML"
+                      disabled={isApplyingInlineEdit}
+                      size="lg"
+                      variant="light"
+                      onClick={() => {
+                        onClose();
+                        onEditSourceHTML?.();
+                      }}
+                    >
+                      <CodeIcon aria-hidden="true" size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                ) : null}
+              </Group>
+            </Stack>
+          )}
+        </Popover.Dropdown>
+      </Popover>
+    </>
   );
 }

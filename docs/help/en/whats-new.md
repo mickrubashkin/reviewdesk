@@ -5,9 +5,7 @@ The newest changes first. A dot on your account menu means there is something he
 ## 2026-11-03
 
 - **Create from EN** in the Matrix view is always shown in an empty cell, not only when you point at the row. See [Translations](translations.md).
-
-## 2026-11-03
-
+- Everyone can read the **translation glossary** (account menu) and suggest terms: from the glossary page, or by selecting a word in an email and clicking the glossary icon. A CRM operator accepts or rejects them. See [Translation glossary](translations.md#translation-glossary).
 - An email marked **Live (manual)** no longer shows **to upload** or sits in **My tasks → To upload to Bitrix24**. See [Mark live by hand](bitrix24-upload.md#mark-live-by-hand).
 
 ## 2026-11-01

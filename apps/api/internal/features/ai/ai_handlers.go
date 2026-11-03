@@ -23,6 +23,7 @@ func RegisterAIRoutes(r chi.Router, dbpool *pgxpool.Pool, aiService AIAnalysisSe
 	r.Get("/api/emails/{id}/ai-analysis-debug", debugAIAnalysisHandler(dbpool, aiService))
 	r.Get("/api/translation-glossary", getGlossaryHandler(dbpool))
 	r.Put("/api/translation-glossary", putGlossaryHandler(dbpool))
+	registerGlossarySuggestionRoutes(r, dbpool)
 	translator := newOpenAITranslationSuggester(aiService.APIKey)
 	r.Post("/api/emails/{id}/translation/suggestions", suggestTranslationHandler(dbpool, translator, aiService.APIKey != ""))
 	r.Post("/api/emails/{id}/translations", createTranslationHandler(dbpool, translator, aiService.APIKey != ""))

@@ -1,5 +1,6 @@
 import { Badge, Button, Indicator, Menu, Stack, Text } from "@mantine/core";
 import {
+  BookOpenTextIcon,
   CaretDownIcon,
   DownloadSimpleIcon,
   EnvelopeSimpleIcon,
@@ -259,6 +260,7 @@ export function AccountMenu({
           </Menu.Item>
         ) : null}
         <HelpMenuItem />
+        <GlossaryMenuItem currentUser={currentUser} />
         <WhatsNewMenuItem currentUser={currentUser} />
         {demoMode ? null : <ReplayTourMenuItem />}
         {/* In the demo a logout would only open a new demo session. */}
@@ -278,6 +280,23 @@ export function AccountMenu({
 }
 
 // HelpMenuItem opens the user help; in the account menu and the compact menu.
+// GlossaryMenuItem lets everyone read the glossary and suggest terms; super
+// admins reach it from Settings.
+export function GlossaryMenuItem({ currentUser }: { currentUser: AuthUser }) {
+  if (currentUser.role === "super_admin") {
+    return null;
+  }
+  return (
+    <Menu.Item
+      component={Link}
+      leftSection={<BookOpenTextIcon aria-hidden="true" size={16} />}
+      to="/admin/glossary"
+    >
+      Translation glossary
+    </Menu.Item>
+  );
+}
+
 export function HelpMenuItem() {
   return (
     <Menu.Item component={Link} leftSection={<QuestionIcon aria-hidden="true" size={16} />} to="/help">

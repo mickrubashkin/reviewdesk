@@ -24,3 +24,18 @@ A translation whose EN email changed shows **EN changed**. Your list is in **My 
 ## Link a translation by hand
 
 If a translation is not linked to its EN email (ReviewDesk could not pair them), pick the EN email in **Details → Translation of**.
+
+## Translation glossary
+
+The translation glossary tells the AI how to handle key terms: keep them in English (product names, CoPilot) or translate them exactly as given (Deals → Aufträge). It applies to **Translate and create** and **Suggest translation**. Open it from the account menu → **Translation glossary**.
+
+### Suggest a term
+
+- In an email, select the word and click the glossary icon next to **Comment**. In an EN email the selection becomes the English term; in a translation it becomes the wording for that language, and you add the English term.
+- Or open **Translation glossary** and click **Suggest a term**.
+
+A CRM operator adds it or rejects it. **Your suggestions** on the glossary page shows which.
+
+### Decide on suggestions (CRM operators)
+
+**Settings → Content → Translation glossary** lists the suggestions above the terms. Edit a suggestion if needed and click **Accept**: a new term is added, or the translation is set on a term already in the glossary. **Reject** drops it.

@@ -44,3 +44,61 @@ export function useGlossary() {
     staleTime: 60_000,
   });
 }
+
+// A term someone proposed for the glossary; a super admin accepts or
+// rejects it. language and translation are empty for a bare English term.
+export type GlossarySuggestion = {
+  id: string;
+  term: string;
+  language: string;
+  translation: string;
+  note: string;
+  email_id: string | null;
+  email_title: string | null;
+  suggested_by_email: string;
+  status: "pending" | "accepted" | "rejected";
+  decided_by_email: string | null;
+  decided_at: string | null;
+  created_at: string;
+};
+
+export type GlossarySuggestionInput = {
+  term: string;
+  language: string;
+  translation: string;
+  note: string;
+  email_id?: string | null;
+};
+
+const suggestionsURL = `${glossaryURL}/suggestions`;
+
+export const glossarySuggestionsQueryKey = ["translation-glossary", "suggestions"];
+
+// A super admin gets the pending suggestions; anyone else their own.
+export function useGlossarySuggestions() {
+  return useQuery({
+    queryKey: glossarySuggestionsQueryKey,
+    queryFn: () => fetchJson<GlossarySuggestion[]>(suggestionsURL),
+  });
+}
+
+export function suggestGlossaryTerm(input: GlossarySuggestionInput): Promise<GlossarySuggestion> {
+  return fetchJson<GlossarySuggestion>(suggestionsURL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function acceptGlossarySuggestion(id: string, input: GlossarySuggestionInput): Promise<GlossaryTerm[]> {
+  const response = await fetchJson<GlossaryPayload>(`${suggestionsURL}/${encodeURIComponent(id)}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return response.terms;
+}
+
+export function rejectGlossarySuggestion(id: string): Promise<void> {
+  return fetchJson<void>(`${suggestionsURL}/${encodeURIComponent(id)}/reject`, { method: "POST" });
+}
