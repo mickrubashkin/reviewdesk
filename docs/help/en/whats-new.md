@@ -4,6 +4,7 @@ The newest changes first. A dot on your account menu means there is something he
 
 ## 2026-11-03
 
+- In the Matrix view, hover **+1** in a cell to see the sends of each version in it; it reads **+1 live** in green when an old version still goes out next to the new one. See [Matrix](board-views.md#matrix).
 - The **Sends** tab of an email, on the review page and in the board's side panel, charts its sends per day over the last 30, 90 or 180 days, one color per text the portal sent: after a re-upload you see when the new text started going out and whether the old one stopped. See [Sends of an email](bitrix24-upload.md#sends-of-an-email).
 - Under the chart on the **Sends** tab: how many deals got the email, a warning when a deal got the same text twice in a day (two robots may be sending it), and the sends by deal stage, with stages that mostly send another stage's emails marked **other stage**. See [Sends of an email](bitrix24-upload.md#sends-of-an-email).
 - **Versions of this slot** on the **Sends** tab compares the email with the other versions of its slot over the same period (old and new, or each region against the reference), to see whether an old text is still going out. See [Sends of an email](bitrix24-upload.md#sends-of-an-email).
