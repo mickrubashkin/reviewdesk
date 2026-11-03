@@ -346,7 +346,16 @@ func ApplyCommentEdits(ctx context.Context, tx pgx.Tx, actor AuthUser, emails []
 }
 
 func applyEmailCommentEdits(ctx context.Context, tx pgx.Tx, actor AuthUser, email CommentEditEmail) (bool, error) {
+	// The save takes the whole set of fields: an email not built from
+	// blocks would lose the ones left out, so they all go in, edited or not.
+	var fieldsJSON []byte
+	if err := tx.QueryRow(ctx, `SELECT editable_fields FROM emails WHERE id = $1;`, email.ID).Scan(&fieldsJSON); err != nil {
+		return false, err
+	}
 	update := emailContentUpdate{}
+	if err := json.Unmarshal(fieldsJSON, &update.EditableFields); err != nil {
+		return false, err
+	}
 	var applied []CommentEdit
 	for _, edit := range email.Edits {
 		if edit.Status != CommentEditApply {
@@ -360,15 +369,6 @@ func applyEmailCommentEdits(ctx context.Context, tx pgx.Tx, actor AuthUser, emai
 		case preheaderFieldKey:
 			update.Preheader = &after
 		default:
-			if update.EditableFields == nil {
-				var fieldsJSON []byte
-				if err := tx.QueryRow(ctx, `SELECT editable_fields FROM emails WHERE id = $1;`, email.ID).Scan(&fieldsJSON); err != nil {
-					return false, err
-				}
-				if err := json.Unmarshal(fieldsJSON, &update.EditableFields); err != nil {
-					return false, err
-				}
-			}
 			field := update.EditableFields[edit.Field]
 			field.Value = after
 			update.EditableFields[edit.Field] = field

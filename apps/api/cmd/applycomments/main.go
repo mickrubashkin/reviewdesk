@@ -11,12 +11,19 @@
 //	go run ./cmd/applycomments -report ../../personal-notes/comment-edits.html
 //	go run ./cmd/applycomments -apply -actor you@company.com -report ...
 //
+// With -decisions it applies what a person decided for the comments the
+// planner held back instead: a JSON list of emails.CommentDecision, each
+// one new version of its email (same dry run and -apply):
+//
+//	go run ./cmd/applycomments -decisions decisions.json
+//
 // The misc board is left alone by default (-skip-board misc): it holds the
 // emails people practise on.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -38,6 +45,7 @@ func main() {
 	board := flag.String("board", "", "only this board")
 	skipBoards := flag.String("skip-board", "misc", "comma-separated boards to leave alone")
 	report := flag.String("report", "", "write an HTML report of every comment to this file")
+	decisionsFile := flag.String("decisions", "", "JSON file of decisions for held-back comments to apply instead of the plan")
 	appURL := flag.String("app-url", os.Getenv("AUTH_APP_URL"), "the app's address, to link each email in the report")
 	flag.Parse()
 
@@ -46,6 +54,13 @@ func main() {
 		os.Exit(2)
 	}
 	options := emails.CommentEditsOptions{Board: strings.TrimSpace(*board), SkipBoards: splitList(*skipBoards), NoLock: *planOnly}
+	if *decisionsFile != "" {
+		if err := runDecisions(*apply, strings.TrimSpace(*actor), *decisionsFile); err != nil {
+			fmt.Fprintf(os.Stderr, "applycomments: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*apply, strings.TrimSpace(*actor), options, *report, *appURL); err != nil {
 		fmt.Fprintf(os.Stderr, "applycomments: %v\n", err)
 		os.Exit(1)
@@ -152,4 +167,65 @@ func splitList(value string) []string {
 		}
 	}
 	return items
+}
+
+func runDecisions(apply bool, actorEmail, path string) error {
+	if apply && actorEmail == "" {
+		return fmt.Errorf("-actor is required with -apply")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var decisions []emails.CommentDecision
+	if err := json.Unmarshal(raw, &decisions); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	_ = godotenv.Load("../../.env")
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return fmt.Errorf("DATABASE_URL is required")
+	}
+	ctx := context.Background()
+	dbpool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	defer dbpool.Close()
+	tx, err := dbpool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if actorEmail == "" {
+		if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE role = 'super_admin' ORDER BY created_at LIMIT 1;`).Scan(&actorEmail); err != nil {
+			return fmt.Errorf("find a super admin for the dry run: %w", err)
+		}
+	}
+	actor, err := loadSuperAdmin(ctx, tx, actorEmail)
+	if err != nil {
+		return err
+	}
+	if err := emails.ApplyCommentDecisions(ctx, tx, actor, decisions); err != nil {
+		return err
+	}
+	if apply {
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		fmt.Println("Applied.")
+	} else {
+		fmt.Println("Dry run, nothing written.")
+	}
+	failed := 0
+	for _, decision := range decisions {
+		state := "ok"
+		if decision.Error != "" {
+			state = "NOT SAVED: " + decision.Error
+			failed++
+		}
+		fmt.Printf("- %s: %s (%d comments)\n", decision.Note, state, len(decision.Resolve))
+	}
+	fmt.Printf("Decisions: %d, not saved: %d\n", len(decisions), failed)
+	return nil
 }
