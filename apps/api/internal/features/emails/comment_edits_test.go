@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailedit"
 )
 
@@ -175,6 +177,133 @@ func TestApplyCommentEditsSavesOneVersionAndResolvesApplied(t *testing.T) {
 		}
 		if status != want || (want == "resolved") != (replies == 1) {
 			t.Errorf("comment %s: %s with %d replies, want %s", id, status, replies, want)
+		}
+	}
+}
+
+// commentTestEmail is an email not built from blocks, with an intro and a
+// button text, and an open comment maker.
+func commentTestEmail(t *testing.T, dbpool *pgxpool.Pool) (string, func(block, selected, body string) string) {
+	t.Helper()
+	ctx := context.Background()
+	emailID := createTestEmail(t, dbpool)
+	setTestEmailTemplate(t, dbpool, emailID, `<html><body>
+		<p data-review-block="intro_body" data-edit-text="intro_body">Abschluss heute, Abschluss morgen.</p>
+		<a href="https://example.com" data-review-block="primary_cta" data-edit-text="primary_cta_text">Starten</a>
+	</body></html>`)
+	if _, err := dbpool.Exec(ctx, `UPDATE emails SET subject = 'Old subject', editable_fields = $2 WHERE id = $1;`, emailID,
+		`{"intro_body": {"type": "text", "value": "Abschluss heute, Abschluss morgen.", "order": 1},
+		"primary_cta_text": {"type": "text", "value": "Starten", "order": 2}}`); err != nil {
+		t.Fatal(err)
+	}
+	insertTestEmailVersion(t, dbpool, emailID, "system", "initial")
+	var author string
+	if err := dbpool.QueryRow(ctx, `SELECT id FROM users ORDER BY created_at LIMIT 1;`).Scan(&author); err != nil {
+		t.Fatal(err)
+	}
+	return emailID, func(block, selected, body string) string {
+		t.Helper()
+		var id string
+		if err := dbpool.QueryRow(ctx, `
+			INSERT INTO comments (email_id, user_id, review_block, selected_text, start_offset, end_offset, body)
+			VALUES ($1, $2, $3, $4, 0, length($4), $5) RETURNING id;
+		`, emailID, author, block, selected, body).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+}
+
+func loadCommentTestEmail(t *testing.T, dbpool *pgxpool.Pool, emailID string) (emailedit.EditableFields, string) {
+	t.Helper()
+	var fieldsJSON []byte
+	var subject string
+	if err := dbpool.QueryRow(context.Background(), `SELECT editable_fields, subject FROM emails WHERE id = $1;`, emailID).
+		Scan(&fieldsJSON, &subject); err != nil {
+		t.Fatal(err)
+	}
+	var fields emailedit.EditableFields
+	if err := json.Unmarshal(fieldsJSON, &fields); err != nil {
+		t.Fatal(err)
+	}
+	return fields, subject
+}
+
+func TestApplyCommentEditsOnTheSubjectKeepsTheFields(t *testing.T) {
+	dbpool := testDBPool(t)
+	ctx := context.Background()
+	actor := createTestUserWithRole(t, dbpool, "super_admin")
+	emailID, comment := commentTestEmail(t, dbpool)
+	comment("subject", "Old", "New")
+
+	tx, err := dbpool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	planned, err := PlanCommentEdits(ctx, tx, CommentEditsOptions{Board: "onboarding"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mine []CommentEditEmail
+	for _, email := range planned {
+		if email.ID == emailID {
+			mine = append(mine, email)
+		}
+	}
+	if err := ApplyCommentEdits(ctx, tx, actor, mine); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fields, subject := loadCommentTestEmail(t, dbpool, emailID)
+	if subject != "New subject" || fields["intro_body"].Value != "Abschluss heute, Abschluss morgen." || fields["primary_cta_text"].Value != "Starten" {
+		t.Errorf("after a subject edit: subject %q, fields %+v", subject, fields)
+	}
+}
+
+func TestApplyCommentDecisions(t *testing.T) {
+	dbpool := testDBPool(t)
+	ctx := context.Background()
+	actor := createTestUserWithRole(t, dbpool, "super_admin")
+	emailID, comment := commentTestEmail(t, dbpool)
+	everywhere := comment("intro_body", "Abschluss", "Verkauf")
+	untouched := comment("primary_cta", "Starten", "Los")
+
+	decisions := []CommentDecision{
+		{EmailID: emailID, Note: "missing text", Replace: []CommentFieldChange{{Field: "primary_cta_text", From: "Weiter", To: "Los"}},
+			Resolve: []string{untouched}, Reply: "Done"},
+		{EmailID: emailID, Note: "every place", Replace: []CommentFieldChange{
+			{Field: "intro_body", From: "Abschluss", To: "Verkauf", All: true},
+			{Field: subjectFieldKey, From: "Old", To: "New"},
+		}, Resolve: []string{everywhere}, Reply: "Done: Abschluss → Verkauf"},
+	}
+	tx, err := dbpool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if err := ApplyCommentDecisions(ctx, tx, actor, decisions); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if decisions[0].Error == "" || decisions[1].Error != "" {
+		t.Fatalf("errors: %q, %q", decisions[0].Error, decisions[1].Error)
+	}
+	fields, subject := loadCommentTestEmail(t, dbpool, emailID)
+	if fields["intro_body"].Value != "Verkauf heute, Verkauf morgen." || fields["primary_cta_text"].Value != "Starten" || subject != "New subject" {
+		t.Errorf("after: intro %q, cta %q, subject %q", fields["intro_body"].Value, fields["primary_cta_text"].Value, subject)
+	}
+	for id, want := range map[string]string{everywhere: "resolved", untouched: "open"} {
+		var status string
+		if err := dbpool.QueryRow(ctx, `SELECT status FROM comments WHERE id = $1;`, id).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status != want {
+			t.Errorf("comment %s is %s, want %s", id, status, want)
 		}
 	}
 }
