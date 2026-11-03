@@ -464,6 +464,7 @@ function EmailBoardApp({
       {panelEmail ? (
         <EmailSidePanel
           canManage={canManage}
+          canOpenPortalSync={currentUser.role === "super_admin"}
           canTranslate={canEditEmailContent(currentUser, panelEmail)}
           currentUserEmail={currentUser.email}
           email={panelEmail}

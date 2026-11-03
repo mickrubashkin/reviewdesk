@@ -22,7 +22,6 @@ import {
 import type { EmailActivityItem, EmailDetail } from "../../../emails/types";
 import { formatCommentDate } from "../EmailReview.helpers";
 import { BitrixUploadSection } from "./BitrixUploadSection";
-import { SendsSection } from "./SendsSection";
 import { MarkLiveButton, UnmarkLiveButton } from "../../../portal/MarkLive";
 import styles from "../EmailReview.module.css";
 import { useUserName } from "../../../../shared/userNames";
@@ -94,7 +93,6 @@ function formatByteSize(value: string) {
 export function HandoffPanel({
   approvalActivity,
   canMarkLive = false,
-  canOpenPortalSync = false,
   email,
   isLoadingRenderedHTML,
   openCommentCount,
@@ -104,7 +102,6 @@ export function HandoffPanel({
 }: {
   approvalActivity: EmailActivityItem | null;
   canMarkLive?: boolean;
-  canOpenPortalSync?: boolean;
   onLiveChanged?: () => void;
   email: EmailDetail | undefined;
   isLoadingRenderedHTML: boolean;
@@ -159,8 +156,6 @@ export function HandoffPanel({
         email={email}
         onChanged={() => onLiveChanged?.()}
       />
-
-      <SendsSection canOpenPortalSync={canOpenPortalSync} emailId={email.id} />
 
       <Stack className={styles.handoffSection} gap="xs">
         <Group justify="space-between" gap="xs" wrap="nowrap">
