@@ -201,14 +201,27 @@ export type SentText = {
   sends: number;
 };
 
+// Sends by the deal's stage at send time. other: the stage's sends on the
+// board mostly go to emails of another board stage. An empty stage_id is
+// a send whose stage the sync did not find.
+export type StageSends = {
+  stage_id: string;
+  name: string;
+  sends: number;
+  other: boolean;
+};
+
 // An email's sends per day and text, counted in the viewer's time zone;
-// since and until are the first and last day (YYYY-MM-DD).
+// since and until are the first and last day (YYYY-MM-DD). deals: repeated
+// got the email more than once, doubled got the same text twice in a day.
 export type EmailSends = {
   days: number;
   since: string;
   until: string;
   texts: SentText[];
   daily: Array<{ date: string; group_id: string; sends: number }>;
+  stages: StageSends[];
+  deals: { deals: number; repeated: number; doubled: number };
 };
 
 export function fetchEmailSends(emailID: string, days: number): Promise<EmailSends> {

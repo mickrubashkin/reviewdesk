@@ -20,6 +20,8 @@ describe("periodDays", () => {
   });
 });
 
+const noStagesOrDeals = { stages: [], deals: { deals: 0, repeated: 0, doubled: 0 } };
+
 describe("buildSendsChart", () => {
   it("fills days without sends with zeros, one column per text", () => {
     const sends: EmailSends = {
@@ -32,6 +34,7 @@ describe("buildSendsChart", () => {
         { date: "2026-10-19", group_id: "old", sends: 1 },
         { date: "2026-10-19", group_id: "new", sends: 2 },
       ],
+      ...noStagesOrDeals,
     };
     const chart = buildSendsChart(sends);
     expect(chart.series.map((series) => series.key)).toEqual(["old", "new"]);
@@ -53,6 +56,7 @@ describe("buildSendsChart", () => {
         { date: "2026-10-20", group_id: "b", sends: 2 },
         { date: "2026-10-20", group_id: "d", sends: 5 },
       ],
+      ...noStagesOrDeals,
     };
     const chart = buildSendsChart(sends);
     expect(chart.series.map((series) => series.key)).toEqual([earlierKey, "c", "d"]);
@@ -61,7 +65,14 @@ describe("buildSendsChart", () => {
   });
 
   it("has no series when nothing was sent", () => {
-    const chart = buildSendsChart({ days: 2, since: "2026-10-19", until: "2026-10-20", texts: [], daily: [] });
+    const chart = buildSendsChart({
+      days: 2,
+      since: "2026-10-19",
+      until: "2026-10-20",
+      texts: [],
+      daily: [],
+      ...noStagesOrDeals,
+    });
     expect(chart.series).toEqual([]);
     expect(chart.rows).toHaveLength(2);
   });

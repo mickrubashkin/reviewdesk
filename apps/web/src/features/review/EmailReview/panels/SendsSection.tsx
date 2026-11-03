@@ -1,10 +1,10 @@
-import { Anchor, Group, Loader, SegmentedControl, Stack, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Group, Loader, SegmentedControl, Stack, Text, Tooltip } from "@mantine/core";
 import { BarChart } from "@mantine/charts";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchEmailSends } from "../../../portal/api";
+import { fetchEmailSends, type EmailSends } from "../../../portal/api";
 import { buildSendsChart, formatDay, seriesTotals } from "../../../portal/emailSends";
 import { formatCommentDate } from "../EmailReview.helpers";
 import styles from "../EmailReview.module.css";
@@ -41,7 +41,7 @@ export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync
       </Group>
       {query.isLoading ? (
         <Loader size="xs" />
-      ) : query.isError || !chart ? (
+      ) : query.isError || !chart || !query.data ? (
         <Text c="red" size="xs">
           Sends could not be loaded.
         </Text>
@@ -94,8 +94,68 @@ export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync
               );
             })}
           </Stack>
+          <SendDeals deals={query.data.deals} />
+          <SendStages stages={query.data.stages} />
         </>
       )}
+    </Stack>
+  );
+}
+
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+// SendDeals sets the sends against the deals behind them. A deal getting the
+// same text twice within a day is what two robots sending the email would do.
+function SendDeals({ deals }: { deals: EmailSends["deals"] }) {
+  return (
+    <>
+      <Text c="dimmed" size="xs">
+        Sent to {plural(deals.deals, "deal", "deals")}
+        {deals.repeated > 0
+          ? `; ${plural(deals.repeated, "deal", "deals")} got it more than once (the deal came back to the stage, or a robot repeats it)`
+          : ""}
+        .
+      </Text>
+      {deals.doubled > 0 ? (
+        <Alert color="yellow" p="xs">
+          <Text size="xs">
+            {plural(deals.doubled, "deal", "deals")} got the same text twice within a day. Two robots may be sending
+            this email.
+          </Text>
+        </Alert>
+      ) : null}
+    </>
+  );
+}
+
+// SendStages counts the sends by the deal's stage when the email went out,
+// marking stages that mostly send the emails of another board stage.
+function SendStages({ stages }: { stages: EmailSends["stages"] }) {
+  return (
+    <Stack gap={2}>
+      <Text fw={600} size="xs">
+        By deal stage
+      </Text>
+      {stages.map((stage) => (
+        <Group key={stage.stage_id} gap={6} wrap="nowrap">
+          <Text size="xs">
+            {stage.name || "Stage unknown"}: {plural(stage.sends, "send", "sends")}
+          </Text>
+          {stage.other ? (
+            <Tooltip
+              label="On this board, most sends from this deal stage are emails of another stage. Check the robot that sends this email from it."
+              multiline
+              w={260}
+            >
+              <Badge color="orange" radius="sm" size="xs" variant="light">
+                other stage
+              </Badge>
+            </Tooltip>
+          ) : null}
+        </Group>
+      ))}
     </Stack>
   );
 }
