@@ -599,6 +599,7 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
     <HandoffPanel
       approvalActivity={approvalActivity}
       canMarkLive={currentUserRole === "super_admin" && !isArchived}
+      canOpenPortalSync={currentUserRole === "super_admin"}
       onLiveChanged={() => void queryClient.invalidateQueries({ queryKey: ["emails", emailId] })}
       email={email}
       isLoadingRenderedHTML={renderedEmailQuery.isLoading}

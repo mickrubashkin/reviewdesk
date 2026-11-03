@@ -188,3 +188,32 @@ export type UploadSuggestion = {
 export function fetchUploadSuggestions(): Promise<UploadSuggestion[]> {
   return fetchJson<UploadSuggestion[]>("/api/portal/upload-suggestions");
 }
+
+// A text the portal sent for an email: a portal group. A re-upload with a
+// changed text starts a new one. first/last_sent_at span every send the sync
+// saw; sends counts those within the period.
+export type SentText = {
+  group_id: string;
+  board_key: string;
+  subject: string;
+  first_sent_at: string;
+  last_sent_at: string;
+  sends: number;
+};
+
+// An email's sends per day and text, counted in the viewer's time zone;
+// since and until are the first and last day (YYYY-MM-DD).
+export type EmailSends = {
+  days: number;
+  since: string;
+  until: string;
+  texts: SentText[];
+  daily: Array<{ date: string; group_id: string; sends: number }>;
+};
+
+export function fetchEmailSends(emailID: string, days: number): Promise<EmailSends> {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  return fetchJson<EmailSends>(
+    `/api/emails/${encodeURIComponent(emailID)}/sends?days=${days}&tz=${encodeURIComponent(tz)}`
+  );
+}

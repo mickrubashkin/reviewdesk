@@ -4,6 +4,7 @@ The newest changes first. A dot on your account menu means there is something he
 
 ## 2026-11-03
 
+- **Details → Sends** charts an email's sends per day over the last 30, 90 or 180 days, one color per text the portal sent: after a re-upload you see when the new text started going out and whether the old one stopped. See [Sends of an email](bitrix24-upload.md#sends-of-an-email).
 - A live email shows how often it went out: **Live v3 · 120/30d** is 120 sends in the last 30 days, and its tooltip says when it was last sent. One that stopped going out turns yellow (**quiet 9d**). See [Find an email](find-an-email.md).
 - On the timeline, a live email shows its sends of the last 30 days in the corner of its preview and when it was last sent under its subject. See [Board views](board-views.md#timeline-default).
 - **Create from EN** in the Matrix view is always shown in an empty cell, not only when you point at the row. See [Translations](translations.md).

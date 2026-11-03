@@ -20,7 +20,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { AdminTableHeader } from "../../admin-table/AdminTableHeader";
 import { fetchBoards } from "../../boards/api";
@@ -72,12 +72,14 @@ function syncRange(days: number, untilDays: number) {
 
 export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
   const queryClient = useQueryClient();
-  const [boardKey, setBoardKey] = useState("onboarding");
+  // ?board= and ?group= open a sent text, e.g. from an email's Sends.
+  const [searchParams] = useSearchParams();
+  const [boardKey, setBoardKey] = useState(searchParams.get("board") ?? "onboarding");
   const [categoryID, setCategoryID] = useState<string | null>(null);
   const [days, setDays] = useState<number | string>(90);
   const [untilDays, setUntilDays] = useState<number | string>(0);
   const [filter, setFilter] = useState<Filter>("review");
-  const [openGroupID, setOpenGroupID] = useState<string | null>(null);
+  const [openGroupID, setOpenGroupID] = useState<string | null>(searchParams.get("group"));
   const [selected, setSelected] = useState<string[]>([]);
   const navigate = useNavigate();
   const isSuperAdmin = currentUserRole === "super_admin";
