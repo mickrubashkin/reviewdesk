@@ -9,7 +9,7 @@ export type EmailReviewProps = {
 
 export type ReviewViewport = "desktop" | "mobile";
 
-export type ReviewPanelTab = "comments" | "ai" | "details" | "history";
+export type ReviewPanelTab = "comments" | "ai" | "details" | "sends" | "history";
 // Compact layout adds the email preview as its own tab.
 export type ReviewContentTab = ReviewPanelTab | "email";
 export type CommentStatusFilter = "open" | "all";

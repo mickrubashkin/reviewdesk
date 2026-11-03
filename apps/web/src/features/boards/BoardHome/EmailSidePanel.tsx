@@ -22,6 +22,7 @@ import { MailPreview } from "../../emails/MailPreview";
 import { EmailStatusLine } from "../../emails/EmailStatusLine";
 import { formatStageName } from "../../emails/stages";
 import type { EmailListItem } from "../../emails/types";
+import { SendsSection } from "../../portal/SendsSection";
 import { PanelComments } from "./PanelComments";
 import { HelpLink } from "../../help/HelpLink";
 import { ReferenceSection } from "./ReferenceSection";
@@ -33,6 +34,7 @@ import styles from "./EmailSidePanel.module.css";
 // emails while moving around the board without leaving it.
 export function EmailSidePanel({
   canManage,
+  canOpenPortalSync,
   canTranslate,
   currentUserEmail,
   email,
@@ -41,6 +43,7 @@ export function EmailSidePanel({
   onSelect,
 }: {
   canManage: boolean;
+  canOpenPortalSync: boolean;
   // Admins, or translators of this email's language.
   canTranslate: boolean;
   currentUserEmail: string;
@@ -142,6 +145,7 @@ export function EmailSidePanel({
           >
             Comments
           </Tabs.Tab>
+          <Tabs.Tab value="sends">Sends</Tabs.Tab>
         </Tabs.List>
         <ScrollArea className={styles.body} type="auto">
           <Tabs.Panel value="preview">
@@ -165,6 +169,10 @@ export function EmailSidePanel({
               detail={detailQuery.data}
               email={email}
             />
+          </Tabs.Panel>
+          {/* Sends are fetched only when someone opens the tab. */}
+          <Tabs.Panel className={styles.sends} keepMounted={false} value="sends">
+            <SendsSection key={email.id} canOpenPortalSync={canOpenPortalSync} emailId={email.id} />
           </Tabs.Panel>
         </ScrollArea>
       </Tabs>

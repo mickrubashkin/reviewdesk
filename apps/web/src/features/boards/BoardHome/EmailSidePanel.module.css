@@ -42,7 +42,8 @@
   padding: 0 var(--mantine-spacing-md);
 }
 
-.comments {
+.comments,
+.sends {
   padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
 }
 

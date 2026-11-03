@@ -73,6 +73,7 @@ import { ArchivedEmailNotice } from "./header/ArchivedEmailNotice";
 import { ViewportSwitch } from "./header/ViewportSwitch";
 import { ReviewLayout } from "./ReviewLayout";
 import { ReferenceSection } from "../../boards/BoardHome/ReferenceSection";
+import { SendsSection } from "../../portal/SendsSection";
 import {
   ArchiveEmailModal,
   DuplicateEmailModal,
@@ -599,7 +600,6 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
     <HandoffPanel
       approvalActivity={approvalActivity}
       canMarkLive={currentUserRole === "super_admin" && !isArchived}
-      canOpenPortalSync={currentUserRole === "super_admin"}
       onLiveChanged={() => void queryClient.invalidateQueries({ queryKey: ["emails", emailId] })}
       email={email}
       isLoadingRenderedHTML={renderedEmailQuery.isLoading}
@@ -778,6 +778,9 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
         commentsContent={commentsContent}
         contentRef={contentRef}
         detailsContent={detailsContent}
+        sendsContent={
+          email ? <SendsSection canOpenPortalSync={currentUserRole === "super_admin"} emailId={email.id} /> : null
+        }
         historyContent={historyPanelContent}
         isCompactReview={isCompactReview}
         isResizing={isResizing}

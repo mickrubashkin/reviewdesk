@@ -1,6 +1,7 @@
 import { Stack, Tabs } from "@mantine/core";
 
 import {
+  ChartBarIcon,
   ChatTextIcon,
   ClockCounterClockwiseIcon,
   EnvelopeSimpleIcon,
@@ -28,6 +29,7 @@ type ReviewLayoutProps = {
   previewContent: ReactNode;
   previewToolbar: ReactNode;
   rightPanelPercent: number;
+  sendsContent: ReactNode;
   onActiveContentTabChange: (tab: ReviewContentTab) => void;
   onActivePanelTabChange: (tab: ReviewPanelTab) => void;
   onResizeEnd: (event: PointerEvent<HTMLDivElement>) => void;
@@ -49,6 +51,7 @@ export function ReviewLayout({
   previewContent,
   previewToolbar,
   rightPanelPercent,
+  sendsContent,
   onActiveContentTabChange,
   onActivePanelTabChange,
   onResizeEnd,
@@ -86,6 +89,14 @@ export function ReviewLayout({
     </Tabs.Tab>,
     <Tabs.Tab
       className={tabClassName}
+      key="sends"
+      leftSection={<ChartBarIcon aria-hidden="true" size={15} />}
+      value="sends"
+    >
+      Sends
+    </Tabs.Tab>,
+    <Tabs.Tab
+      className={tabClassName}
       key="history"
       leftSection={<ClockCounterClockwiseIcon aria-hidden="true" size={15} />}
       value="history"
@@ -103,6 +114,10 @@ export function ReviewLayout({
       </Tabs.Panel>
       <Tabs.Panel value="details" className={panelClassName}>
         {detailsContent}
+      </Tabs.Panel>
+      {/* Sends are fetched only when someone opens the tab. */}
+      <Tabs.Panel keepMounted={false} value="sends" className={panelClassName}>
+        {sendsContent}
       </Tabs.Panel>
       <Tabs.Panel value="history" className={panelClassName}>
         {historyContent}

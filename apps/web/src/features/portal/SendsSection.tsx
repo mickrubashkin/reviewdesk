@@ -4,16 +4,17 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchEmailSends, type EmailSends } from "../../../portal/api";
-import { buildSendsChart, formatDay, seriesTotals, versionLabel } from "../../../portal/emailSends";
-import { formatCommentDate } from "../EmailReview.helpers";
-import styles from "../EmailReview.module.css";
+import { formatCommentDate } from "../review/EmailReview/EmailReview.helpers";
+import { fetchEmailSends, type EmailSends } from "./api";
+import { buildSendsChart, formatDay, seriesTotals, versionLabel } from "./emailSends";
+import styles from "./SendsSection.module.css";
 
 const periods = ["30", "90", "180"];
 
 // SendsSection charts the email's sends per day as the portal sync saw them,
 // split by the text that went out, so a re-upload shows as a new color taking
-// over from the old one.
+// over from the old one. It has a tab of its own on the review page and in
+// the board's side panel.
 export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync: boolean; emailId: string }) {
   const [days, setDays] = useState("90");
   const query = useQuery({
@@ -26,11 +27,8 @@ export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync
   const subjectsDiffer = new Set(query.data?.texts.map((text) => text.subject)).size > 1;
 
   return (
-    <Stack className={styles.handoffSection} gap="xs">
-      <Group justify="space-between" gap="xs" wrap="nowrap">
-        <Text fw={700} size="sm">
-          Sends
-        </Text>
+    <Stack gap="xs">
+      <Group justify="flex-end">
         <SegmentedControl
           aria-label="Period"
           data={periods.map((value) => ({ value, label: `${value} days` }))}
@@ -76,7 +74,7 @@ export function SendsSection({ canOpenPortalSync, emailId }: { canOpenPortalSync
               const [text] = series.texts;
               return (
                 <Group key={series.key} gap={6} wrap="nowrap" align="flex-start">
-                  <span aria-hidden="true" className={styles.sendsSwatch} style={{ background: series.color }} />
+                  <span aria-hidden="true" className={styles.swatch} style={{ background: series.color }} />
                   <Text size="xs">
                     {series.label}: {sends} {sends === 1 ? "send" : "sends"}, last {formatCommentDate(lastSentAt)}
                     {series.texts.length === 1 && subjectsDiffer ? ` · ${text.subject}` : ""}
