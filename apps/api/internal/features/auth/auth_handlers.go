@@ -60,6 +60,7 @@ func RegisterAuthRoutes(r chi.Router, dbpool *pgxpool.Pool, emailSender EmailSen
 	r.Delete("/api/admin/users/{id}", deleteUserHandler(dbpool))
 	r.Post("/api/admin/users/{id}/aliases", addUserAliasHandler(dbpool))
 	r.Delete("/api/admin/users/{id}/aliases/{email}", removeUserAliasHandler(dbpool))
+	r.Post("/api/admin/users/{id}/not-duplicate", notDuplicateHandler(dbpool))
 }
 
 func Middleware(dbpool *pgxpool.Pool) func(http.Handler) http.Handler {
@@ -563,6 +564,7 @@ func upsertAuthUser(ctx context.Context, dbpool *pgxpool.Pool, email string) (Au
 	}
 
 	var user AuthUser
+	var inserted bool
 	err := dbpool.QueryRow(ctx, `
 		INSERT INTO users (email, role)
 		VALUES ($1, $2)
@@ -572,8 +574,11 @@ func upsertAuthUser(ctx context.Context, dbpool *pgxpool.Pool, email string) (Au
 				ELSE users.role
 			END,
 			updated_at = now()
-		RETURNING id, email, role;
-	`, email, role).Scan(&user.ID, &user.Email, &user.Role)
+		RETURNING id, email, role, xmax = 0;
+	`, email, role).Scan(&user.ID, &user.Email, &user.Role, &inserted)
+	if err == nil && inserted {
+		announcePossibleDuplicate(dbpool, user)
+	}
 
 	return user, err
 }
@@ -625,6 +630,10 @@ func listAdminUsersHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		if err := attachAliases(r.Context(), dbpool, users); err != nil {
+			http.Error(w, "failed to read users", http.StatusInternalServerError)
+			return
+		}
+		if err := attachPossibleDuplicates(r.Context(), dbpool, users); err != nil {
 			http.Error(w, "failed to read users", http.StatusInternalServerError)
 			return
 		}

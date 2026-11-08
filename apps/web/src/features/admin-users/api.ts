@@ -86,6 +86,16 @@ export function mergeAdminUsers(intoUserId: string, fromUserId: string): Promise
   });
 }
 
+// markAdminUsersNotDuplicate records that two users with the same name before
+// @ are two people, so the possible-duplicate hint goes away.
+export function markAdminUsersNotDuplicate(userId: string, otherUserId: string): Promise<void> {
+  return fetchJson<void>(`/api/admin/users/${encodeURIComponent(userId)}/not-duplicate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ other_user_id: otherUserId }),
+  });
+}
+
 export function addAdminUserAlias(userId: string, email: string): Promise<{ aliases: string[] }> {
   return fetchJson(`/api/admin/users/${encodeURIComponent(userId)}/aliases`, {
     method: "POST",

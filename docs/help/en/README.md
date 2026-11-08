@@ -69,6 +69,12 @@ How the roles above are set in **Settings → Users**. Board owners add people a
 
 A translator has no region of their own: they edit emails in their languages on every board but do not mark them ready. Board owners and CRM operators manage every board; **Translates** only fills their **My tasks**.
 
+### One person, two addresses
+
+Someone may sign in with a second work address, for example on another regional domain. A CRM operator sees **Same person as …?** under a new user whose address has the same part before @ as an older user's, and the owner's chat gets a message about it. **Merge** folds the new user into the older one: their work moves over, and the new address opens the older account from then on. **Two people** removes the hint. Nothing is merged on its own, because the same name on another domain can be someone else.
+
+To expect a second address before it signs in, open the user's **⋯** menu and choose **Add another address…**.
+
 ## All task pages
 
 - [Find an email and read its status](find-an-email.md)

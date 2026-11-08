@@ -99,6 +99,13 @@ func main() {
 			go demo.RunVisitReports(ctx, dbpool)
 		}
 	}
+	// The owner's chat hears about each new user who looks like someone
+	// already in ReviewDesk.
+	if !demoEnabled {
+		if bot, ok := telegram.FromEnv(); ok {
+			featureauth.Notifier = bot
+		}
+	}
 	// Each morning the owner's chat gets who was in the day before and what
 	// they did.
 	if !demoEnabled && strings.EqualFold(strings.TrimSpace(os.Getenv("ACTIVITY_DIGEST_ENABLED")), "true") {

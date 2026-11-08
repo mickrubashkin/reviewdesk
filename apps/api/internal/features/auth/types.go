@@ -29,6 +29,9 @@ type UserAdminItem struct {
 	ManagedBoards []string `json:"managed_boards"`
 	// Aliases are other work addresses that sign in to this user.
 	Aliases []string `json:"aliases"`
+	// PossibleDuplicates are the ids of older users whose address shares the
+	// part before @ with this one's; see user_duplicates.go.
+	PossibleDuplicates []string `json:"possible_duplicates"`
 }
 
 // userAdminColumns matches UserAdminItem.scanTargets.

@@ -38,7 +38,7 @@ import {
 import type { UserAdminItem, UserRole } from "../../emails/types";
 import { helpRole, helpRoles, type HelpRole } from "../helpRole";
 import { userLabel } from "../userLabel";
-import { UserAccountActions, UserAliases } from "./UserAccountActions";
+import { PossibleDuplicates, UserAccountActions, UserAliases } from "./UserAccountActions";
 import styles from "../../auth-events/AuthEvents/AuthEvents.module.css";
 
 const languageOptions = [
@@ -437,6 +437,7 @@ function buildColumns({
               </Text>
             ) : null}
             <UserAliases canManage={canUpdateRoles} user={row.original} />
+            {canUpdateRoles ? <PossibleDuplicates user={row.original} users={users} /> : null}
           </Stack>
           {canUpdateRoles ? <UserAccountActions user={row.original} users={users} /> : null}
         </Group>

@@ -472,6 +472,8 @@ export type UserAdminItem = {
   managed_boards: string[] | null;
   // Other work addresses that sign in to this user.
   aliases?: string[];
+  // Ids of older users whose address shares the part before @ with this one's.
+  possible_duplicates?: string[];
 };
 
 export type CreateAdminUserPayload = {
