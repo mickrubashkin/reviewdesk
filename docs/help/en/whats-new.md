@@ -2,6 +2,10 @@
 
 The newest changes first. A dot on your account menu means there is something here you have not read yet.
 
+## 2026-11-08
+
+- **Settings → Users** asks **Same person as …?** under a new user whose address has the same part before @ as someone already there, often a colleague on another regional domain. A CRM operator merges them in one click or marks them as two people. See [One person, two addresses](README.md#one-person-two-addresses).
+
 ## 2026-11-03
 
 - **Settings → Users** shows each person's role as this help names it: Viewer, Translator, Region manager, Board owner or CRM operator. See [Setting up people](README.md#setting-up-people).

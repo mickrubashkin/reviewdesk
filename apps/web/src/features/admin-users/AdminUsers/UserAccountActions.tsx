@@ -22,6 +22,7 @@ import { userLabel } from "../userLabel";
 import {
   addAdminUserAlias,
   deleteAdminUser,
+  markAdminUsersNotDuplicate,
   mergeAdminUsers,
   removeAdminUserAlias,
   updateAdminUserName,
@@ -62,6 +63,51 @@ export function UserAliases({ canManage, user }: { canManage: boolean; user: Use
           ) : null}
         </Group>
       ))}
+    </Stack>
+  );
+}
+
+// PossibleDuplicates asks whether a user is the same person as an older user
+// with the same name before @, often on another regional domain; a super admin
+// merges them or marks them as two people.
+export function PossibleDuplicates({ user, users }: { user: UserAdminItem; users: UserAdminItem[] }) {
+  const queryClient = useQueryClient();
+  const [mergeInto, setMergeInto] = useState<string | null>(null);
+  const dismissMutation = useMutation({
+    mutationFn: (otherId: string) => markAdminUsersNotDuplicate(user.id, otherId),
+    onSuccess: () => invalidateUsers(queryClient),
+    onError: (error) => notifications.show({ color: "red", message: error.message, title: "Not saved" }),
+  });
+  const others = (user.possible_duplicates ?? [])
+    .map((id) => users.find((item) => item.id === id))
+    .filter((item): item is UserAdminItem => Boolean(item));
+  if (others.length === 0) {
+    return null;
+  }
+  return (
+    <Stack gap={2} mt={4}>
+      {others.map((other) => (
+        <Group key={other.id} gap={4} wrap="wrap">
+          <Text c="orange" size="xs">
+            Same person as {userLabel(other)}?
+          </Text>
+          <Button color="orange" size="compact-xs" variant="light" onClick={() => setMergeInto(other.id)}>
+            Merge
+          </Button>
+          <Button
+            color="gray"
+            loading={dismissMutation.isPending && dismissMutation.variables === other.id}
+            size="compact-xs"
+            variant="subtle"
+            onClick={() => dismissMutation.mutate(other.id)}
+          >
+            Two people
+          </Button>
+        </Group>
+      ))}
+      {mergeInto ? (
+        <MergeUserModal initialTargetId={mergeInto} user={user} users={users} onClose={() => setMergeInto(null)} />
+      ) : null}
     </Stack>
   );
 }
@@ -187,16 +233,18 @@ function AddAliasModal({ user, onClose }: { user: UserAdminItem; onClose: () => 
 }
 
 function MergeUserModal({
+  initialTargetId = null,
   user,
   users,
   onClose,
 }: {
+  initialTargetId?: string | null;
   user: UserAdminItem;
   users: UserAdminItem[];
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [targetId, setTargetId] = useState<string | null>(null);
+  const [targetId, setTargetId] = useState<string | null>(initialTargetId);
   const target = users.find((item) => item.id === targetId);
   const mutation = useMutation({
     mutationFn: () => mergeAdminUsers(targetId ?? "", user.id),
