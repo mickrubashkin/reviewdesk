@@ -11,6 +11,7 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - `apps/web/src/main.tsx` — frontend entrypoint.
 - `apps/web/src/App.tsx` — router. `/emails/{id}/edit` redirects to `/emails/{id}/review`.
 - `db/migrations/` — goose migrations applied sequentially.
+- `deploy/vibecode/` — the second deploy, for colleagues: a dedicated VibeCode VM (Bitrix24's app platform) with PostgreSQL on it; the API also serves the web app there (`WEB_DIST_DIR`). Build and deploy with `scripts/vibecode-build.sh` and `scripts/vibecode-deploy.sh`; see its README. Railway (+ Cloudflare Pages) stays for the demo; the two differ only by env.
 - `docs/help/en/` — user help in Markdown, built into the web app at `/help` (`apps/web/src/features/help/`). Links between pages are plain `page.md#anchor`.
 
 ## Commands

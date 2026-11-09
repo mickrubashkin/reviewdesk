@@ -117,6 +117,11 @@ func main() {
 		}
 	}
 
+	// On VibeCode the API serves the web app too; on Railway Pages does.
+	if dir := strings.TrimSpace(os.Getenv("WEB_DIST_DIR")); dir != "" {
+		registerWebRoutes(r, dir)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = os.Getenv("API_PORT")
