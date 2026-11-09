@@ -16,7 +16,7 @@ const startedAt = new Date().toISOString();
 // Install steps run as root and the app as an unprivileged user, so the mode
 // set at upload may not survive; set it here and record what happened.
 const chmodResults = {};
-for (const name of ["vibeprobe", "server"]) {
+for (const name of ["vibeprobe", "server", "goose"]) {
   const file = join(root, "bin", name);
   if (!existsSync(file)) {
     chmodResults[name] = "missing";
@@ -37,22 +37,74 @@ function run(command, args, options = {}) {
     status: result.status,
     signal: result.signal,
     error: result.error ? result.error.code || result.error.message : null,
-    stdout: (result.stdout || "").trim().slice(0, 2000),
-    stderr: (result.stderr || "").trim().slice(0, 2000),
+    // The end: that's where long outputs (goose) say how they finished.
+    stdout: (result.stdout || "").trim().slice(-2000),
+    stderr: (result.stderr || "").trim().slice(-2000),
   };
 }
+
+// The pilot writes to the database (migrations, the API's default blocks), so it
+// does that only to one whose name ends in "pilot", never to the real one.
+function pilotDatabase() {
+  try {
+    const url = new URL(process.env.DATABASE_URL || "");
+    const name = url.pathname.slice(1);
+    return { url: url.toString(), name, writable: /pilot$/.test(name) };
+  } catch {
+    return null;
+  }
+}
+const database = pilotDatabase();
+
+// Through goose's own variables, so the URL stays out of the report.
+const migrations = database?.writable
+  ? run("./bin/goose", ["up"], {
+      timeout: 180000,
+      env: {
+        PATH: process.env.PATH,
+        GOOSE_DRIVER: "postgres",
+        GOOSE_DBSTRING: database.url,
+        GOOSE_MIGRATION_DIR: "db/migrations",
+      },
+    })
+  : `skipped: ${database ? `database "${database.name}" does not end in "pilot"` : "DATABASE_URL is not set"}`;
 
 // EACCES here means noexec (or wrong mode); ENOENT on an existing file means a
 // missing loader, i.e. the binary is not static.
 const execChecks = {
   probeVersion: run("./bin/vibeprobe", ["--version"]),
-  // The real API, briefly: it exits on a missing or unreachable database, which
-  // still proves it executes. PORT is moved off the wrapper's and the probe's.
+  migrations,
+  // The real API, briefly. Against the pilot database it should keep running
+  // until the timeout kills it (signal SIGTERM, "API server listening");
+  // without one it exits on the missing database, which still proves it runs.
+  // PORT is moved off the wrapper's and the probe's.
   serverStart: run("./bin/server", [], {
-    timeout: 4000,
-    env: { PATH: process.env.PATH, DATABASE_URL: process.env.DATABASE_URL || "", PORT: "8090" },
+    timeout: 8000,
+    env: { PATH: process.env.PATH, DATABASE_URL: database?.writable ? database.url : "", PORT: "8090" },
   }),
 };
+
+function readSetup() {
+  try {
+    return JSON.parse(readFileSync(join(root, "pilot-setup.json"), "utf8"));
+  } catch (error) {
+    return `no setup result: ${error.code || error.message}`;
+  }
+}
+
+// Read-only: connection time, versions and query round trips, measured by the
+// probe with pgx (there is no psql on Galaxy).
+function databaseCheck() {
+  const result = run("./bin/vibeprobe", ["--db"], {
+    timeout: 60000,
+    env: { PATH: process.env.PATH, DATABASE_URL: process.env.DATABASE_URL || "" },
+  });
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return { ok: false, ...result };
+  }
+}
 
 function dataVolumeCheck() {
   const file = "/data/.vibecode-pilot-write-test";
@@ -86,6 +138,7 @@ const environmentChecks = {
   bin: binListing(),
   chmod: chmodResults,
   dataVolume: dataVolumeCheck(),
+  setup: readSetup(),
   // Names only: values may be secrets.
   env: Object.fromEntries(
     ["PORT", "DATABASE_URL", "BITRIX_API_BASE_URL", "BITRIX_API_KEY", "BITRIX_WEBHOOK_URL", "PILOT_AI_MODEL"].map(
@@ -113,8 +166,13 @@ function startProbe() {
 }
 startProbe();
 
+// The session token stays out of the report: its first characters show the kind.
 function vibeHeaders(request) {
-  return Object.fromEntries(Object.entries(request.headers).filter(([name]) => name.startsWith("x-vibe-")));
+  return Object.fromEntries(
+    Object.entries(request.headers)
+      .filter(([name]) => name.startsWith("x-vibe-"))
+      .map(([name, value]) => [name, name === "x-vibe-authorization" ? `${value.slice(0, 20)}… (${value.length} chars)` : value]),
+  );
 }
 
 function sendJSON(response, status, body) {
@@ -227,6 +285,38 @@ function checkAI() {
   });
 }
 
+// What the platform tells about the signed-in user: field names only, and
+// whether an email is there, since #172 links users by it.
+function checkIdentity(request) {
+  return timed("identity", async () => {
+    const base = (process.env.BITRIX_API_BASE_URL || "").replace(/\/+$/, "");
+    const userId = request.headers["x-vibe-user-id"];
+    if (!base || !process.env.BITRIX_API_KEY) return { ok: false, error: "BITRIX_API_BASE_URL or BITRIX_API_KEY is not set" };
+    if (!userId) return { ok: false, error: "no X-Vibe-User-Id: open the app through the gateway" };
+    const describe = async (path, headers) => {
+      const started = Date.now();
+      const apiResponse = await fetch(`${base}${path}`, {
+        headers: { "X-Api-Key": process.env.BITRIX_API_KEY, ...headers },
+        signal: AbortSignal.timeout(120000),
+      });
+      const body = await readResponse(apiResponse);
+      const data = body?.data ?? body;
+      const text = JSON.stringify(body);
+      return {
+        status: apiResponse.status,
+        ms: Date.now() - started,
+        fields: data && typeof data === "object" ? Object.keys(data) : null,
+        hasEmail: /"[^"]*email[^"]*"\s*:\s*"[^"]+@/i.test(text),
+        error: apiResponse.ok ? undefined : body?.error ?? text.slice(0, 500),
+      };
+    };
+    const user = await describe(`/users/${encodeURIComponent(userId)}`);
+    const session = request.headers["x-vibe-authorization"];
+    const me = session ? await describe("/me", { Authorization: session }) : "no X-Vibe-Authorization";
+    return { ok: user.status === 200 && user.hasEmail, user, me };
+  });
+}
+
 function checkCRM() {
   return timed("crm", async () => {
     const webhook = (process.env.BITRIX_WEBHOOK_URL || "").trim().replace(/\/+$/, "");
@@ -258,6 +348,8 @@ const server = http.createServer(async (request, response) => {
   if (path === "/pilot/sse-node") return nodeTicks(request, response);
   if (path === "/pilot/ai") return sendJSON(response, 200, await checkAI());
   if (path === "/pilot/crm") return sendJSON(response, 200, await checkCRM());
+  if (path === "/pilot/identity") return sendJSON(response, 200, await checkIdentity(request));
+  if (path === "/pilot/db") return sendJSON(response, 200, databaseCheck());
   if (path === "/" || path === "/index.html") {
     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
     return response.end(readFileSync(join(root, "index.html")));
