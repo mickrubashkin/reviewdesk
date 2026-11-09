@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -49,6 +50,7 @@ var (
 func RegisterBoardRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Get("/api/boards", listBoardsHandler(dbpool))
 	r.Post("/api/boards", createBoardHandler(dbpool))
+	r.Patch("/api/boards/{boardKey}", renameBoardHandler(dbpool))
 	r.Get("/api/boards/{boardKey}/regions", listRegionsHandler(dbpool))
 	r.Put("/api/boards/{boardKey}/regions", replaceRegionsHandler(dbpool))
 	r.Post("/api/boards/{boardKey}/stages", createBoardStageHandler(dbpool))
@@ -132,6 +134,77 @@ func updateBoardStageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		board, err := renameBoardStage(r.Context(), dbpool, chi.URLParam(r, "boardKey"), chi.URLParam(r, "stage"), newStage, user)
 		writeBoardStageResponse(w, err, board)
 	}
+}
+
+type renameBoardRequest struct {
+	Name string `json:"name"`
+}
+
+// maxBoardNameLength keeps a board's name fit for the board switcher.
+const maxBoardNameLength = 80
+
+// renameBoardHandler changes the name people see. The key stays, so links,
+// emails and portal sync settings keep pointing at the board.
+func renameBoardHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireBoardManager(w, r, dbpool)
+		if !ok {
+			return
+		}
+
+		var request renameBoardRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		name := strings.Join(strings.Fields(request.Name), " ")
+		if name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+		if utf8.RuneCountInString(name) > maxBoardNameLength {
+			http.Error(w, "name is too long", http.StatusBadRequest)
+			return
+		}
+
+		board, err := renameBoard(r.Context(), dbpool, chi.URLParam(r, "boardKey"), name, user)
+		writeBoardStageResponse(w, err, board)
+	}
+}
+
+func renameBoard(ctx context.Context, dbpool *pgxpool.Pool, boardKey string, name string, actor AuthUser) (BoardItem, error) {
+	tx, err := dbpool.Begin(ctx)
+	if err != nil {
+		return BoardItem{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	board, err := getBoardForUpdate(ctx, tx, boardKey)
+	if err != nil {
+		return BoardItem{}, err
+	}
+	if board.Name == name {
+		return board, nil
+	}
+	before := board.Name
+	if err := tx.QueryRow(ctx, `
+		UPDATE boards SET name = $2, updated_at = now() WHERE key = $1 RETURNING updated_at;
+	`, board.Key, name).Scan(&board.UpdatedAt); err != nil {
+		return BoardItem{}, err
+	}
+	board.Name = name
+	if err := insertBoardEvent(ctx, tx, actor, boardEventRenamed, board, map[string]any{
+		"board_key":  board.Key,
+		"board_name": board.Name,
+	}, map[string]any{
+		"name": map[string]any{"before": before, "after": name},
+	}); err != nil {
+		return BoardItem{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return BoardItem{}, err
+	}
+	return board, nil
 }
 
 func deleteBoardStageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {

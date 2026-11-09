@@ -24,6 +24,15 @@ export function createBoard(payload: CreateBoardPayload): Promise<Board> {
   });
 }
 
+// renameBoard changes the name people see; the key, and so links, stay.
+export function renameBoard(boardKey: string, name: string): Promise<Board> {
+  return fetchJson<Board>(`/api/boards/${encodeURIComponent(boardKey)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function createBoardStage(
   boardKey: string,
   payload: CreateBoardStagePayload

@@ -2,6 +2,10 @@
 
 The newest changes first. A dot on your account menu means there is something here you have not read yet.
 
+## 2026-11-09
+
+- A board can be renamed in **Board settings**; links to it keep working.
+
 ## 2026-11-08
 
 - **Settings → Users** asks **Same person as …?** under a new user whose address has the same part before @ as someone already there, often a colleague on another regional domain. A CRM operator merges them in one click or marks them as two people. See [One person, two addresses](README.md#one-person-two-addresses).

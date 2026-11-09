@@ -12,6 +12,7 @@ import (
 
 const (
 	boardEventCreated         = "board_created"
+	boardEventRenamed         = "board_renamed"
 	boardEventStageCreated    = "board_stage_created"
 	boardEventStageRenamed    = "board_stage_renamed"
 	boardEventStageDeleted    = "board_stage_deleted"
