@@ -1,0 +1,11 @@
+{
+  "name": "reviewdesk-vibecode-pilot",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

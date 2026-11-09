@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/_gw/icon" />
+    <title>VibeCode pilot</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 16px; max-width: 960px; color: #222; background: #fff; }
+      section { margin-bottom: 24px; }
+      pre { background: #f4f4f5; padding: 12px; overflow-x: auto; white-space: pre-wrap; }
+      button { font: inherit; padding: 4px 12px; margin-right: 8px; }
+      .ok { color: #157f3b; } .bad { color: #b42318; }
+    </style>
+  </head>
+  <body>
+    <h1>VibeCode pilot</h1>
+    <p>Checks for <code>#171</code>. Copy each block back into the issue.</p>
+
+    <section>
+      <h2>Binary and environment</h2>
+      <pre id="report">Loading…</pre>
+    </section>
+
+    <section>
+      <h2>SSE</h2>
+      <p>Ten events a second apart. Unbuffered: each arrives about 1000 ms after the previous one. Buffered: all arrive together at the end.</p>
+      <button data-sse="api/probe/sse">Go through the wrapper</button>
+      <button data-sse="pilot/sse-node">Node only</button>
+      <pre id="sse">Not run.</pre>
+    </section>
+
+    <section>
+      <h2>Platform AI</h2>
+      <button data-check="pilot/ai">Run</button>
+      <pre id="ai">Not run.</pre>
+    </section>
+
+    <section>
+      <h2>CRM webhook</h2>
+      <button data-check="pilot/crm">Run</button>
+      <pre id="crm">Not run.</pre>
+    </section>
+
+    <script>
+      // Relative URLs: the gateway may serve the app under a path.
+      fetch("pilot/report")
+        .then((r) => r.json())
+        .then((report) => { document.getElementById("report").textContent = JSON.stringify(report, null, 2); })
+        .catch((error) => { document.getElementById("report").textContent = String(error); });
+
+      document.querySelectorAll("[data-sse]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const out = document.getElementById("sse");
+          const url = button.dataset.sse;
+          const opened = Date.now();
+          let previous = opened;
+          const lines = [`${url}: opening`];
+          const show = () => { out.textContent = lines.join("\n"); };
+          show();
+          const source = new EventSource(url);
+          source.addEventListener("tick", (event) => {
+            const now = Date.now();
+            const { n, sentAt } = JSON.parse(event.data);
+            lines.push(`#${n}  +${now - opened} ms since open, +${now - previous} ms since previous, ${now - sentAt} ms in transit`);
+            previous = now;
+            show();
+          });
+          source.addEventListener("done", () => {
+            source.close();
+            const gaps = lines.slice(2).map((line) => Number(line.match(/\+(\d+) ms since previous/)[1]));
+            const streamed = gaps.length >= 9 && gaps.filter((gap) => gap > 500).length >= 8;
+            lines.push(streamed ? "Result: streamed chunk by chunk" : "Result: BUFFERED");
+            show();
+          });
+          source.onerror = () => {
+            if (source.readyState === EventSource.CLOSED) return;
+            lines.push("error (the browser may retry)");
+            show();
+          };
+        });
+      });
+
+      document.querySelectorAll("[data-check]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const out = document.getElementById(button.dataset.check.split("/")[1]);
+          out.textContent = "Running…";
+          try {
+            const result = await (await fetch(button.dataset.check)).json();
+            out.innerHTML = "";
+            const verdict = document.createElement("strong");
+            verdict.className = result.ok ? "ok" : "bad";
+            verdict.textContent = result.ok ? "OK\n" : "FAILED\n";
+            out.append(verdict, JSON.stringify(result, null, 2));
+          } catch (error) {
+            out.textContent = String(error);
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
