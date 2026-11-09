@@ -72,6 +72,15 @@ export function updateAdminUserName(userId: string, name: string): Promise<UserA
   });
 }
 
+// updateAdminUserPortalID sets a user's Bitrix24 ID, or clears it with "".
+export function updateAdminUserPortalID(userId: string, portalUserId: string): Promise<UserAdminItem> {
+  return fetchJson<UserAdminItem>(`/api/admin/users/${encodeURIComponent(userId)}/portal-id`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ portal_user_id: portalUserId }),
+  });
+}
+
 export function deleteAdminUser(userId: string): Promise<void> {
   return fetchJson<void>(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
 }

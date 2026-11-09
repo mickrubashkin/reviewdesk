@@ -474,6 +474,8 @@ export type UserAdminItem = {
   aliases?: string[];
   // Ids of older users whose address shares the part before @ with this one's.
   possible_duplicates?: string[];
+  // The person's Bitrix24 ID on VibeCode, for the bot's messages; null when unknown.
+  portal_user_id?: string | null;
 };
 
 export type CreateAdminUserPayload = {

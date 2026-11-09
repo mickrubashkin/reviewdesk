@@ -77,6 +77,14 @@ func main() {
 	emails.RegisterEmailRoutes(r, dbpool)
 	comments.Logger = commentEventLogger{}
 	comments.Mailer = emails.NewNotificationSender()
+	// On VibeCode the bot writes to people whose Bitrix24 ID is known, which
+	// the gateway sign-in and a daily lookup by email fill in.
+	if bot, ok := b24bot.MessengerFromEnv(); ok {
+		comments.Messenger = bot
+	}
+	if featureauth.GatewayMode() {
+		go featureauth.RunPortalUserIDFill(ctx, dbpool)
+	}
 	comments.RegisterCommentRoutes(r, dbpool)
 	ai.RegisterAIRoutes(r, dbpool, aiService)
 	// A sync runs inside the server; one a restart cut off would block its

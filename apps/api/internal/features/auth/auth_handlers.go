@@ -56,6 +56,7 @@ func RegisterAuthRoutes(r chi.Router, dbpool *pgxpool.Pool, emailSender EmailSen
 	r.Patch("/api/admin/users/{id}/languages", updateAdminUserLanguagesHandler(dbpool))
 	r.Patch("/api/admin/users/{id}/boards", updateAdminUserBoardsHandler(dbpool))
 	r.Patch("/api/admin/users/{id}/name", updateAdminUserNameHandler(dbpool))
+	r.Patch("/api/admin/users/{id}/portal-id", updateAdminUserPortalIDHandler(dbpool))
 	r.Post("/api/admin/users/{id}/merge", mergeUsersHandler(dbpool))
 	r.Delete("/api/admin/users/{id}", deleteUserHandler(dbpool))
 	r.Post("/api/admin/users/{id}/aliases", addUserAliasHandler(dbpool))
