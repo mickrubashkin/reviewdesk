@@ -75,7 +75,7 @@ func Middleware(dbpool *pgxpool.Pool) func(http.Handler) http.Handler {
 
 			user, err := currentUserFromRequest(r.Context(), dbpool, r)
 			if err != nil {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeUnauthorized(w, err)
 				return
 			}
 			touchUserLastSeen(r.Context(), dbpool, user)
@@ -415,8 +415,12 @@ func demoLoginHandler(dbpool *pgxpool.Pool, limiter *httprate.RateLimiter) http.
 func meHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, err := currentUserFromRequest(r.Context(), dbpool, r)
+		if errors.Is(err, errAccessPending) {
+			waitForGatewayLink(r)
+			user, err = currentUserFromRequest(r.Context(), dbpool, r)
+		}
 		if err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			writeUnauthorized(w, err)
 			return
 		}
 		touchUserLastSeen(r.Context(), dbpool, user)
@@ -505,7 +509,23 @@ func logAuthEvent(ctx context.Context, dbpool *pgxpool.Pool, r *http.Request, ev
 	}
 }
 
+// writeUnauthorized tells the page why there is no user: on VibeCode it shows
+// "setting up your access" for a pending link and "no access" for a refusal.
+func writeUnauthorized(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, errAccessPending):
+		http.Error(w, errAccessPending.Error(), http.StatusUnauthorized)
+	case errors.Is(err, errNoAccess):
+		http.Error(w, errNoAccess.Error(), http.StatusForbidden)
+	default:
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}
+}
+
 func currentUserFromRequest(ctx context.Context, dbpool *pgxpool.Pool, r *http.Request) (AuthUser, error) {
+	if GatewayMode() {
+		return gatewayUserFromRequest(ctx, dbpool, r)
+	}
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
 		return AuthUser{}, fmt.Errorf("missing session")

@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -71,12 +70,12 @@ type translationSuggester interface {
 }
 
 type openAITranslationSuggester struct {
-	apiKey string
-	model  string
-	client *http.Client
+	provider aiProvider
+	model    string
+	client   *http.Client
 }
 
-func newOpenAITranslationSuggester(apiKey string) openAITranslationSuggester {
+func newOpenAITranslationSuggester(provider aiProvider) openAITranslationSuggester {
 	// Translation may use its own model; otherwise the one the reviews use.
 	model := os.Getenv("OPENAI_TRANSLATION_MODEL")
 	if model == "" {
@@ -85,7 +84,7 @@ func newOpenAITranslationSuggester(apiKey string) openAITranslationSuggester {
 	if model == "" {
 		model = "gpt-5-mini"
 	}
-	return openAITranslationSuggester{apiKey: apiKey, model: model, client: &http.Client{Timeout: 90 * time.Second}}
+	return openAITranslationSuggester{provider: provider, model: model, client: &http.Client{Timeout: 90 * time.Second}}
 }
 
 func (s openAITranslationSuggester) suggest(ctx context.Context, language string, fields []TranslationField, glossary []GlossaryTerm) (map[string]string, AIAnalysisMetrics, error) {
@@ -139,17 +138,10 @@ func (s openAITranslationSuggester) suggest(ctx context.Context, language string
 	if strings.HasPrefix(s.model, "gpt-5") {
 		body["reasoning"] = map[string]any{"effort": "low"}
 	}
-	bodyBytes, err := json.Marshal(body)
+	request, err := s.provider.newRequest(ctx, body)
 	if err != nil {
 		return nil, metrics, err
 	}
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, metrics, err
-	}
-	request.Header.Set("Authorization", "Bearer "+s.apiKey)
-	request.Header.Set("Content-Type", "application/json")
 	response, err := s.client.Do(request)
 	if err != nil {
 		return nil, metrics, err
@@ -160,11 +152,9 @@ func (s openAITranslationSuggester) suggest(ctx context.Context, language string
 		return nil, metrics, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, metrics, fmt.Errorf("openai returned %d: %s", response.StatusCode, string(responseBytes))
+		return nil, metrics, fmt.Errorf("AI provider returned %d: %s", response.StatusCode, string(responseBytes))
 	}
-	applyOpenAIUsage(&metrics, responseBytes)
-
-	text, err := extractOpenAIOutputText(responseBytes)
+	text, err := s.provider.readResponse(responseBytes, &metrics)
 	if err != nil {
 		return nil, metrics, err
 	}
@@ -263,7 +253,7 @@ func suggestTranslationHandler(dbpool *pgxpool.Pool, suggester translationSugges
 			return
 		}
 		if !enabled {
-			http.Error(w, "OPENAI_API_KEY is not configured", http.StatusServiceUnavailable)
+			http.Error(w, "AI is not configured", http.StatusServiceUnavailable)
 			return
 		}
 

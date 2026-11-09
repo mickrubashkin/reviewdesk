@@ -10,7 +10,9 @@ import (
 )
 
 type AIAnalysisService struct {
+	// APIKey is the provider's key; empty turns AI off.
 	APIKey           string
+	Provider         aiProvider
 	Model            string
 	ResponseLanguage string
 	Instruction      string
@@ -20,9 +22,9 @@ type AIAnalysisService struct {
 }
 
 func NewAIAnalysisService() (AIAnalysisService, error) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		fmt.Fprintln(os.Stderr, "OPENAI_API_KEY is not set, AI analysis will be disabled")
+	provider := providerFromEnv()
+	if provider.apiKey == "" {
+		fmt.Fprintf(os.Stderr, "%s is not set, AI analysis will be disabled\n", provider.keyName())
 	}
 
 	reviewRules, err := loadAIContextFile("email_review_rules.md")
@@ -45,7 +47,8 @@ func NewAIAnalysisService() (AIAnalysisService, error) {
 	}
 
 	return AIAnalysisService{
-		APIKey:           os.Getenv("OPENAI_API_KEY"),
+		APIKey:           provider.apiKey,
+		Provider:         provider,
 		Model:            model,
 		ResponseLanguage: responseLanguage,
 		ReviewRules:      reviewRules,
@@ -69,13 +72,7 @@ func (service AIAnalysisService) analyzeEmail(ctx context.Context, email EmailDe
 		Status: "error",
 	}
 
-	requestBody := service.buildOpenAIAnalysisRequestBody(email)
-	bodyBytes, err := json.Marshal(requestBody)
-	if err != nil {
-		return AIAnalysisResult{Metrics: finishAIAnalysisMetrics(metrics, startedAt, err)}, err
-	}
-
-	outputText, err := service.requestOpenAIAnalysis(ctx, bodyBytes, &metrics, onDelta)
+	outputText, err := service.requestOpenAIAnalysis(ctx, service.buildOpenAIAnalysisRequestBody(email), &metrics, onDelta)
 	if err != nil {
 		return AIAnalysisResult{Metrics: finishAIAnalysisMetrics(metrics, startedAt, err)}, err
 	}

@@ -26,6 +26,8 @@ const eventTypeOptions = [
   { value: "otp_login", label: "OTP login" },
   { value: "failed_otp", label: "Failed OTP" },
   { value: "logout", label: "Logout" },
+  { value: "gateway_link", label: "Bitrix24 account linked" },
+  { value: "gateway_denied", label: "Bitrix24 account refused" },
 ];
 type SortDirection = "asc" | "desc";
 type AuthEventSortKey = keyof Pick<

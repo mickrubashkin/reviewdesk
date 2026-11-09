@@ -58,7 +58,7 @@ func createTranslationHandler(dbpool *pgxpool.Pool, suggester translationSuggest
 			return
 		}
 		if request.Translate && !enabled {
-			http.Error(w, "OPENAI_API_KEY is not configured", http.StatusServiceUnavailable)
+			http.Error(w, "AI is not configured", http.StatusServiceUnavailable)
 			return
 		}
 

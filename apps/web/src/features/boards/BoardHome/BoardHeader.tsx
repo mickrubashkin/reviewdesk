@@ -12,7 +12,7 @@ import {
 } from "@mantine/core";
 import { CaretDownIcon, CheckIcon, KanbanIcon, SignOutIcon } from "@phosphor-icons/react";
 
-import { demoMode } from "../../auth/api";
+import { demoMode, gatewayMode } from "../../auth/api";
 import type { AuthUser, Board } from "../../emails/types";
 
 import {
@@ -343,8 +343,9 @@ function CompactHeaderMenu({
                 />
               </>
             ) : null}
-            {/* In the demo a logout would only open a new demo session. */}
-            {demoMode ? null : (
+            {/* In the demo a logout would only open a new demo session; through
+                the gateway the Bitrix24 account would sign the person back in. */}
+            {demoMode || gatewayMode ? null : (
               <>
                 <Menu.Divider />
                 <Menu.Item

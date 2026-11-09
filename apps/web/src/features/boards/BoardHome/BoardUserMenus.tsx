@@ -18,7 +18,7 @@ import {
 import { Link } from "react-router-dom";
 
 import { isAdminRole } from "../../emails/permissions";
-import { demoMode } from "../../auth/api";
+import { demoMode, gatewayMode } from "../../auth/api";
 import { replayTour } from "../../tour/useBoardTour";
 import type { AuthUser } from "../../emails/types";
 import { hasUnreadNews } from "../../help/whatsNew";
@@ -263,8 +263,9 @@ export function AccountMenu({
         <GlossaryMenuItem currentUser={currentUser} />
         <WhatsNewMenuItem currentUser={currentUser} />
         {demoMode ? null : <ReplayTourMenuItem />}
-        {/* In the demo a logout would only open a new demo session. */}
-        {demoMode ? null : (
+        {/* In the demo a logout would only open a new demo session; through
+            the gateway the Bitrix24 account would sign the person back in. */}
+        {demoMode || gatewayMode ? null : (
           <Menu.Item
             color="red"
             disabled={isLoggingOut}
