@@ -109,6 +109,10 @@ export function fetchCurrentUser(): Promise<AuthUser> {
   return fetchJson<AuthUser>("/api/auth/me");
 }
 
+// On VibeCode the platform's gateway signs people in with their Bitrix24
+// account: no sign-in page and no sign-out.
+export const gatewayMode = import.meta.env.VITE_AUTH_MODE === "vibe";
+
 // The public demo build has no sign-in: a visitor opens the board as the
 // shared demo reviewer, and the login page shows only if that fails.
 export const demoMode = import.meta.env.VITE_AUTH_DEMO_LOGIN_ENABLED === "true";

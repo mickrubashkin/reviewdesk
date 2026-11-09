@@ -75,6 +75,10 @@ Someone may sign in with a second work address, for example on another regional 
 
 To expect a second address before it signs in, open the user's **⋯** menu and choose **Add another address…**.
 
+### Signing in from Bitrix24
+
+Where ReviewDesk opens from the Bitrix24 menu, your Bitrix24 account signs you in: there is no code by email and no **Log out**. On your first visit ReviewDesk finds the email of your Bitrix24 account, which takes a few seconds, and opens the user with that address or one of its other addresses. Someone new from a work domain becomes a Viewer, as with a code. Anyone else sees **No access yet** until a CRM operator adds them in **Settings → Users** with the address of their Bitrix24 account, and the owner's chat gets a message about them.
+
 ## All task pages
 
 - [Find an email and read its status](find-an-email.md)

@@ -2,22 +2,18 @@ package ai
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 )
 
-func (service AIAnalysisService) requestOpenAIAnalysis(ctx context.Context, bodyBytes []byte, metrics *AIAnalysisMetrics, onDelta func(string) error) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(bodyBytes))
+func (service AIAnalysisService) requestOpenAIAnalysis(ctx context.Context, body map[string]any, metrics *AIAnalysisMetrics, onDelta func(string) error) (string, error) {
+	request, err := service.Provider.newRequest(ctx, body)
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("Authorization", "Bearer "+service.APIKey)
-	request.Header.Set("Content-Type", "application/json")
 
 	response, err := service.Client.Do(request)
 	if err != nil {
@@ -31,10 +27,10 @@ func (service AIAnalysisService) requestOpenAIAnalysis(ctx context.Context, body
 			return "", readErr
 		}
 
-		return "", fmt.Errorf("openai returned %d: %s", response.StatusCode, string(responseBytes))
+		return "", fmt.Errorf("AI provider returned %d: %s", response.StatusCode, string(responseBytes))
 	}
 
-	return readOpenAIStreamOutputText(response.Body, metrics, onDelta)
+	return service.Provider.readStream(response.Body, metrics, onDelta)
 }
 
 func readOpenAIStreamOutputText(body io.Reader, metrics *AIAnalysisMetrics, onDelta func(string) error) (string, error) {

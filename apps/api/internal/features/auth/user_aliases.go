@@ -104,11 +104,12 @@ func mergeUsers(ctx context.Context, tx pgx.Tx, intoID, fromID, actorEmail strin
 	}
 	var intoEmail, fromEmail string
 	var fromName string
+	var fromPortalUserID *string
 	var fromLanguages, fromBoards []string
 	if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1 FOR UPDATE;`, intoID).Scan(&intoEmail); err != nil {
 		return UserAdminItem{}, errUserNotFound
 	}
-	if err := tx.QueryRow(ctx, `SELECT email, name, languages, managed_boards FROM users WHERE id = $1 FOR UPDATE;`, fromID).Scan(&fromEmail, &fromName, &fromLanguages, &fromBoards); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT email, name, portal_user_id, languages, managed_boards FROM users WHERE id = $1 FOR UPDATE;`, fromID).Scan(&fromEmail, &fromName, &fromPortalUserID, &fromLanguages, &fromBoards); err != nil {
 		return UserAdminItem{}, errUserNotFound
 	}
 
@@ -153,10 +154,12 @@ func mergeUsers(ctx context.Context, tx pgx.Tx, intoID, fromID, actorEmail strin
 		SET languages = ARRAY(SELECT DISTINCT unnest(languages || $2::text[]) ORDER BY 1),
 			managed_boards = ARRAY(SELECT DISTINCT unnest(managed_boards || $4::text[]) ORDER BY 1),
 			name = CASE WHEN name = '' THEN $3 ELSE name END,
+			-- The removed user's Bitrix24 account now signs in as this one.
+			portal_user_id = COALESCE(portal_user_id, $5),
 			updated_at = now()
 		WHERE id = $1
 		RETURNING `+userAdminColumns+`;
-	`, intoID, fromLanguages, fromName, fromBoards).Scan(merged.scanTargets()...)
+	`, intoID, fromLanguages, fromName, fromBoards, fromPortalUserID).Scan(merged.scanTargets()...)
 	if err != nil {
 		return UserAdminItem{}, err
 	}

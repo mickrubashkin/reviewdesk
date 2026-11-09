@@ -24,7 +24,7 @@ func RegisterAIRoutes(r chi.Router, dbpool *pgxpool.Pool, aiService AIAnalysisSe
 	r.Get("/api/translation-glossary", getGlossaryHandler(dbpool))
 	r.Put("/api/translation-glossary", putGlossaryHandler(dbpool))
 	registerGlossarySuggestionRoutes(r, dbpool)
-	translator := newOpenAITranslationSuggester(aiService.APIKey)
+	translator := newOpenAITranslationSuggester(aiService.Provider)
 	r.Post("/api/emails/{id}/translation/suggestions", suggestTranslationHandler(dbpool, translator, aiService.APIKey != ""))
 	r.Post("/api/emails/{id}/translations", createTranslationHandler(dbpool, translator, aiService.APIKey != ""))
 }
@@ -32,7 +32,7 @@ func RegisterAIRoutes(r chi.Router, dbpool *pgxpool.Pool, aiService AIAnalysisSe
 func getCachedEmailAnalysisHandler(dbpool *pgxpool.Pool, aiService AIAnalysisService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if aiService.APIKey == "" {
-			http.Error(w, "OPENAI_API_KEY is not configured", http.StatusServiceUnavailable)
+			http.Error(w, aiService.Provider.keyName()+" is not configured", http.StatusServiceUnavailable)
 			return
 		}
 
@@ -158,7 +158,7 @@ func buildAIAnalysisDebugPayload(aiService AIAnalysisService, email EmailDetail)
 func analyzeEmailHandler(dbpool *pgxpool.Pool, aiService AIAnalysisService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if aiService.APIKey == "" {
-			http.Error(w, "OPENAI_API_KEY is not configured", http.StatusServiceUnavailable)
+			http.Error(w, aiService.Provider.keyName()+" is not configured", http.StatusServiceUnavailable)
 			return
 		}
 
@@ -200,7 +200,7 @@ func analyzeEmailHandler(dbpool *pgxpool.Pool, aiService AIAnalysisService) http
 func analyzeEmailStreamHandler(dbpool *pgxpool.Pool, aiService AIAnalysisService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if aiService.APIKey == "" {
-			http.Error(w, "OPENAI_API_KEY is not configured", http.StatusServiceUnavailable)
+			http.Error(w, aiService.Provider.keyName()+" is not configured", http.StatusServiceUnavailable)
 			return
 		}
 

@@ -10,10 +10,11 @@ import { AIAnalysisLogs } from "./features/ai-logs/AIAnalysisLogs";
 import { AdminUsers } from "./features/admin-users/AdminUsers";
 import { AuthEvents } from "./features/auth-events/AuthEvents";
 import { BoardHomeRedirect, EmailBoardRoute } from "./features/boards/BoardHome";
+import { GatewayAccess, gatewayAccessState } from "./features/auth/GatewayAccess";
 import { Login } from "./features/auth/Login";
 import { EmailEvents } from "./features/email-events/EmailEvents";
 import { OperationalEvents } from "./features/ops-events/OperationalEvents";
-import { demoMode, fetchCurrentUserOrEnterDemo, logout } from "./features/auth/api";
+import { demoMode, fetchCurrentUserOrEnterDemo, gatewayMode, logout } from "./features/auth/api";
 import { DemoGuide } from "./features/demo-guide/DemoGuide";
 import { EmailCreate } from "./features/emails/EmailCreate";
 import type { AuthUser } from "./features/emails/types";
@@ -38,6 +39,9 @@ function AuthenticatedApp() {
     queryKey: ["auth", "me"],
     queryFn: fetchCurrentUserOrEnterDemo,
     retry: false,
+    // A first visit through the gateway is linked in the background.
+    refetchInterval: (query) =>
+      gatewayMode && query.state.error && gatewayAccessState(query.state.error) === "pending" ? 3000 : false,
   });
   const logoutMutation = useMutation({
     mutationFn: logout,
@@ -57,7 +61,7 @@ function AuthenticatedApp() {
   }
 
   if (currentUserQuery.isError || !currentUserQuery.data) {
-    return <Login />;
+    return gatewayMode ? <GatewayAccess error={currentUserQuery.error} /> : <Login />;
   }
 
   return (
