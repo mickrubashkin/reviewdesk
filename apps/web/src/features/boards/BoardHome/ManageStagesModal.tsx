@@ -4,7 +4,7 @@ import { ArrowLeftIcon, ArrowRightIcon, PencilSimpleIcon, PlusIcon, TrashIcon } 
 import { useMutation } from "@tanstack/react-query";
 
 import { ApiError } from "../../../shared/api";
-import { createBoardStage, deleteBoardStage, reorderBoardStages, updateBoardStage } from "../api";
+import { createBoardStage, deleteBoardStage, renameBoard, reorderBoardStages, updateBoardStage } from "../api";
 import { formatStageName } from "../../emails/stages";
 import type { Board } from "../../emails/types";
 
@@ -106,6 +106,7 @@ export function ManageStagesModal({
   return (
     <Modal centered opened size="xl" title={`Board settings for ${board.name}`} onClose={onClose}>
       <Stack gap="md">
+        <BoardNameForm board={board} onMutated={onMutated} />
         <Tabs defaultValue="stages" keepMounted={false}>
           <Tabs.List mb="md">
             <Tabs.Tab value="stages">Stages</Tabs.Tab>
@@ -230,4 +231,43 @@ export function ManageStagesModal({
   );
 }
 
-
+// BoardNameForm renames the board. Its key stays, so links to it keep working.
+function BoardNameForm({ board, onMutated }: { board: Board; onMutated: () => void }) {
+  const [name, setName] = useState(board.name);
+  const trimmed = name.trim();
+  const mutation = useMutation({
+    mutationFn: () => renameBoard(board.key, trimmed),
+    onSuccess: onMutated,
+  });
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        mutation.mutate();
+      }}
+    >
+      <Group align="flex-end" gap="xs" wrap="nowrap">
+        <TextInput
+          description="Links to the board stay the same."
+          error={mutation.isError ? mutation.error.message : undefined}
+          label="Board name"
+          maxLength={80}
+          style={{ flex: 1 }}
+          value={name}
+          onChange={(event) => {
+            mutation.reset();
+            setName(event.currentTarget.value);
+          }}
+        />
+        <Button
+          disabled={!trimmed || trimmed === board.name}
+          loading={mutation.isPending}
+          type="submit"
+          variant="light"
+        >
+          Rename
+        </Button>
+      </Group>
+    </form>
+  );
+}

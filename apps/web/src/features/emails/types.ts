@@ -541,6 +541,7 @@ export type EmailEventAction =
   | "comment_replied"
   | "comment_resolved"
   | "board_created"
+  | "board_renamed"
   | "board_stage_created"
   | "board_stage_renamed"
   | "board_stage_deleted"

@@ -46,6 +46,7 @@ const actionOptions: { value: EmailEventAction; label: string }[] = [
   { value: "comment_replied", label: "Comment replied" },
   { value: "comment_resolved", label: "Comment resolved" },
   { value: "board_created", label: "Board created" },
+  { value: "board_renamed", label: "Board renamed" },
   { value: "board_stage_created", label: "Stage created" },
   { value: "board_stage_renamed", label: "Stage renamed" },
   { value: "board_stage_deleted", label: "Stage deleted" },
@@ -321,6 +322,8 @@ function getActionColor(action: EmailEventAction) {
       return "green";
     case "board_created":
       return "green";
+    case "board_renamed":
+      return "yellow";
     case "board_stage_created":
       return "cyan";
     case "board_stage_renamed":
@@ -378,6 +381,8 @@ function formatSummary(event: EmailEventItem) {
       return `Resolved comment on ${stringMetadata(event, "review_block") || "review block"}`;
     case "board_created":
       return `Created board ${stringMetadata(event, "board_name") || stringMetadata(event, "board_key") || "board"}`;
+    case "board_renamed":
+      return `Renamed board to ${formatChangedValue(event, "name", "new name")}`;
     case "board_stage_created":
       return `Created stage ${stringMetadata(event, "stage") || "stage"}`;
     case "board_stage_renamed":

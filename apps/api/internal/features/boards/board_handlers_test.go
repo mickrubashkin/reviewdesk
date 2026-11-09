@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -392,3 +393,47 @@ func loadBoardEvent(t *testing.T, dbpool *pgxpool.Pool, boardKey string, action 
 	return event
 }
 
+
+func TestRenameBoard(t *testing.T) {
+	dbpool := testDBPool(t)
+	admin := createTestUserWithRole(t, dbpool, "admin")
+	reviewer := createTestUserWithRole(t, dbpool, "reviewer")
+	boardKey := createTestBoard(t, dbpool, "board-rename-board", []string{"registered"})
+
+	router := chi.NewRouter()
+	RegisterBoardRoutes(router, dbpool)
+	rename := func(user AuthUser, body string) *httptest.ResponseRecorder {
+		request := withAuthUser(httptest.NewRequest(http.MethodPatch, "/api/boards/"+boardKey, bytes.NewReader([]byte(body))), user)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
+
+	if response := rename(reviewer, `{"name":"Partners"}`); response.Code != http.StatusForbidden {
+		t.Fatalf("reviewer: expected 403, got %d", response.Code)
+	}
+	if response := rename(admin, `{"name":"   "}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("empty name: expected 400, got %d", response.Code)
+	}
+	if response := rename(admin, `{"name":"`+strings.Repeat("x", 81)+`"}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("long name: expected 400, got %d", response.Code)
+	}
+
+	response := rename(admin, `{"name":"  Partner   onboarding "}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var key, name string
+	if err := dbpool.QueryRow(context.Background(), `SELECT key, name FROM boards WHERE key = $1;`, boardKey).Scan(&key, &name); err != nil {
+		t.Fatal(err)
+	}
+	if key != boardKey || name != "Partner onboarding" {
+		t.Fatalf("expected the same key and the new name, got %s %q", key, name)
+	}
+
+	event := loadBoardEvent(t, dbpool, boardKey, "board_renamed")
+	change, ok := event.Changes["name"].(map[string]any)
+	if !ok || change["after"] != "Partner onboarding" {
+		t.Fatalf("unexpected rename event: %#v", event.Changes)
+	}
+}
