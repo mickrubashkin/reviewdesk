@@ -67,7 +67,8 @@ inbox/
 # Personal Claude Code settings.
 .claude/settings.local.json
 
-# VibeCode pilot build output (scripts/vibecode-pilot.sh)
-deploy/vibecode-pilot/bin/
-deploy/vibecode-pilot/db/
-deploy/vibecode-pilot/ai/
+# VibeCode deploy package build output (scripts/vibecode-build.sh)
+deploy/vibecode/bin/
+deploy/vibecode/db/
+deploy/vibecode/ai/
+deploy/vibecode/web/
