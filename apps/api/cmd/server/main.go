@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/b24bot"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/telegram"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/demo"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/digest"
@@ -102,17 +103,17 @@ func main() {
 	// The owner's chat hears about each new user who looks like someone
 	// already in ReviewDesk.
 	if !demoEnabled {
-		if bot, ok := telegram.FromEnv(); ok {
+		if bot, ok := ownerChat(); ok {
 			featureauth.Notifier = bot
 		}
 	}
 	// Each morning the owner's chat gets who was in the day before and what
 	// they did.
 	if !demoEnabled && strings.EqualFold(strings.TrimSpace(os.Getenv("ACTIVITY_DIGEST_ENABLED")), "true") {
-		if bot, ok := telegram.FromEnv(); ok {
+		if bot, ok := ownerChat(); ok {
 			go digest.Run(ctx, dbpool, bot, reportLocation("ACTIVITY_DIGEST_TZ"), digestHour())
 		} else {
-			fmt.Fprintln(os.Stderr, "ACTIVITY_DIGEST_ENABLED needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID; no digest")
+			fmt.Fprintln(os.Stderr, "ACTIVITY_DIGEST_ENABLED needs a Bitrix24 bot (BITRIX_BOT_ID, BITRIX_BOT_DIALOG_ID) or TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID; no digest")
 		}
 	}
 
@@ -205,4 +206,16 @@ func digestHour() int {
 		return 8
 	}
 	return hour
+}
+
+// ownerChat is where messages for the owner go: the Bitrix24 bot on VibeCode,
+// where it is set up, else the Telegram bot.
+func ownerChat() (digest.Sender, bool) {
+	if bot, ok := b24bot.FromEnv(); ok {
+		return bot, true
+	}
+	if bot, ok := telegram.FromEnv(); ok {
+		return bot, true
+	}
+	return nil, false
 }
