@@ -29,16 +29,18 @@ type UserAdminItem struct {
 	ManagedBoards []string `json:"managed_boards"`
 	// Aliases are other work addresses that sign in to this user.
 	Aliases []string `json:"aliases"`
+	// PortalUserID is the person's Bitrix24 ID on VibeCode; nil when unknown.
+	PortalUserID *string `json:"portal_user_id"`
 	// PossibleDuplicates are the ids of older users whose address shares the
 	// part before @ with this one's; see user_duplicates.go.
 	PossibleDuplicates []string `json:"possible_duplicates"`
 }
 
 // userAdminColumns matches UserAdminItem.scanTargets.
-const userAdminColumns = "id, email, name, role, created_at, updated_at, last_seen_at, languages, managed_boards"
+const userAdminColumns = "id, email, name, role, created_at, updated_at, last_seen_at, languages, managed_boards, portal_user_id"
 
 func (item *UserAdminItem) scanTargets() []any {
-	return []any{&item.ID, &item.Email, &item.Name, &item.Role, &item.CreatedAt, &item.UpdatedAt, &item.LastSeenAt, &item.Languages, &item.ManagedBoards}
+	return []any{&item.ID, &item.Email, &item.Name, &item.Role, &item.CreatedAt, &item.UpdatedAt, &item.LastSeenAt, &item.Languages, &item.ManagedBoards, &item.PortalUserID}
 }
 
 type AuthEventItem struct {

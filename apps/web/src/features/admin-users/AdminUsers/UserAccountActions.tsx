@@ -16,6 +16,7 @@ import { notifications } from "@mantine/notifications";
 import { DotsThreeIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { gatewayMode } from "../../auth/api";
 import type { UserAdminItem } from "../../emails/types";
 import { userNamesQueryKey } from "../../../shared/userNames";
 import { userLabel } from "../userLabel";
@@ -26,6 +27,7 @@ import {
   mergeAdminUsers,
   removeAdminUserAlias,
   updateAdminUserName,
+  updateAdminUserPortalID,
 } from "../api";
 
 const usersQueryKey = ["admin", "users"];
@@ -35,7 +37,8 @@ function invalidateUsers(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: userNamesQueryKey });
 }
 
-// UserAliases lists a user's extra addresses; super admins can remove one.
+// UserAliases lists a user's extra addresses, which super admins can remove,
+// and their Bitrix24 ID when it is known.
 export function UserAliases({ canManage, user }: { canManage: boolean; user: UserAdminItem }) {
   const queryClient = useQueryClient();
   const removeMutation = useMutation({
@@ -44,11 +47,16 @@ export function UserAliases({ canManage, user }: { canManage: boolean; user: Use
     onError: (error) => notifications.show({ color: "red", message: error.message, title: "Not removed" }),
   });
   const aliases = user.aliases ?? [];
-  if (aliases.length === 0) {
+  if (aliases.length === 0 && !user.portal_user_id) {
     return null;
   }
   return (
     <Stack gap={0}>
+      {user.portal_user_id ? (
+        <Text c="dimmed" size="xs">
+          Bitrix24 ID {user.portal_user_id}
+        </Text>
+      ) : null}
       {aliases.map((alias) => (
         <Group key={alias} gap={2} wrap="nowrap">
           <Text c="dimmed" size="xs">
@@ -115,7 +123,7 @@ export function PossibleDuplicates({ user, users }: { user: UserAdminItem; users
 // UserAccountActions renames a user, adds an alias, merges them into
 // another user or deletes them (super admins only).
 export function UserAccountActions({ user, users }: { user: UserAdminItem; users: UserAdminItem[] }) {
-  const [mode, setMode] = useState<"name" | "alias" | "merge" | "delete" | null>(null);
+  const [mode, setMode] = useState<"name" | "alias" | "portal" | "merge" | "delete" | null>(null);
   return (
     <>
       <Menu position="bottom-end" shadow="md">
@@ -127,6 +135,7 @@ export function UserAccountActions({ user, users }: { user: UserAdminItem; users
         <Menu.Dropdown>
           <Menu.Item onClick={() => setMode("name")}>{user.name ? "Rename…" : "Add name…"}</Menu.Item>
           <Menu.Item onClick={() => setMode("alias")}>Add another address…</Menu.Item>
+          {gatewayMode ? <Menu.Item onClick={() => setMode("portal")}>Set Bitrix24 ID…</Menu.Item> : null}
           <Menu.Item color="red" onClick={() => setMode("merge")}>
             Merge into another user…
           </Menu.Item>
@@ -137,6 +146,7 @@ export function UserAccountActions({ user, users }: { user: UserAdminItem; users
       </Menu>
       {mode === "name" ? <EditNameModal user={user} onClose={() => setMode(null)} /> : null}
       {mode === "alias" ? <AddAliasModal user={user} onClose={() => setMode(null)} /> : null}
+      {mode === "portal" ? <EditPortalIDModal user={user} onClose={() => setMode(null)} /> : null}
       {mode === "delete" ? <DeleteUserModal user={user} onClose={() => setMode(null)} /> : null}
       {mode === "merge" ? <MergeUserModal user={user} users={users} onClose={() => setMode(null)} /> : null}
     </>
@@ -170,6 +180,53 @@ function EditNameModal({ user, onClose }: { user: UserAdminItem; onClose: () => 
             placeholder="First Last"
             value={name}
             onChange={(event) => setName(event.currentTarget.value)}
+          />
+          {mutation.isError ? (
+            <Alert color="red" variant="light">
+              {mutation.error.message}
+            </Alert>
+          ) : null}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button loading={mutation.isPending} type="submit">
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
+  );
+}
+
+function EditPortalIDModal({ user, onClose }: { user: UserAdminItem; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [portalUserId, setPortalUserId] = useState(user.portal_user_id ?? "");
+  const mutation = useMutation({
+    mutationFn: () => updateAdminUserPortalID(user.id, portalUserId.trim()),
+    onSuccess: () => {
+      invalidateUsers(queryClient);
+      onClose();
+    },
+  });
+  return (
+    <Modal centered opened title={`Bitrix24 ID for ${userLabel(user)}`} onClose={onClose}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          mutation.mutate();
+        }}
+      >
+        <Stack gap="sm">
+          <TextInput
+            data-autofocus
+            description="The number in the address of their Bitrix24 profile. ReviewDesk finds it by email; set it here when it can't. Leave empty to clear."
+            inputMode="numeric"
+            label="Bitrix24 ID"
+            placeholder="123456"
+            value={portalUserId}
+            onChange={(event) => setPortalUserId(event.currentTarget.value)}
           />
           {mutation.isError ? (
             <Alert color="red" variant="light">

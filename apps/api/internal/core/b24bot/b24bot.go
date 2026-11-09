@@ -17,8 +17,9 @@ import (
 
 const apiBase = "https://vibecode.bitrix24.tech/v1"
 
-// Bot posts as the bot BotID to DialogID: a user's ID for a private chat, or
-// chatN for a group chat.
+// Bot posts as the bot BotID. Send posts to DialogID, the owner's chat: a
+// user's ID for a private chat, or chatN for a group chat. SendTo posts to any
+// dialog, such as a person's private chat.
 type Bot struct {
 	APIKey   string
 	BotID    string
@@ -31,25 +32,51 @@ type Bot struct {
 // platform key BITRIX_API_KEY and the optional BITRIX_API_BASE_URL, or false
 // when one of them is unset.
 func FromEnv() (*Bot, bool) {
+	bot, ok := MessengerFromEnv()
+	if !ok || bot.DialogID == "" {
+		return nil, false
+	}
+	return bot, true
+}
+
+// MessengerFromEnv is FromEnv for writing to people: it needs no owner's chat.
+func MessengerFromEnv() (*Bot, bool) {
 	bot := &Bot{
 		APIKey:   strings.TrimSpace(os.Getenv("BITRIX_API_KEY")),
 		BotID:    strings.TrimSpace(os.Getenv("BITRIX_BOT_ID")),
 		DialogID: strings.TrimSpace(os.Getenv("BITRIX_BOT_DIALOG_ID")),
 		BaseURL:  strings.TrimRight(strings.TrimSpace(os.Getenv("BITRIX_API_BASE_URL")), "/"),
 	}
-	if bot.APIKey == "" || bot.BotID == "" || bot.DialogID == "" {
+	if bot.APIKey == "" || bot.BotID == "" {
 		return nil, false
 	}
 	return bot, true
 }
 
-// Send posts text as it is, without link previews. Bitrix24 reads BB codes
-// such as [b] in it, which our messages don't use.
+// Button is a link button under a message.
+type Button struct {
+	Text string
+	Link string
+}
+
+// Send posts text to the owner's chat.
 func (b *Bot) Send(ctx context.Context, text string) error {
-	body, err := json.Marshal(map[string]any{
-		"dialogId": b.DialogID,
-		"fields":   map[string]any{"message": text, "urlPreview": false},
-	})
+	return b.SendTo(ctx, b.DialogID, text)
+}
+
+// SendTo posts text to dialogID as it is, without link previews, with the
+// buttons under it. Bitrix24 reads BB codes such as [b] in the text, which our
+// messages don't use.
+func (b *Bot) SendTo(ctx context.Context, dialogID string, text string, buttons ...Button) error {
+	fields := map[string]any{"message": text, "urlPreview": false}
+	if len(buttons) > 0 {
+		keyboard := make([]map[string]any, 0, len(buttons))
+		for _, button := range buttons {
+			keyboard = append(keyboard, map[string]any{"TEXT": button.Text, "LINK": button.Link, "BG_COLOR_TOKEN": "primary"})
+		}
+		fields["keyboard"] = keyboard
+	}
+	body, err := json.Marshal(map[string]any{"dialogId": dialogID, "fields": fields})
 	if err != nil {
 		return err
 	}

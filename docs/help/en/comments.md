@@ -19,7 +19,7 @@ Open comments do not stop anyone from marking the email ready: resolve them firs
 
 ## Mention someone
 
-Type `@` and a name. The person sees the comment in **My tasks → Mentions**.
+Type `@` and a name. The person sees the comment in **My tasks → Mentions** and gets an email about it. Where ReviewDesk opens from the Bitrix24 menu, the message comes to their Bitrix24 chat from the ReviewDesk bot instead, with a button that opens the comment; see [Signing in from Bitrix24](README.md#signing-in-from-bitrix24).
 
 ## Reply and resolve
 

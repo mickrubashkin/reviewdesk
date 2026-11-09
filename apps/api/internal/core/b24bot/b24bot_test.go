@@ -29,6 +29,28 @@ func TestSend(t *testing.T) {
 	}
 }
 
+func TestSendToWithAButton(t *testing.T) {
+	var got map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"success":true,"data":{"id":1}}`))
+	}))
+	defer server.Close()
+
+	bot := &Bot{APIKey: "k", BotID: "42", BaseURL: server.URL}
+	if err := bot.SendTo(context.Background(), "681146", "hi", Button{Text: "Open", Link: "https://app.test/x"}); err != nil {
+		t.Fatal(err)
+	}
+	fields, _ := got["fields"].(map[string]any)
+	keyboard, _ := fields["keyboard"].([]any)
+	if got["dialogId"] != "681146" || len(keyboard) != 1 {
+		t.Fatalf("unexpected request %v", got)
+	}
+	if button, _ := keyboard[0].(map[string]any); button["TEXT"] != "Open" || button["LINK"] != "https://app.test/x" {
+		t.Errorf("button %v", button)
+	}
+}
+
 func TestSendReportsRefusals(t *testing.T) {
 	for _, answer := range []struct {
 		status int
@@ -55,6 +77,9 @@ func TestFromEnv(t *testing.T) {
 	t.Setenv("BITRIX_BOT_DIALOG_ID", "")
 	if _, ok := FromEnv(); ok {
 		t.Error("a bot without a dialog")
+	}
+	if _, ok := MessengerFromEnv(); !ok {
+		t.Error("a messenger needs no owner's chat")
 	}
 	t.Setenv("BITRIX_BOT_DIALOG_ID", "chat7")
 	t.Setenv("BITRIX_API_BASE_URL", "https://platform.test/v1/")
