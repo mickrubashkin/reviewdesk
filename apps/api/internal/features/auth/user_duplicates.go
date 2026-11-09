@@ -26,9 +26,28 @@ type Sender interface {
 	Send(ctx context.Context, text string) error
 }
 
-// Notifier hears about each new user who looks like a duplicate; nil sends
-// nothing.
+// LinkSender is a Sender that can put a link under a message as a button,
+// like the Bitrix24 bot. Other senders get the link on a line of its own.
+type LinkSender interface {
+	SendWithLink(ctx context.Context, text string, label string, link string) error
+}
+
+// Notifier hears about each new user who looks like a duplicate, and on
+// VibeCode about people refused at the gateway; nil sends nothing.
 var Notifier Sender
+
+// notifyOwner posts text to the owner's chat with a link to Settings → Users.
+func notifyOwner(ctx context.Context, text string) error {
+	base := appURL()
+	if base == "" {
+		return Notifier.Send(ctx, text)
+	}
+	link := base + "/admin/users"
+	if sender, ok := Notifier.(LinkSender); ok {
+		return sender.SendWithLink(ctx, text, "Open Settings → Users", link)
+	}
+	return Notifier.Send(ctx, text+"\n"+link)
+}
 
 const notifyTimeout = 15 * time.Second
 
@@ -126,19 +145,15 @@ func announcePossibleDuplicate(dbpool *pgxpool.Pool, user AuthUser) {
 		if len(others) == 0 {
 			return
 		}
-		if err := Notifier.Send(ctx, possibleDuplicateMessage(user.Email, others, appURL())); err != nil {
+		if err := notifyOwner(ctx, possibleDuplicateMessage(user.Email, others)); err != nil {
 			fmt.Fprintf(os.Stderr, "possible duplicate of %s: %v\n", user.Email, err)
 		}
 	}()
 }
 
-func possibleDuplicateMessage(newEmail string, others []string, baseURL string) string {
-	text := fmt.Sprintf("Possible duplicate user: %s signed in for the first time; ReviewDesk already has %s. Merge them, or mark them as two people, in Settings → Users.",
+func possibleDuplicateMessage(newEmail string, others []string) string {
+	return fmt.Sprintf("Possible duplicate user: %s signed in for the first time; ReviewDesk already has %s. Merge them, or mark them as two people, in Settings → Users.",
 		newEmail, strings.Join(others, ", "))
-	if baseURL != "" {
-		text += "\n" + baseURL + "/admin/users"
-	}
-	return text
 }
 
 // appURL is the app's address for links: AUTH_APP_URL, or the first allowed

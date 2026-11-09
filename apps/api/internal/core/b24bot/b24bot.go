@@ -64,6 +64,11 @@ func (b *Bot) Send(ctx context.Context, text string) error {
 	return b.SendTo(ctx, b.DialogID, text)
 }
 
+// SendWithLink posts text to the owner's chat with a button that opens link.
+func (b *Bot) SendWithLink(ctx context.Context, text string, label string, link string) error {
+	return b.SendTo(ctx, b.DialogID, text, Button{Text: label, Link: link})
+}
+
 // SendTo posts text to dialogID as it is, without link previews, with the
 // buttons under it. Bitrix24 reads BB codes such as [b] in the text, which our
 // messages don't use.

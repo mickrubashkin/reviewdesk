@@ -221,6 +221,9 @@ func digestHour() int {
 	return hour
 }
 
+// The Bitrix24 bot puts the Settings → Users link under its messages.
+var _ featureauth.LinkSender = (*b24bot.Bot)(nil)
+
 // ownerChat is where messages for the owner go: the Bitrix24 bot on VibeCode,
 // where it is set up, else the Telegram bot.
 func ownerChat() (digest.Sender, bool) {

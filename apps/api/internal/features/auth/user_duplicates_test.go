@@ -127,3 +127,42 @@ func TestOnlySuperAdminsDismissDuplicates(t *testing.T) {
 		t.Fatalf("expected 403, got %d", response.Code)
 	}
 }
+
+type linkRecordingSender struct {
+	text, label, link string
+}
+
+func (s *linkRecordingSender) Send(_ context.Context, text string) error {
+	s.text = text
+	return nil
+}
+
+func (s *linkRecordingSender) SendWithLink(_ context.Context, text string, label string, link string) error {
+	s.text, s.label, s.link = text, label, link
+	return nil
+}
+
+func TestNotifyOwnerPutsTheLinkUnderTheMessage(t *testing.T) {
+	t.Setenv("AUTH_APP_URL", "https://reviewdesk.example.com/")
+	t.Cleanup(func() { Notifier = nil })
+
+	// A chat with buttons gets the link as one.
+	buttons := &linkRecordingSender{}
+	Notifier = buttons
+	if err := notifyOwner(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if buttons.text != "hello" || buttons.label != "Open Settings → Users" || buttons.link != "https://reviewdesk.example.com/admin/users" {
+		t.Errorf("with buttons: %+v", buttons)
+	}
+
+	// Any other chat gets it on a line of its own.
+	plain := &recordingSender{sent: make(chan struct{}, 1)}
+	Notifier = plain
+	if err := notifyOwner(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if len(plain.messages) != 1 || plain.messages[0] != "hello\nhttps://reviewdesk.example.com/admin/users" {
+		t.Errorf("plain: %v", plain.messages)
+	}
+}

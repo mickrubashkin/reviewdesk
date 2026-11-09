@@ -284,7 +284,7 @@ func announceGatewayRefusal(found portalUser, portalUserID string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
 	defer cancel()
-	if err := Notifier.Send(ctx, "No access to ReviewDesk for "+who+": the address is not in an allowed domain. Add them in Settings → Users (or as an alias of their user) if they should get in."); err != nil {
+	if err := notifyOwner(ctx, "No access to ReviewDesk for "+who+": the address is not in an allowed domain. Add them in Settings → Users (or as an alias of their user) if they should get in."); err != nil {
 		fmt.Fprintf(os.Stderr, "gateway refusal of %s: %v\n", who, err)
 	}
 }
