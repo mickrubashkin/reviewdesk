@@ -66,3 +66,6 @@ inbox/
 
 # Personal Claude Code settings.
 .claude/settings.local.json
+
+# VibeCode pilot binaries (scripts/vibecode-pilot.sh)
+deploy/vibecode-pilot/bin/
