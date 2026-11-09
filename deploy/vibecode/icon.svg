@@ -1,1 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#228be6"/><path d="M14 20h36v24H14z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/><path d="m14 20 18 14 18-14" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B9BFF"/>
+      <stop offset="1" stop-color="#1764E8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- An email: the envelope -->
+  <rect x="96" y="148" width="288" height="204" rx="30" fill="#FFFFFF"/>
+  <path d="M112 172 L240 268 L368 172" fill="none" stroke="#1764E8" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Reviewed: the check badge -->
+  <circle cx="372" cy="356" r="78" fill="#1764E8"/>
+  <circle cx="372" cy="356" r="64" fill="#22C55E"/>
+  <path d="M340 357 L364 381 L406 336" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
