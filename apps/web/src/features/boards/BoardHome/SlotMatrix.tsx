@@ -31,6 +31,7 @@ import { ChartBarIcon, DotsSixVerticalIcon, PencilSimpleIcon, TranslateIcon } fr
 import { ApiError } from "../../../shared/api";
 import { fetchReferenceDifferences, moveSlot } from "../../emails/api";
 import { EmailStatusLine } from "../../emails/EmailStatusLine";
+import { SplitTextsBadge } from "../../emails/SplitTextsBadge";
 import { formatStageName } from "../../emails/stages";
 import type {
   Board,
@@ -643,6 +644,7 @@ function MatrixCell({
               {primary.open_comment_count}
             </Badge>
           ) : null}
+          <SplitTextsBadge email={primary} onOpenSends={() => onOpen(primary, "sends")} />
           {/* A live email that went quiet: the first question is why. */}
           {primary.production_status === "live" && primary.portal_quiet_days != null ? (
             <Tooltip label="See sends">

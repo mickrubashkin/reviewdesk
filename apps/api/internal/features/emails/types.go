@@ -7,6 +7,7 @@ import (
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/auth"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailblocks"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailtext"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/split"
 )
 
 type AuthUser = auth.AuthUser
@@ -48,7 +49,10 @@ type EmailListItem struct {
 	PortalSendCount  int        `json:"portal_send_count"`
 	PortalSends30d   int        `json:"portal_sends_30d"`
 	PortalLastSentAt *time.Time `json:"portal_last_sent_at"`
-	LiveMarkedAt     *time.Time `json:"live_marked_at"`
+	// PortalSplitTexts are the texts the robots sent side by side over the
+	// last split.WindowDays, newest first; nil unless there are several.
+	PortalSplitTexts []split.Text `json:"portal_split_texts"`
+	LiveMarkedAt     *time.Time   `json:"live_marked_at"`
 	// LatestVersion is the current content version; UploadedVersion is the
 	// oldest one a super admin pasted into one of its Bitrix24 robots, if any.
 	LatestVersion   *int `json:"latest_version"`

@@ -39,3 +39,11 @@ Under the chart:
 - **Sent to N deals** sets the sends against the deals they went to. A deal can get the email more than once when it comes back to the stage or a robot repeats the email. When a deal got the same text twice within a day, a yellow note warns that two robots may be sending the email.
 - **By deal stage** counts the sends by the stage the deal was in when the email went out. A stage marked **other stage** mostly sends the emails of another stage of the board: check the robot that sends this email from it. The mark appears only when the email also went out from a stage of its own, since an email sent only from one stage may just sit in a stage of the board named differently.
 - **Versions of this slot** sets the email against the other emails of its slot over the same period: the old and new versions in its language, or, on a board with regions, each region's email, the reference first. Each row has the sends, the deals and the last send ever seen, so you can tell whether an old text is still going out. It appears when the slot has more than one such email, also when this email itself was not sent.
+
+## Robots that send different texts
+
+Each manager of a region has a robot of their own. When one of them still has an older text, the email goes out in two texts at once, and upload marks cannot show it: they say what was pasted, not what goes out.
+
+An email whose robots sent more than one text over the last 14 days gets a red **2 texts** mark in the Matrix and Timeline views and on its review page. Hover it to see the texts, named by the day each was first sent; click it to open the **Sends** tab, where each text has its own color. A text that stopped once the new one started does not count: that is a re-upload done right, with the old text's last sends trailing off.
+
+**My tasks → Robots disagree** lists these emails for CRM operators, and the morning digest in the owner's chat names them per board, with a link to each one's sends. Compare the texts in **Portal sync**, find the robot that still has the old one and paste the current version into it.

@@ -1,4 +1,5 @@
 import { type PointerEvent, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type {
   CommentStatusFilter,
   ReviewContentTab,
@@ -10,10 +11,14 @@ const minRightPanelPercent = 24;
 const maxRightPanelPercent = 48;
 
 export function useEmailReviewLayout() {
+  // A link with ?tab=sends (from My tasks or the morning digest) opens the
+  // email on its sends.
+  const [searchParams] = useSearchParams();
+  const linkedTab = searchParams.get("tab") === "sends" ? "sends" : null;
   const [viewport, setViewport] = useState<ReviewViewport>("desktop");
   const [actionMenuOpened, setActionMenuOpened] = useState(false);
   const [activeContentTab, setActiveContentTab] =
-    useState<ReviewContentTab>("email");
+    useState<ReviewContentTab>(linkedTab ?? "email");
   const [archiveModalOpened, setArchiveModalOpened] = useState(false);
   const [duplicateModalOpened, setDuplicateModalOpened] = useState(false);
   const [sourceHTMLModalOpened, setSourceHTMLModalOpened] = useState(false);
@@ -22,7 +27,7 @@ export function useEmailReviewLayout() {
     useState(false);
   const [rightPanelPercent, setRightPanelPercent] = useState(30);
   const [activePanelTab, setActivePanelTab] =
-    useState<ReviewPanelTab>("comments");
+    useState<ReviewPanelTab>(linkedTab ?? "comments");
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [commentStatusFilter, setCommentStatusFilter] =
     useState<CommentStatusFilter>("open");

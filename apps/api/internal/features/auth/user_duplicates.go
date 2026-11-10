@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/appurl"
 	coreauth "github.com/mickrubashkin/reviewdesk/apps/api/internal/core/auth"
 )
 
@@ -38,7 +39,7 @@ var Notifier Sender
 
 // notifyOwner posts text to the owner's chat with a link to Settings → Users.
 func notifyOwner(ctx context.Context, text string) error {
-	base := appURL()
+	base := appurl.Get()
 	if base == "" {
 		return Notifier.Send(ctx, text)
 	}
@@ -154,24 +155,6 @@ func announcePossibleDuplicate(dbpool *pgxpool.Pool, user AuthUser) {
 func possibleDuplicateMessage(newEmail string, others []string) string {
 	return fmt.Sprintf("Possible duplicate user: %s signed in for the first time; ReviewDesk already has %s. Merge them, or mark them as two people, in Settings → Users.",
 		newEmail, strings.Join(others, ", "))
-}
-
-// appURL is the app's address for links: AUTH_APP_URL, or the first allowed
-// origin.
-func appURL() string {
-	if value := strings.TrimSpace(os.Getenv("AUTH_APP_URL")); value != "" {
-		return strings.TrimRight(value, "/")
-	}
-	origins := strings.TrimSpace(os.Getenv("AUTH_ALLOWED_ORIGINS"))
-	if origins == "" {
-		origins = strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
-	}
-	for _, origin := range strings.Split(origins, ",") {
-		if origin = strings.TrimRight(strings.TrimSpace(origin), "/"); origin != "" {
-			return origin
-		}
-	}
-	return ""
 }
 
 // notDuplicateHandler records that a user and a possible duplicate of theirs

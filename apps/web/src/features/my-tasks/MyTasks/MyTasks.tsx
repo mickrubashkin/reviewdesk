@@ -21,6 +21,7 @@ import { fetchBoards } from "../../boards/api";
 import { takeEmail } from "../../emails/api";
 import { BitrixCopyModal } from "../../emails/BitrixCopyModal";
 
+import { SplitTextsBadge } from "../../emails/SplitTextsBadge";
 import { formatStageName } from "../../emails/stages";
 import type { AuthUser, EmailListItem } from "../../emails/types";
 import { UploadBadge } from "../../emails/UploadBadge";
@@ -163,7 +164,7 @@ function TaskRow({
     <UnstyledButton
       className={styles.row}
       data-dimmed={(section.key === "outdated" && takenByOther) || undefined}
-      onClick={() => navigate(`/emails/${encodeURIComponent(email.id)}/review`)}
+      onClick={() => navigate(reviewPath(email.id, section.key === "split" ? "sends" : undefined))}
     >
       <Group gap="sm" justify="space-between" wrap="nowrap">
         <Group gap="sm" wrap="nowrap" miw={0}>
@@ -213,6 +214,9 @@ function TaskRow({
               </Button>
             </>
           ) : null}
+          {section.key === "split" ? (
+            <SplitTextsBadge email={email} size="sm" onOpenSends={() => navigate(reviewPath(email.id, "sends"))} />
+          ) : null}
           {section.key === "outdated" ? (
             <>
               <Badge color="red" size="sm" variant="light">
@@ -231,6 +235,11 @@ function TaskRow({
       </Group>
     </UnstyledButton>
   );
+}
+
+// reviewPath opens the email, on the given tab of its side panel.
+function reviewPath(emailId: string, tab?: "sends") {
+  return `/emails/${encodeURIComponent(emailId)}/review${tab ? `?tab=${tab}` : ""}`;
 }
 
 function TakeButton({ email, mine }: { email: EmailListItem; mine: boolean }) {

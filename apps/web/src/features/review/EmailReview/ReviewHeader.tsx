@@ -21,6 +21,7 @@ import type { EmailDetail, EmailListItem, EmailVariant } from "../../emails/type
 
 import { formatEmailTitle } from "./EmailReview.helpers";
 import { ProductionBadge } from "../../emails/ProductionBadge";
+import { SplitTextsBadge } from "../../emails/SplitTextsBadge";
 import { UploadBadge } from "../../emails/UploadBadge";
 
 import styles from "./EmailReview.module.css";
@@ -317,6 +318,7 @@ export function ReviewHeader({
               {!isCompactReview && currentListEmail ? (
                 <>
                   <ProductionBadge email={currentListEmail} versions={groupVersions} onOpenSends={onOpenSends} />
+                  <SplitTextsBadge email={currentListEmail} onOpenSends={onOpenSends} />
                   <UploadBadge email={currentListEmail} />
                 </>
               ) : null}

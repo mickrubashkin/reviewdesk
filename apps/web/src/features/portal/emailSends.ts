@@ -79,7 +79,7 @@ export function formatDay(date: string) {
 
 // A text is named by the day the portal first sent it: that is when the
 // upload carrying it reached the robot.
-function textLabel(text: SentText) {
+export function textLabel(text: Pick<SentText, "first_sent_at">) {
   return `Text since ${new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(
     new Date(text.first_sent_at)
   )}`;

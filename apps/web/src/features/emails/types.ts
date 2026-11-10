@@ -25,6 +25,9 @@ export type EmailListItem = {
   portal_send_count: number;
   portal_sends_30d?: number;
   portal_last_sent_at: string | null;
+  // The texts the robots sent side by side over the last 14 days, newest
+  // first; null unless there are several (see splitTexts.ts).
+  portal_split_texts?: SplitText[] | null;
   // The EN master this email translates, and whether its text changed since.
   translation_of: string | null;
   translation_stale: boolean;
@@ -52,6 +55,15 @@ export type EmailListItem = {
   // For an email pasted into a robot and not seen sent yet: from when the
   // portal can show its first send (see firstSendEstimate).
   first_send?: FirstSendEstimate;
+};
+
+// SplitText is one text (portal group) of an email that went out in the last
+// 14 days: its first and last send ever, and its sends in those days.
+export type SplitText = {
+  group_id: string;
+  first_sent_at: string;
+  last_sent_at: string;
+  sends: number;
 };
 
 // live: the portal sync saw robots send it; live_manual: marked by hand;

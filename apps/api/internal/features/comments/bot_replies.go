@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/appurl"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/b24bot"
 )
 
@@ -261,7 +262,7 @@ func botMessageText(text string) string {
 }
 
 func threadButton(thread botThread) []b24bot.Button {
-	baseURL := appURL()
+	baseURL := appurl.Get()
 	if baseURL == "" {
 		return nil
 	}

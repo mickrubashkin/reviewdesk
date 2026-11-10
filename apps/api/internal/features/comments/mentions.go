@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/appurl"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/b24bot"
 )
 
@@ -212,7 +213,7 @@ func deliverMentionEmails(ctx context.Context, dbpool *pgxpool.Pool, notificatio
 					fmt.Fprintf(os.Stderr, "failed to check who may resolve mention %s: %v\n", delivery.ID, err)
 				}
 			}
-			text, buttons := mentionMessageContent(delivery, appURL(), canResolve)
+			text, buttons := mentionMessageContent(delivery, appurl.Get(), canResolve)
 			if id, err := Messenger.Post(ctx, delivery.PortalUserID, text, buttons...); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to message mention %s to Bitrix24: %v\n", delivery.ID, err)
 				bitrixStatus = "failed"
@@ -223,7 +224,7 @@ func deliverMentionEmails(ctx context.Context, dbpool *pgxpool.Pool, notificatio
 
 		status := "skipped"
 		if Mailer != nil && bitrixStatus != "sent" {
-			subject, text, htmlBody := mentionEmailContent(delivery, appURL())
+			subject, text, htmlBody := mentionEmailContent(delivery, appurl.Get())
 			if err := Mailer.Send(ctx, delivery.RecipientEmail, subject, text, htmlBody); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to email mention %s: %v\n", delivery.ID, err)
 				status = "failed"
@@ -243,24 +244,6 @@ func deliverMentionEmails(ctx context.Context, dbpool *pgxpool.Pool, notificatio
 			fmt.Fprintf(os.Stderr, "failed to record mention email status %s: %v\n", delivery.ID, err)
 		}
 	}
-}
-
-// appURL is where links in notification emails point: AUTH_APP_URL, or the
-// first allowed origin.
-func appURL() string {
-	if value := strings.TrimSpace(os.Getenv("AUTH_APP_URL")); value != "" {
-		return strings.TrimRight(value, "/")
-	}
-	origins := strings.TrimSpace(os.Getenv("AUTH_ALLOWED_ORIGINS"))
-	if origins == "" {
-		origins = strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
-	}
-	for _, origin := range strings.Split(origins, ",") {
-		if origin = strings.TrimRight(strings.TrimSpace(origin), "/"); origin != "" {
-			return origin
-		}
-	}
-	return ""
 }
 
 // mentionReviewPath opens the email with the comment thread in focus.
