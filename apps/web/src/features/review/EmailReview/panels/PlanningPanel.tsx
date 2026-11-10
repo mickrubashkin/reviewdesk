@@ -1,40 +1,11 @@
 import { Button, Group, Loader, Select, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { useState } from "react";
 
-import type { EmailDetail, UpdateEmailPlanningFieldsPayload, UserAdminItem, UserRole } from "../../../emails/types";
+import { ownerOptions as listOwnerOptions } from "../../../emails/ownerOptions";
+import type { EmailDetail, UpdateEmailPlanningFieldsPayload, UserAdminItem } from "../../../emails/types";
 import { useBoardRegions } from "../../../boards/api";
 import { nullableTrimmed } from "../EmailReview.helpers";
 import styles from "../EmailReview.module.css";
-import { canManageBoard } from "../../../emails/permissions";
-
-function assigneeOptions(
-  users: UserAdminItem[],
-  currentEmail: string,
-  isAllowed: (user: UserAdminItem) => boolean
-) {
-  const options = users
-    .filter(isAllowed)
-    .map((user) => ({
-      label: `${user.name ? `${user.name} · ` : ""}${user.email} (${formatUserRole(user.role)})`,
-      value: user.email,
-    }));
-  const normalizedCurrentEmail = currentEmail.trim();
-  if (
-    normalizedCurrentEmail &&
-    !options.some((option) => option.value === normalizedCurrentEmail)
-  ) {
-    options.unshift({
-      label: normalizedCurrentEmail,
-      value: normalizedCurrentEmail,
-    });
-  }
-
-  return options;
-}
-
-function formatUserRole(role: UserRole) {
-  return role.replaceAll("_", " ");
-}
 
 export function PlanningPanel({
   adminUsers,
@@ -90,10 +61,9 @@ export function PlanningPanel({
     payload.send_timing !== (email.send_timing ?? null) ||
     payload.send_condition !== (email.send_condition ?? null) ||
     payload.adaptation_label !== email.adaptation_label;
-  // Owners are the people who manage the email's board.
-  const ownerOptions = assigneeOptions(adminUsers, ownerEmail, (user) =>
-    canManageBoard(user, email.sequence)
-  );
+  // Owners are the people who manage the email's board and the translators
+  // of its language.
+  const ownerOptions = listOwnerOptions(adminUsers, [email], ownerEmail);
 
   return (
     <form

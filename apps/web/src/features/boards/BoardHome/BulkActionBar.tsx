@@ -22,6 +22,7 @@ import { CaretDownIcon, XIcon } from "@phosphor-icons/react";
 import { ApiError } from "../../../shared/api";
 import { fetchAdminUsers } from "../../admin-users/api";
 import { bulkUpdateEmails, type BulkEmailAction, type BulkEmailResult } from "../../emails/api";
+import { ownerOptions } from "../../emails/ownerOptions";
 import { formatStageName } from "../../emails/stages";
 import type { Board, EmailListItem, StageColumn } from "../../emails/types";
 import { pickPrimary } from "./slotHelpers";
@@ -125,7 +126,7 @@ export function BulkActionBar({
 
       {dialog === "owner" ? (
         <OwnerDialog
-          count={selected.length}
+          selected={selected}
           pending={mutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(owner) => mutation.mutate({ action: "owner", owner_email: owner })}
@@ -225,25 +226,23 @@ function EmailList({ emails }: { emails: EmailListItem[] }) {
 }
 
 function OwnerDialog({
-  count,
+  selected,
   pending,
   onClose,
   onSubmit,
 }: {
-  count: number;
+  selected: EmailListItem[];
   pending: boolean;
   onClose: () => void;
   onSubmit: (owner: string | null) => void;
 }) {
   const [owner, setOwner] = useState<string | null>(null);
   const usersQuery = useQuery({ queryKey: ["admin", "users"], queryFn: fetchAdminUsers });
-  const options = (usersQuery.data ?? []).map((user) => ({
-    label: `${user.name ? `${user.name} · ` : ""}${user.email}`,
-    value: user.email,
-  }));
+  // Only people who may own every selected email, as the API checks it.
+  const options = ownerOptions(usersQuery.data ?? [], selected);
 
   return (
-    <Modal opened title={`Owner of ${plural(count, "email")}`} onClose={onClose}>
+    <Modal opened title={`Owner of ${plural(selected.length, "email")}`} onClose={onClose}>
       <form
         onSubmit={(event) => {
           event.preventDefault();

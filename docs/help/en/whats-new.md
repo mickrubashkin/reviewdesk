@@ -4,6 +4,7 @@ The newest changes first. A dot on your account menu means there is something he
 
 ## 2026-11-10
 
+- A board's managers can make a translator the owner of an email in their language: **Details → Owner** now lists the translators of that language too, and the email lands in their **My tasks**. See [Hand a translation to a translator](translations.md#hand-a-translation-to-a-translator).
 - An email whose robots send different texts (one manager's robot still has an older text) gets a red **2 texts** mark in the Matrix and Timeline views and on its review page; click it for the sends. CRM operators find these emails in **My tasks → Robots disagree**. See [Robots that send different texts](bitrix24-upload.md#robots-that-send-different-texts).
 - On the timeline, the **+** under a stage's name adds a slot or an email to that stage. See [New slot, new email](board-views.md#new-slot-new-email-region-managers-board-owners).
 - An email made from pasted HTML, or from one the portal has seen sent, keeps its bold, italics and links when you save another field or translate it. Its links keep their color.

@@ -523,6 +523,11 @@ func TestUpdateEmailPlanningFields(t *testing.T) {
 	dbpool := testDBPool(t)
 	emailID := createTestEmail(t, dbpool)
 	user := createTestUserWithRole(t, dbpool, "admin")
+	// The new owner must be someone who may own the email.
+	if _, err := dbpool.Exec(context.Background(), `INSERT INTO users (email, role) VALUES ('owner@example.com', 'admin') ON CONFLICT (email) DO NOTHING;`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = dbpool.Exec(context.Background(), `DELETE FROM users WHERE email = 'owner@example.com';`) })
 
 	router := chi.NewRouter()
 	RegisterEmailRoutes(router, dbpool)
