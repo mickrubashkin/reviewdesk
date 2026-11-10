@@ -86,6 +86,16 @@ func TestBulkEmailActions(t *testing.T) {
 	if response, _ := call(admin, map[string]any{"action": "owner", "email_ids": []string{a}, "owner_email": "nobody@example.com"}); response.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for an unknown owner, got %d", response.Code)
 	}
+	// A translator owns only emails in their languages: DE yes, EN of the same slot no.
+	if _, err := dbpool.Exec(ctx, `UPDATE users SET languages = '{de}' WHERE id = $1;`, reviewer.ID); err != nil {
+		t.Fatal(err)
+	}
+	if response, _ := call(admin, map[string]any{"action": "owner", "email_ids": []string{aDE, a}, "owner_email": reviewer.Email}); response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a translator of another language, got %d", response.Code)
+	}
+	if response, _ := call(admin, map[string]any{"action": "owner", "email_ids": []string{aDE, bDE}, "owner_email": reviewer.Email}); response.Code != http.StatusOK {
+		t.Fatalf("expected the DE translator to own DE emails, got %d: %s", response.Code, response.Body.String())
+	}
 
 	// Status: an email that fails the checks of form (no button) is skipped,
 	// the rest become ready; an open comment holds nothing back.

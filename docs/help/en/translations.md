@@ -11,6 +11,10 @@ EN is the source of every email. A translation is linked to the EN email it came
    - **Create with EN text** — a draft with the English text, to translate by hand.
 4. Check the draft, [edit](editing.md) what needs it, and leave a comment if something is unclear.
 
+## Hand a translation to a translator
+
+Whoever manages the board can make a translator the owner of an email in their language: pick them in **Details → Owner**, where they show as **translator · ES** next to the board's managers. The email then shows in the translator's **My tasks** (**My drafts**, **Open comments on my emails**), as if they had taken it themselves. Only translators whose **Translates** includes the email's language are offered; the same goes for **Owner** on emails selected in the matrix, where a translator must translate every selected language.
+
 ## Update a translation after EN changed
 
 A translation whose EN email changed shows **EN changed**. Your list is in **My tasks → Translations to update**.

@@ -197,12 +197,12 @@ func lockBulkEmails(ctx context.Context, tx pgx.Tx, sequence string, ids []strin
 
 func bulkSetOwner(ctx context.Context, tx pgx.Tx, user AuthUser, emails []bulkEmail, owner *string) error {
 	if owner != nil {
-		var known bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE lower(email) = lower($1));`, *owner).Scan(&known); err != nil {
-			return err
+		ids := make([]string, len(emails))
+		for i, email := range emails {
+			ids[i] = email.ID
 		}
-		if !known {
-			return createEmailInputError("the owner must be a ReviewDesk user")
+		if err := checkOwner(ctx, tx, *owner, ids); err != nil {
+			return err
 		}
 	}
 	for _, email := range emails {

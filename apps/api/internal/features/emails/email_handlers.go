@@ -1298,6 +1298,18 @@ func updateEmailPlanningFieldsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 		changes := map[string]any{}
 		addStringChange(changes, "owner_email", currentOwnerEmail, ownerEmail)
+		// A new owner must be someone the Owner picker offers; an owner set
+		// before keeps their place.
+		if _, changed := changes["owner_email"]; changed && ownerEmail != nil {
+			var inputErr createEmailInputError
+			if err := checkOwner(r.Context(), tx, *ownerEmail, []string{id}); errors.As(err, &inputErr) {
+				http.Error(w, inputErr.Error(), http.StatusBadRequest)
+				return
+			} else if err != nil {
+				http.Error(w, "failed to update planning fields", http.StatusInternalServerError)
+				return
+			}
+		}
 		addStringChange(changes, "reviewer_email", currentReviewerEmail, reviewerEmail)
 		addStringChange(changes, "due_date", currentDueDate, dueDate)
 		addStringChange(changes, "implementation_notes", currentImplementationNotes, implementationNotes)
