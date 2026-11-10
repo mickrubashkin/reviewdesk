@@ -39,9 +39,9 @@ apps/api/
 │   └── features/               # Feature domain modules
 │       ├── ai/                 # OpenAI prompts, caching, SSE streaming & logs
 │       ├── auth/               # OTP login, session handling, user management
-│       ├── boards/             # Kanban boards, stages, approval areas config
-│       ├── comments/           # Review comments, blocking status, replies
-│       └── emails/             # Email CRUD, versioning, approvals, activity logs
+│       ├── boards/             # Boards, stages, slots, regions
+│       ├── comments/           # Review comments, severity, replies, mentions
+│       └── emails/             # Email CRUD, versioning, Draft / Ready, checks of form, activity logs
 db/
 └── migrations/                 # Goose SQL database migrations
 ```
@@ -67,17 +67,19 @@ The `main.go` file acts purely as a composition root (wire-up):
 - **Template Editing**: Admin/reviewers modify `data-edit-*` fields; the backend dynamically renders the final `review_html` template.
 - **Sandboxed Rendering**: Untrusted client HTML is sanitized for preview without executing scripts.
 
-### 4. Approval Gates
-Approval state transitions enforce strict business integrity:
-- An email **cannot be approved** if there are open `blocking` comments.
-- An email **cannot be approved** if required approval areas (defined on board level) remain unapproved.
+### 4. Review Status
+Each email is Draft or Ready; the status is set by people:
+- An email **cannot be marked Ready** while it fails a check of form (`checkStoredEmail` in `features/emails/email_checks.go`, rules in `internal/emailblocks`): exactly one button, required fields filled, length limits on subject, preheader and fields.
+- Comments do not gate Ready.
+- Editing a Ready email moves it back to Draft.
+- Live is observed from the CRM portal sync (`features/portal`), not a status step.
 
 ### 5. AI Streaming (SSE)
 - Real-time AI analysis is delivered via Server-Sent Events (`EventSource`) on `/api/emails/{id}/ai-analysis-stream`.
 - Results are cached in the database to prevent redundant LLM invocations.
 
 ### 6. Audit & Operational Telemetry
-- **Email Events**: Track business actions (email creation, version restoration, stage moves, approvals) stored in `email_events`.
+- **Email Events**: Track business actions (email creation, version restoration, stage moves, status changes) stored in `email_events`.
 - **Operational Events**: System health, API server startup, and unexpected errors logged into `operational_events`.
 
 ---

@@ -58,7 +58,7 @@ The most complex part of the app is the `EmailReview` feature. It was recently r
 - **State & Logic**: Extracted into custom hooks (`useEmailReviewData`, `useEmailReviewMutations`, `useEmailReviewLayout`).
 - **UI Sections**: Split into semantic directories:
   - `header/`: Controls for status, viewport variants.
-  - `panels/`: Right-side tabs (Activity, Approvals, Handoff, History, Planning).
+  - `panels/`: Right-side tabs (Activity, Blocks, Checks, Handoff, History, Planning).
   - `comments/`: Comment rendering, composing, and filtering.
 - **Preview Isolation**: Third-party HTML emails are rendered inside an isolated `iframe` (Sandbox) within `MailPreview.tsx` to prevent XSS and style bleed.
 

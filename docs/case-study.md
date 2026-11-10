@@ -2,17 +2,17 @@
 
 ## Problem
 
-HTML email review often happens across screenshots, chat threads, issue trackers, and ad hoc approvals. Feedback loses the exact content context, approvals become hard to audit after edits, and final handoff to CRM or ESP implementation can depend on manual status checking.
+HTML email review often happens across screenshots, chat threads, issue trackers, and ad hoc sign-offs. Feedback loses the exact content context, nobody is sure which text was agreed after the latest edit, and the handoff to CRM or ESP implementation depends on manual status checking.
 
 ReviewDesk focuses on the review layer before messages are implemented in downstream marketing, lifecycle, CRM, or partner communication systems.
 
 ## Solution
 
-ReviewDesk provides a shared review workspace for HTML email sequences. Reviewers can comment on specific content blocks, admins can edit template-backed fields without changing the original HTML, and approval state becomes explicit, auditable, and stale-aware after content changes.
+ReviewDesk provides a shared review workspace for HTML email sequences. Reviewers can comment on specific content blocks, admins can edit template-backed fields without changing the original HTML, and each email has one explicit review status, Draft or Ready, that follows its content: marking an email Ready runs checks of form, and any later edit moves it back to Draft.
 
 AI review acts as a workflow assistant for email effectiveness inside the journey, not as a generic copy generator. It can evaluate the email's stage, subject, preheader, body text, send timing, and review metadata to surface risks around clarity, user intent, conversion friction, localization, compliance, and production readiness.
 
-The product is intentionally not a full email builder or marketing automation platform. It concentrates on the part of the workflow where teams need review context, approval gates, version history, and production handoff.
+The product is intentionally not a full email builder or marketing automation platform. It concentrates on the part of the workflow where teams need review context, a clear Draft / Ready status, version history, and production handoff.
 
 ## Product Workflow
 
@@ -22,9 +22,9 @@ The intended demo story is:
 2. Inspect an email preview with review anchors and existing metadata.
 3. Add or resolve comments with severity.
 4. Edit template-backed copy or planning fields.
-5. Show approvals becoming stale after content changes.
-6. Re-approve required areas.
-7. Export or inspect the production handoff package.
+5. Mark the email Ready: checks of form run first (exactly one button, required fields filled, length limits on subject, preheader and fields) and the status menu says what to fix.
+6. Edit the Ready email and see it move back to Draft.
+7. Inspect the production handoff: copy the HTML for the CRM, mark the upload, and later see from the CRM sync which version is live.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ The intended demo story is:
 - Auth: OTP login, session cookies, admin and super-admin roles, and local dev-login bypass guarded by environment variables.
 - Review model: comments attach to `data-review-block` anchors and text ranges; edited text can normalize affected anchors to whole-block context.
 - Editing model: original HTML is preserved; admins edit `data-edit-*` fields and the backend renders final HTML.
-- Approval model: blocking comments and required area approvals gate review and production approval.
+- Review status: Draft / Ready, set by people. Ready requires the checks of form to pass; comments are a conversation and do not gate it; an edit to a Ready email moves it back to Draft. Live is observed from the CRM sync, not a status step.
 - AI review: shared journey-aware analysis supports cached results and first-run streaming over SSE/EventSource.
 
 ## Tradeoffs
@@ -47,4 +47,4 @@ The intended demo story is:
 
 In production, ReviewDesk is used by a 10-person partner onboarding team for a 5-language email chain implemented as CRM automation robots. Changing one email used to take about a week across chats, screenshots and manual CRM checks; with ReviewDesk the team rebuilt the entire chain (100+ localized emails) in one working week. It was rolled out gradually (one pilot colleague, then two, then the whole team) and is now part of onboarding for new hires.
 
-ReviewDesk demonstrates a complete product-engineering slice: authenticated workflow software, PostgreSQL-backed domain state, review anchoring, approval gates, version-aware editing, AI-assisted analysis, and production handoff. The public demo uses disposable synthetic data so the workflow can be shown without exposing production content.
+ReviewDesk demonstrates a complete product-engineering slice: authenticated workflow software, PostgreSQL-backed domain state, review anchoring, a Draft / Ready workflow with checks of form, version-aware editing, AI-assisted analysis, and production handoff. The public demo uses disposable synthetic data so the workflow can be shown without exposing production content.
