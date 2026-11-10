@@ -4,6 +4,7 @@ package digest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -21,7 +22,7 @@ type Sender interface {
 
 const (
 	checkEvery    = 10 * time.Minute
-	sendTimeout   = 15 * time.Second
+	sendTimeout   = 45 * time.Second
 	keepPresence  = 90 * 24 * time.Hour
 	maxTextLength = 4000 // Telegram takes up to 4096 characters.
 )
@@ -44,8 +45,9 @@ func Run(ctx context.Context, db *pgxpool.Pool, sender Sender, loc *time.Locatio
 }
 
 // SendDue sends the digest of the day before now once now has reached hour
-// in loc, unless it went out already. A digest that fails to send is tried
-// again next time.
+// in loc, unless it went out already. A digest the chat refused is tried
+// again next time; one that timed out is not, since the chat may still have
+// delivered it (the Bitrix24 bot API does that when it answers late).
 func SendDue(ctx context.Context, db *pgxpool.Pool, sender Sender, now time.Time, loc *time.Location, hour int) error {
 	local := now.In(loc)
 	if local.Hour() < hour {
@@ -73,6 +75,9 @@ func SendDue(ctx context.Context, db *pgxpool.Pool, sender Sender, now time.Time
 		return sender.Send(sendCtx, Format(start, people, loc))
 	}()
 	if err != nil {
+		if timedOut(err) {
+			return fmt.Errorf("%w (may have been delivered, not tried again)", err)
+		}
 		if _, unclaimErr := db.Exec(context.WithoutCancel(ctx), `DELETE FROM activity_digests WHERE day = $1;`, day); unclaimErr != nil {
 			return fmt.Errorf("%w (and the day stays marked sent: %v)", err, unclaimErr)
 		}
@@ -80,6 +85,11 @@ func SendDue(ctx context.Context, db *pgxpool.Pool, sender Sender, now time.Time
 	}
 	_, err = db.Exec(ctx, `DELETE FROM user_presence WHERE seen_at < $1;`, now.Add(-keepPresence))
 	return err
+}
+
+func timedOut(err error) bool {
+	var timeout interface{ Timeout() bool }
+	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout())
 }
 
 // Person is what one person did in the day.
