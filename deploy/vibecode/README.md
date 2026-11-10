@@ -12,7 +12,7 @@ ReviewDesk for colleagues runs on a dedicated VibeCode VM (Bitrix24's app platfo
   | `install` | root | `install.sh` installs `postgresql-16` once |
   | `preStart` | root | `prestart.mjs` creates the role and database in `DATABASE_URL`, then runs `goose up` |
   | `start` | `vibeapp` | `./bin/server` on port 3000; it serves the web app from `WEB_DIST_DIR` too |
-- **Files:** each deploy replaces `/opt/app`. The database lives in `/var/lib/postgresql` and survives deploys. The app's variables are in `/opt/app/.env`, which the service loads. `preStart` doesn't get them, so `prestart.mjs` reads the file itself.
+- **Files:** each deploy replaces `/opt/app`. The database lives in `/var/lib/postgresql` and survives deploys. The app's variables are in `/opt/app/.env`, which the service loads. `preStart` doesn't get them, so `prestart.mjs` reads the file itself. Application secrets are in `/var/lib/vibe/app-secrets/app.env` (root only), which the service loads after `.env`.
 
 ## Build and deploy
 
@@ -26,13 +26,24 @@ The build puts the API and goose (static linux/amd64), the migrations, the AI pr
 - `VIBECODE_API_KEY` in `.env`: a `vibe_api_` key with only `vibe:infra`. The VM is bound to the key that manages it: another key gets an empty server list and 404, and only the owner can rebind the VM to a new key, in the console («Серверы Black Hole»). A VibeCode session can't deploy here: its key may not call `/infra`.
 - In `personal-notes/vibecode/` (gitignored):
   - `server-id`: the VM's ID;
-  - `server.env`: the app's variables as `KEY=value` lines, such as `BITRIX_WEBHOOK_URL` and `AUTH_ALLOWED_ORIGINS` (the app URL);
+  - `app-id`: the application card's ID (`GET /v1/applications`; not the server's ID);
+  - `server.env`: the app's settings as `KEY=value` lines, such as `AUTH_ALLOWED_ORIGINS` (the app URL). No tokens: those are secrets (below);
   - `web.env`: optional `VITE_*` settings for the web build. Dev and demo sign-in are always off.
   - `db-password`: generated on the first deploy.
 
-The app calls the platform with its own key, `BITRIX_API_KEY` in `server.env`: `vibe:ai` for AI, `user` for Bitrix24 IDs, `imbot` for the bot, `vibe:storage` for backups. A bot, too, works only with the key it's bound to; `POST /v1/bots/:id/transfer`, called with the new key, moves it.
+The app calls the platform with its own key, the `BITRIX_API_KEY` secret: `vibe:ai` for AI, `user` for Bitrix24 IDs, `imbot` for the bot, `vibe:storage` for backups. A bot, too, works only with the key it's bound to; `POST /v1/bots/:id/transfer`, called with the new key, moves it.
 
-The script adds `DATABASE_URL`, `WEB_DIST_DIR` and `PORT`. The changelog line, if given, goes to the subscribers of the app's channel in Bitrix24; leave it out for fixes nobody will notice.
+The script adds `DATABASE_URL`, `WEB_DIST_DIR` and `PORT`. `DATABASE_URL` stays in the deploy env, because `preStart` needs it and doesn't get secrets. The changelog line, if given, goes to the subscribers of the app's channel in Bitrix24; leave it out for fixes nobody will notice.
+
+## Secrets
+
+Tokens are application secrets: `BITRIX_API_KEY` and `BITRIX_WEBHOOK_URL`. There is no `RESEND_API_KEY` here: people sign in through the portal, and @mentions reach them through the bot, so the server sends no email. The value is set only in the application card (`https://vibecode.bitrix24.tech/applications?app=<app-id>`, block «Секреты») by the owner; the API and the card never show it back. Saving it restarts the app with the new value, no deploy needed. The app reads secrets as ordinary environment variables.
+
+- A new token: add its name with `POST /v1/applications/<app-id>/secrets` and body `{"name": "…"}` (no value), then set the value in the card.
+- The deploy script lists the secrets: those with a value are left out of the deploy env even if `server.env` still has them; a name without a value is reported, and `server.env` still supplies it.
+- After changing a value, `GET /v1/applications/<app-id>/secrets` shows `state.status: APPLIED` once the app has it.
+
+Docs: https://vibecode.bitrix24.tech/docs-content/applications/app-secrets.md
 
 ## Backups
 
@@ -42,6 +53,8 @@ To restore one, run on the VM (through `exec`, as root), with the day you need:
 
 ```sh
 cd /opt/app && set -a && . ./.env && set +a
+# The key is a secret; take it from the running app before stopping it.
+BITRIX_API_KEY="$(tr '\0' '\n' </proc/"$(systemctl show -p MainPID --value app)"/environ | sed -n 's/^BITRIX_API_KEY=//p')"
 curl -sfL -H "X-Api-Key: $BITRIX_API_KEY" -o /tmp/restore.sql.gz \
   "https://vibecode.bitrix24.tech/v1/storage/objects/reviewdesk%2Fbackups%2F2026-11-10.sql.gz"
 systemctl stop app
