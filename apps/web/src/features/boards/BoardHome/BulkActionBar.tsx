@@ -26,6 +26,7 @@ import { formatStageName } from "../../emails/stages";
 import type { Board, EmailListItem, StageColumn } from "../../emails/types";
 import { pickPrimary } from "./slotHelpers";
 import styles from "./SlotMatrix.module.css";
+import { sendTimingOptions } from "../../emails/sendTiming";
 
 type Dialog = "owner" | "slot" | "timing" | "archive" | null;
 
@@ -376,14 +377,7 @@ function TimingDialog({
   const [sendCondition, setSendCondition] = useState("");
   const slotCount = new Set(selected.map((e) => `${e.stage}#${e.sort_order}`)).size;
   const timingOptions = useMemo(
-    () =>
-      [
-        ...new Set(
-          columns
-            .flatMap((c) => c.emailGroups.flatMap((g) => g.versions.map((v) => v.send_timing)))
-            .filter((t): t is string => Boolean(t))
-        ),
-      ].sort(),
+    () => sendTimingOptions(columns.flatMap((c) => c.emailGroups.flatMap((g) => g.versions.map((v) => v.send_timing)))),
     [columns]
   );
 
