@@ -87,3 +87,66 @@ func TestEditedTextFieldsBecomeMarkdown(t *testing.T) {
 		t.Errorf("unsafe link: %d %s", response.Code, response.Body.String())
 	}
 }
+
+func TestPastedFormattingSurvivesSavingAnotherField(t *testing.T) {
+	dbpool := testDBPool(t)
+	user := createTestUserWithRole(t, dbpool, "admin")
+	createTestBoard(t, dbpool, "pasted-markdown", []string{"uploaded"})
+	router := chi.NewRouter()
+	RegisterEmailRoutes(router, dbpool)
+
+	pasted := `<html><body><table><tr>` +
+		`<td><div data-edit-text="body">Read <strong>this</strong>, <em>then</em> <a href="https://example.com/guide" style="color: #ff0000;">the guide</a>.</div></td>` +
+		`<td data-edit-text="other">Other</td>` +
+		`</tr></table></body></html>`
+	body, err := json.Marshal(map[string]any{
+		"sequence": "pasted-markdown", "title": "Pasted", "stage": "uploaded", "language": "en", "original_html": pasted,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, withAuthUser(httptest.NewRequest(http.MethodPost, "/api/emails", bytes.NewReader(body)), user))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", response.Code, response.Body.String())
+	}
+	var created EmailDetail
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM emails WHERE id = $1;`, created.ID)
+	})
+	var fields emailedit.EditableFields
+	if err := json.Unmarshal(created.EditableFields, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["body"].Format != emailedit.FormatMarkdown || fields["body"].Value != "Read **this**, *then* [the guide](https://example.com/guide)." {
+		t.Fatalf("body field: %+v", fields["body"])
+	}
+
+	fields["other"] = emailedit.EditableField{Type: emailedit.FieldTypeText, Value: "Other, edited"}
+	fieldsJSON, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, withAuthUser(httptest.NewRequest(http.MethodPatch, "/api/emails/"+created.ID+"/editable-fields",
+		bytes.NewReader([]byte(`{"title": "Pasted", "editable_fields": `+string(fieldsJSON)+`}`))), user))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("save: %d %s", response.Code, response.Body.String())
+	}
+	var reviewHTML string
+	if err := dbpool.QueryRow(context.Background(), `SELECT review_html FROM emails WHERE id = $1`, created.ID).Scan(&reviewHTML); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Read <strong>this</strong>, <em>then</em> ",
+		`<a href="https://example.com/guide" target="_blank" style="color: #ff0000;"`,
+		"Other, edited",
+	} {
+		if !strings.Contains(reviewHTML, want) {
+			t.Errorf("review html has no %s: %s", want, reviewHTML)
+		}
+	}
+}

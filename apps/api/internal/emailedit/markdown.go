@@ -80,10 +80,11 @@ func renderMarkdownInto(node *xhtml.Node, key, value string) error {
 	}
 
 	renderer := markdownRenderer{
-		source:  []byte(source),
-		restore: restore,
-		key:     key,
-		color:   inheritedColor(node),
+		source:    []byte(source),
+		restore:   restore,
+		key:       key,
+		color:     inheritedColor(node),
+		linkStyle: templateLinkStyle(node),
 	}
 	document := markdownParser.Parse(text.NewReader(renderer.source))
 
@@ -93,10 +94,11 @@ func renderMarkdownInto(node *xhtml.Node, key, value string) error {
 }
 
 type markdownRenderer struct {
-	source  []byte
-	restore func(string) string
-	key     string
-	color   string
+	source    []byte
+	restore   func(string) string
+	key       string
+	color     string
+	linkStyle string
 }
 
 // blocks renders the block children of parent: paragraphs in a row are
@@ -192,7 +194,7 @@ func (renderer markdownRenderer) inlines(target *xhtml.Node, parent ast.Node) er
 			if err := checkLinkURL(href, true); err != nil {
 				return fmt.Errorf("editable field %q: link %q: %w", renderer.key, href, err)
 			}
-			link := element("a", markdownLinkStyle)
+			link := element("a", renderer.linkStyle)
 			link.Attr = append([]xhtml.Attribute{{Key: "href", Val: href}, {Key: "target", Val: "_blank"}}, link.Attr...)
 			if err := renderer.inlines(link, child); err != nil {
 				return err
@@ -233,6 +235,28 @@ func appendText(node *xhtml.Node, value string) {
 		return
 	}
 	node.AppendChild(&xhtml.Node{Type: xhtml.TextNode, Data: value})
+}
+
+// templateLinkStyle is the style of the first link the template has inside
+// node, so links written in Markdown look like the ones the email was made
+// with; markdownLinkStyle when it has none.
+func templateLinkStyle(node *xhtml.Node) string {
+	var walk func(*xhtml.Node) (string, bool)
+	walk = func(current *xhtml.Node) (string, bool) {
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			if child.Type == xhtml.ElementNode && strings.EqualFold(child.Data, "a") {
+				return attrValueOrEmpty(child, "style"), true
+			}
+			if style, ok := walk(child); ok {
+				return style, true
+			}
+		}
+		return "", false
+	}
+	if style, ok := walk(node); ok {
+		return style
+	}
+	return markdownLinkStyle
 }
 
 var colorPattern = regexp.MustCompile(`(?i)(?:^|;)\s*color\s*:\s*([^;]+)`)
