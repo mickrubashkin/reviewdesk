@@ -25,12 +25,30 @@ func TestDetectImportedHTML(t *testing.T) {
 	if !detection.HasPreheaderSlot || detection.Preheader != "Veja os próximos passos" {
 		t.Errorf("preheader: %v %q", detection.HasPreheaderSlot, detection.Preheader)
 	}
-	if len(detection.NestedMarkupFields) != 1 || detection.NestedMarkupFields[0].Key != "intro_body" ||
-		strings.Join(detection.NestedMarkupFields[0].Tags, ",") != "a,strong" {
+	// intro_body is on a td: its <strong> and link become Markdown.
+	if len(detection.NestedMarkupFields) != 0 {
 		t.Errorf("nested markup: %+v", detection.NestedMarkupFields)
 	}
 	if len(detection.BitrixExpressions) != 1 || detection.BitrixExpressions[0] != "{{=date('Y')}}" {
 		t.Errorf("expressions: %v", detection.BitrixExpressions)
+	}
+}
+
+func TestDetectImportedHTMLFlagsOnlyMarkupThatIsLost(t *testing.T) {
+	detection, err := detectImportedHTML(`<html><body><table><tr>
+		<td data-edit-text="kept">Read <strong>this</strong>, <em>that</em><br>and <a href="https://example.com">more</a>.</td>
+		<td data-edit-text="styled">Read <span style="color: red">this</span> and <a href="#top">that</a>, <strong>now</strong>.</td>
+	</tr></table><p data-edit-text="plain">Read <strong>this</strong>.</p></body></html>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, field := range detection.NestedMarkupFields {
+		got[field.Key] = strings.Join(field.Tags, ",")
+	}
+	want := map[string]string{"styled": "a,span", "plain": "strong"}
+	if len(got) != len(want) || got["styled"] != want["styled"] || got["plain"] != want["plain"] {
+		t.Errorf("nested markup: %v, want %v", got, want)
 	}
 }
 

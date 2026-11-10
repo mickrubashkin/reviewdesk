@@ -79,6 +79,17 @@ func writeMarkdown(builder *strings.Builder, node *html.Node) {
 	builder.WriteString(wrapLines(inner.String(), delimiter, delimiter))
 }
 
+// KeptInMarkdown reports whether an element inside a text field that can be
+// Markdown comes through extraction: bold, italics, a link with an address a
+// Markdown link takes, or a line break. Anything else keeps only its text.
+func KeptInMarkdown(node *html.Node) bool {
+	if strings.EqualFold(node.Data, "br") {
+		return true
+	}
+	_, ok := markdownDelimiter(node)
+	return ok
+}
+
 // markdownDelimiter tells the Markdown an element turns into: ** for bold,
 // * for italics, and "[" for a link with an address a Markdown link takes.
 func markdownDelimiter(node *html.Node) (string, bool) {
