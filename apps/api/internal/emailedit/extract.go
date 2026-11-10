@@ -32,10 +32,11 @@ type editableFieldsExtractor struct {
 func (extractor *editableFieldsExtractor) extractNodeFields(node *html.Node) error {
 	if node.Type == html.ElementNode {
 		if key, ok := attrValue(node, "data-edit-text"); ok {
-			if err := extractor.setField(key, EditableField{
-				Type:  FieldTypeText,
-				Value: textContentWithBreaks(node),
-			}); err != nil {
+			field := EditableField{Type: FieldTypeText, Value: textContentWithBreaks(node)}
+			if value, ok := markdownFromFormattedText(node); ok {
+				field.Value, field.Format = value, FormatMarkdown
+			}
+			if err := extractor.setField(key, field); err != nil {
 				return err
 			}
 		}

@@ -17,8 +17,8 @@ type EditableField struct {
 	// the email's language; Value keeps a copy so rendering stays the same.
 	Shared bool `json:"shared,omitempty"`
 	// Format is FormatMarkdown for a text field written in Markdown; empty
-	// for plain text. A field becomes Markdown when it is first edited with
-	// formatting, so templates stay as they are.
+	// for plain text. A field becomes Markdown when it is first edited, or
+	// when it is extracted from an element that holds bold, italics or links.
 	Format string `json:"format,omitempty"`
 }
 

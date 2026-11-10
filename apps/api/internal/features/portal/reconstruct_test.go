@@ -45,9 +45,9 @@ func TestReconstructRebuildsEditableEmail(t *testing.T) {
 		"signature_sender": "Diego",
 		"footer_copyright": "© {{=date('Y')}} Acme.",
 	}
-	// Manual formatting inside a text field is flattened to text.
-	if intro := fields["intro_body"].Value.(string); !strings.HasPrefix(intro, "Olá,\n\nTexto real") {
-		t.Errorf("intro_body = %q", intro)
+	// Manual formatting inside a text field is kept as Markdown.
+	if intro := fields["intro_body"]; intro.Value != "Olá,\n\nTexto **real**." || intro.Format != emailedit.FormatMarkdown {
+		t.Errorf("intro_body = %+v", intro)
 	}
 	for key, value := range want {
 		if got := fields[key].Value; got != value {

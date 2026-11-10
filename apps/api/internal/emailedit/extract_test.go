@@ -311,3 +311,68 @@ func readRepoGlob(t *testing.T, pattern string) []string {
 	t.Skip("seed emails are not in this checkout")
 	return nil
 }
+
+func TestExtractEditableFieldsReadsFormattedTextAsMarkdown(t *testing.T) {
+	templateHTML := `<table><tr>
+		<td data-edit-text="body">Hello <strong>partner</strong>, read <em>this</em> and
+			<a href="https://example.com/guide" style="color: #ff0000;">the <b>guide</b></a>.<br>
+			Call {{Responsible person &gt; Phone}} or #MANAGER_NAME#.</td>
+		<td data-edit-text="plain">Just <span>text</span></td>
+		<td><a href="https://example.com" data-edit-text="cta"><strong>Go</strong></a></td>
+		<td data-edit-text="dead_link">See <a href="#top">top</a></td>
+	</tr></table>`
+
+	fields, err := ExtractEditableFields(templateHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertFieldValue(t, fields, "body", FieldTypeText,
+		"Hello **partner**, read *this* and [the **guide**](https://example.com/guide).\nCall {{Responsible person > Phone}} or #MANAGER_NAME#.")
+	assertFieldValue(t, fields, "plain", FieldTypeText, "Just text")
+	assertFieldValue(t, fields, "cta", FieldTypeText, "Go")
+	assertFieldValue(t, fields, "dead_link", FieldTypeText, "See top")
+	formats := map[string]string{}
+	for key, field := range fields {
+		formats[key] = field.Format
+	}
+	if formats["body"] != FormatMarkdown || formats["plain"] != "" || formats["cta"] != "" || formats["dead_link"] != "" {
+		t.Fatalf("formats: %v", formats)
+	}
+
+	rendered, err := RenderEditableHTML(templateHTML, fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Hello <strong>partner</strong>, read <em>this</em> and ",
+		`<a href="https://example.com/guide" target="_blank" style="color: #ff0000;">the <strong>guide</strong></a>.<br/>`,
+		"Call {{Responsible person > Phone}} or #MANAGER_NAME#.",
+	} {
+		assertContains(t, rendered, want)
+	}
+}
+
+func TestExtractedMarkdownKeepsPunctuationAsText(t *testing.T) {
+	templateHTML := `<div data-edit-text="body"><b>Note:</b> 2 * 3 = 6, [draft] a\b _x_ #USER_NAME#<br>- not a list<br>1. not a list<br># not a heading<br><a href="https://example.com/a (1)">file</a></div>`
+
+	fields, err := ExtractEditableFields(templateHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := RenderEditableHTML(templateHTML, fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, rendered,
+		`<strong>Note:</strong> 2 * 3 = 6, [draft] a\b _x_ #USER_NAME#<br/>- not a list<br/>1. not a list<br/># not a heading<br/>`+
+			`<a href="https://example.com/a (1)" target="_blank">file</a>`)
+}
+
+func TestExtractedMarkdownMovesSpacesOutOfEmphasis(t *testing.T) {
+	fields, err := ExtractEditableFields(`<div data-edit-text="body">Read<strong> this </strong>now<em><br>and that</em></div>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFieldValue(t, fields, "body", FieldTypeText, "Read **this** now\n*and that*")
+}
