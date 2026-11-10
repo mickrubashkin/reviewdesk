@@ -14,7 +14,7 @@ function git(args: string) {
 
 const { version } = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: string }
 
-const demoUrl = 'https://demo.reviewdesk.rubashkin.xyz'
+const demoUrl = 'https://reviewdesk.rubashkin.xyz'
 
 // demoSharePreview lets link previews (LinkedIn) show the public demo: the
 // demo build gets Open Graph tags and a robots.txt that lets LinkedInBot in.
