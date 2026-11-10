@@ -8,6 +8,7 @@ import { updateSlot } from "../../emails/api";
 import { formatStageName } from "../../emails/stages";
 import type { Board, EmailListItem, EmailVersionGroup, StageColumn } from "../../emails/types";
 import { HelpLink } from "../../help/HelpLink";
+import { sendTimingOptions } from "../../emails/sendTiming";
 
 // SlotEditModal edits what a slot shares across languages: name, stage,
 // position, timing and condition. Saving writes them to every language.
@@ -32,13 +33,7 @@ export function SlotEditModal({
   const [sendCondition, setSendCondition] = useState(master.send_condition ?? "");
 
   const timingOptions = useMemo(
-    () =>
-      [
-        ...new Set(
-          columns.flatMap((c) => c.emailGroups.flatMap((g) => g.versions.map((v) => v.send_timing)))
-            .filter((t): t is string => Boolean(t))
-        ),
-      ].sort(),
+    () => sendTimingOptions(columns.flatMap((c) => c.emailGroups.flatMap((g) => g.versions.map((v) => v.send_timing)))),
     [columns]
   );
   const languages = [...new Set(group.versions.map((v) => v.language.toUpperCase()))].join(", ");

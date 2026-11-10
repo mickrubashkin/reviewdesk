@@ -43,6 +43,7 @@ import {
 import styles from "./SlotCreate.module.css";
 import { BlocksSlotPanel, type BlocksDraft } from "./BlocksSlotPanel";
 import { canManageBoard, managesAnyBoard } from "../../emails/permissions";
+import { sendTimingOptions } from "../../emails/sendTiming";
 
 type PortalSource = { groupID: string; language: SlotLanguage | null; reconstruction: PortalReconstruction };
 
@@ -160,10 +161,7 @@ function SlotCreateForm({
     }
     return [...bySortOrder.entries()].sort(([a], [b]) => a - b);
   }, [emails, selectedBoard?.key, selectedStage]);
-  const timingOptions = useMemo(
-    () => [...new Set(emails.map((e) => e.send_timing).filter((t): t is string => Boolean(t)))].sort(),
-    [emails]
-  );
+  const timingOptions = useMemo(() => sendTimingOptions(emails.map((e) => e.send_timing)), [emails]);
   const blockCatalogQuery = useBlockCatalog(canCreate && mode === "blocks");
   const defaultLayoutQuery = useDefaultLayout(selectedBoard?.key, selectedStage, canCreate && mode === "blocks");
   const layout = editedLayout ?? defaultLayoutQuery.data;
