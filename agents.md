@@ -93,6 +93,9 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root, created as terms
 - Ending a session: `/wrap-up` (`.claude/skills/wrap-up`) brings open work to PRs, deletes merged branches (`scripts/wrap-up.sh`), leaves git clean and updates the plan. `/wrap-up merge` also merges once checks pass.
 - `/handoff` (an installed skill) is not the end of a session: it writes a one-off document for work that moves mid-task to another directory, tool or person. After `/wrap-up`, clear the context; the next session starts from «Передача» in `personal-notes/plan.md`.
 
+## Project status
+`STATUS.md` is the public snapshot of the project. When finishing a meaningful feature or before a release, update its sections 2 (current state), 5 (recent changes), 6 (in progress / next) and 7 (known limitations), and the "Last updated" date. It is synced to the public repo: no company data, internal URLs or names.
+
 ## User help
 When a change alters what a user sees or does, update the help in the same PR:
 - `docs/help/en/` — the pages that describe it. Renaming a heading breaks the anchors in `helpTopics` (`features/help/help.ts`); the help test catches it.
