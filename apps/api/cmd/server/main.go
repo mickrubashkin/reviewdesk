@@ -84,12 +84,8 @@ func main() {
 		comments.Messenger = bot
 		// What people write back to the bot goes to the thread, and the
 		// "Resolve" button needs its command registered.
-		go func() {
-			if err := bot.EnsureCommand(ctx, comments.ResolveCommand, "Resolve a comment thread"); err != nil {
-				fmt.Fprintf(os.Stderr, "Unable to register the bot's resolve command: %v\n", err)
-			}
-			comments.RunBotReplies(ctx, dbpool, bot)
-		}()
+		go comments.RegisterResolveCommand(ctx, bot)
+		go comments.RunBotReplies(ctx, dbpool, bot)
 	}
 	if featureauth.GatewayMode() {
 		go featureauth.RunPortalUserIDFill(ctx, dbpool)

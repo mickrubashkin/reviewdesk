@@ -73,9 +73,8 @@ Local walkthrough:
 Useful checks:
 
 ```sh
-make lint
-make test-api
-make test-web
+make build
+make test        # test-api + test-web
 ```
 
 ## Repo Layout

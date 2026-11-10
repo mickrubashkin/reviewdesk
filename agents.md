@@ -11,12 +11,14 @@ ReviewDesk is a review and approval tool for HTML email sequences. Go backend (C
 - `apps/web/src/main.tsx` — frontend entrypoint.
 - `apps/web/src/App.tsx` — router. `/emails/{id}/edit` redirects to `/emails/{id}/review`.
 - `db/migrations/` — goose migrations applied sequentially.
-- `deploy/vibecode/` — the second deploy, for colleagues: a dedicated VibeCode VM (Bitrix24's app platform) with PostgreSQL on it; the API also serves the web app there (`WEB_DIST_DIR`). Build and deploy with `scripts/vibecode-build.sh` and `scripts/vibecode-deploy.sh`; see its README. Railway (+ Cloudflare Pages) stays for the demo; the two differ only by env.
+- `deploy/vibecode/` — the second deploy, for colleagues: a dedicated VibeCode VM (Bitrix24's app platform) with PostgreSQL on it; the API also serves the web app there (`WEB_DIST_DIR`). Build and deploy with `make deploy` (`scripts/vibecode-build.sh` + `scripts/vibecode-deploy.sh`), read its log with `make logs`; see its README. Railway (+ Cloudflare Pages) stays for the demo; the two differ only by env.
 - `docs/help/en/` — user help in Markdown, built into the web app at `/help` (`apps/web/src/features/help/`). Links between pages are plain `page.md#anchor`.
 
 ## Commands
 - `make setup-dev` — DB up → migrations → seed (`db/seeds/emails` if present, else the demo board).
-- `make dev` — DB up, API, and web in parallel.
+- `make dev` (or `make start`) — DB up, API, and web in parallel.
+- `make build` / `make test` — API and web; `make test` runs the database tests on `email_review_tool_test` when the local DB is up.
+- `make deploy [MSG="changelog line"]` / `make logs [N=200]` — the VibeCode VM. `make public-review [REF=…]` — what the public copy would get.
 - `make db-migrate` / `make db-seed` / `make db-seed-demo` / `make db-sync-meta`.
 - `cd apps/web && npm run dev|lint|test|build`. **build** runs `tsc -b && vite build`; **test** runs Vitest (`*.test.ts` next to the code, for pure logic).
 - `cd apps/api && go test ./...`. For a single test: `go test -run TestName ./cmd/server`.
