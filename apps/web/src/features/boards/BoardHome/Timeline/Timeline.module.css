@@ -64,6 +64,11 @@
   opacity: 1;
 }
 
+/* Under the stage title, where the stage's branch starts. */
+.stageAdd {
+  margin: -6px 0 0 44px;
+}
+
 .stageHead {
   display: flex;
   flex: 1;

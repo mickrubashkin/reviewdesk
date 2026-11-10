@@ -58,7 +58,7 @@ import matrixStyles from "./SlotMatrix.module.css";
 import { fetchEmails } from "../../emails/api";
 import { withProductionStatus } from "../../emails/productionStatus";
 import { ManageStagesModal } from "./ManageStagesModal";
-import { canEditEmailContent } from "../../emails/permissions";
+import { canEditEmailContent, canManageBoard } from "../../emails/permissions";
 import { useBoardHomeData } from "./useBoardHomeData";
 import styles from "../../../App.module.css";
 
@@ -435,6 +435,7 @@ function EmailBoardApp({
                   <BoardTimeline
                     boardKey={boardKey}
                     boardName={activeBoard?.name ?? boardKey}
+                    canCreate={canManageBoard(currentUser, boardKey)}
                     columns={shownColumns}
                     present={presenting}
                     onPresentChange={setPresenting}

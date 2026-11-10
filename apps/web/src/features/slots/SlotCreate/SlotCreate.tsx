@@ -111,9 +111,13 @@ function SlotCreateForm({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [boardKey, setBoardKey] = useState<string | null>(null);
+  // ?board= and ?stage= come from the + under a stage on the timeline.
+  const [searchParams] = useSearchParams();
+  const [boardKey, setBoardKey] = useState<string | null>(() => searchParams.get("board"));
   const [stage, setStage] = useState<string | null>(
-    () => portalSources.find((s) => s.reconstruction.suggested_stage)?.reconstruction.suggested_stage ?? null
+    () =>
+      portalSources.find((s) => s.reconstruction.suggested_stage)?.reconstruction.suggested_stage ??
+      searchParams.get("stage")
   );
   const [title, setTitle] = useState("");
   const [autoPosition, setAutoPosition] = useState(true);
