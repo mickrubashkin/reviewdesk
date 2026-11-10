@@ -23,6 +23,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 
 import { fetchBoards } from "../../boards/api";
 import { AdminTableHeader } from "../../admin-table/AdminTableHeader";
@@ -38,6 +39,7 @@ import {
 import type { UserAdminItem, UserRole } from "../../emails/types";
 import { helpRole, helpRoles, type HelpRole } from "../helpRole";
 import { userLabel } from "../userLabel";
+import { matchesUserSearch } from "../userSearch";
 import { PossibleDuplicates, UserAccountActions, UserAliases } from "./UserAccountActions";
 import styles from "../../auth-events/AuthEvents/AuthEvents.module.css";
 
@@ -220,6 +222,12 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
       usersQuery.data,
     ]
   );
+  // The search narrows the table; it is not kept, so the page opens on everyone.
+  const [search, setSearch] = useState("");
+  const visibleUsers = useMemo(() => {
+    const boardNames = new Map((boardsQuery.data ?? []).map((board) => [board.key, board.name]));
+    return (usersQuery.data ?? emptyAdminUsers).filter((user) => matchesUserSearch(user, search, boardNames));
+  }, [boardsQuery.data, search, usersQuery.data]);
   const sorting = useMemo<SortingState>(
     () => [{ desc: sort.direction === "desc", id: sort.key }],
     [sort]
@@ -228,7 +236,7 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
   const table = useReactTable({
     columnResizeMode: "onChange",
     columns,
-    data: usersQuery.data ?? emptyAdminUsers,
+    data: visibleUsers,
     enableColumnResizing: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -270,42 +278,52 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
       />
 
       <section className={styles.filters}>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!trimmedEmailDraft) {
-              return;
-            }
-            createUserMutation.mutate({
-              email: trimmedEmailDraft,
-              role: roleDraft,
-            });
-          }}
-        >
-          <Group align="end" gap="sm">
-            <TextInput
-              label="Email"
-              placeholder="new.user@example.com"
-              value={emailDraft}
-              onChange={(event) => setEmailDraft(event.currentTarget.value)}
-            />
-            <Select
-              allowDeselect={false}
-              data={createRoleOptions}
-              label="Role"
-              value={roleDraft}
-              w={180}
-              onChange={(value) => setRoleDraft((value as UserRole | null) ?? "reviewer")}
-            />
-            <Button
-              disabled={!trimmedEmailDraft}
-              loading={createUserMutation.isPending}
-              type="submit"
-            >
-              Add user
-            </Button>
-          </Group>
-        </form>
+        <Group align="end" justify="space-between" gap="sm">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!trimmedEmailDraft) {
+                return;
+              }
+              createUserMutation.mutate({
+                email: trimmedEmailDraft,
+                role: roleDraft,
+              });
+            }}
+          >
+            <Group align="end" gap="sm">
+              <TextInput
+                label="Email"
+                placeholder="new.user@example.com"
+                value={emailDraft}
+                onChange={(event) => setEmailDraft(event.currentTarget.value)}
+              />
+              <Select
+                allowDeselect={false}
+                data={createRoleOptions}
+                label="Role"
+                value={roleDraft}
+                w={180}
+                onChange={(value) => setRoleDraft((value as UserRole | null) ?? "reviewer")}
+              />
+              <Button
+                disabled={!trimmedEmailDraft}
+                loading={createUserMutation.isPending}
+                type="submit"
+              >
+                Add user
+              </Button>
+            </Group>
+          </form>
+          <TextInput
+            aria-label="Search users"
+            leftSection={<MagnifyingGlassIcon aria-hidden="true" size={16} />}
+            placeholder="Name, email, role, language, board"
+            value={search}
+            w={300}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+          />
+        </Group>
       </section>
 
       <section className={styles.tableShell}>
@@ -324,7 +342,7 @@ export function AdminUsers({ currentUserRole }: AdminUsersProps) {
 
         {usersQuery.isSuccess && rows.length === 0 ? (
           <Stack align="center" justify="center" h={240}>
-            <Text fw={600}>No users found</Text>
+            <Text fw={600}>{search.trim() ? `No users match “${search.trim()}”` : "No users found"}</Text>
           </Stack>
         ) : null}
 
