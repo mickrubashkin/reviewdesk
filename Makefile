@@ -1,4 +1,29 @@
-.PHONY: db-up db-down db-logs db-migrate db-migrate-status db-migrate-down db-seed db-seed-demo db-reset-demo db-sync-meta api-dev web-dev dev setup-dev test-api test-web lint smoke-check
+.PHONY: start build test deploy logs public-review db-up db-down db-logs db-migrate db-migrate-status db-migrate-down db-seed db-seed-demo db-reset-demo db-sync-meta api-dev web-dev dev setup-dev test-api test-web lint smoke-check
+
+# Everyday entry points.
+
+start: dev
+
+build:
+	cd apps/api && go build ./...
+	cd apps/web && npm run build
+
+test: test-api test-web
+
+# Builds the VibeCode package and deploys it to the VM (deploy/vibecode/README.md).
+# MSG="…" also posts a changelog line to the app's channel in Bitrix24.
+deploy:
+	./scripts/vibecode-build.sh
+	./scripts/vibecode-deploy.sh "$(MSG)"
+
+# The last N (default 100) lines of the app's log on the VibeCode VM.
+logs:
+	./scripts/vibecode-logs.sh $(N)
+
+# What the public copy would get from REF (default origin/main), left
+# uncommitted in ../reviewdesk to look at.
+public-review:
+	./scripts/public/sync.sh --review $(REF)
 
 db-up:
 	docker compose up -d db
@@ -39,8 +64,17 @@ web-dev:
 setup-dev: db-up db-migrate
 	@if [ -d db/seeds/emails ]; then $(MAKE) db-seed; else DEMO_SEED_ENABLED=true $(MAKE) db-seed-demo; fi
 
+# Database tests run on email_review_tool_test next to DATABASE_URL (or
+# TEST_DATABASE_URL), migrated first; without it they are skipped. .env stays
+# out of go test: its AUTH_DEV_LOGIN_ENABLED fails an auth test.
 test-api:
-	cd apps/api && go test ./...
+	@db="$${TEST_DATABASE_URL:-$$(set -a; . ./.env; printf '%s' "$${DATABASE_URL%/*}/email_review_tool_test")}"; \
+	if goose -dir db/migrations postgres "$$db" up >/dev/null 2>&1; then \
+		cd apps/api && TEST_DATABASE_URL="$$db" go test -p 1 ./...; \
+	else \
+		echo "No test database (make db-up?): database tests are skipped"; \
+		cd apps/api && go test ./...; \
+	fi
 
 test-web:
 	cd apps/web && npm run lint && npm test && npm run build

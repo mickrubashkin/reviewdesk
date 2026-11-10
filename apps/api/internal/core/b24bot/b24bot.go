@@ -177,7 +177,12 @@ func (b *Bot) EnsureCommand(ctx context.Context, command string, title string) e
 			Command string `json:"command"`
 		} `json:"commands"`
 	}
-	if err := b.call(ctx, http.MethodGet, "/commands", nil, &list); err != nil {
+	// The list holds every command of the portal and can take long.
+	slow := *b
+	if slow.Client == nil {
+		slow.Client = &http.Client{Timeout: 3 * time.Minute}
+	}
+	if err := slow.call(ctx, http.MethodGet, "/commands", nil, &list); err != nil {
 		return err
 	}
 	for _, existing := range list.Commands {

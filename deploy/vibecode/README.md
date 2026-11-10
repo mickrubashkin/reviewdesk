@@ -17,8 +17,9 @@ ReviewDesk for colleagues runs on a dedicated VibeCode VM (Bitrix24's app platfo
 ## Build and deploy
 
 ```sh
-./scripts/vibecode-build.sh
-./scripts/vibecode-deploy.sh ["changelog line"]
+make deploy                       # ./scripts/vibecode-build.sh && ./scripts/vibecode-deploy.sh
+make deploy MSG="changelog line"
+make logs N=200                   # the app's log on the VM
 ```
 
 The build puts the API and goose (static linux/amd64), the migrations, the AI prompts and the web app into this folder; all of that is gitignored. The deploy needs:

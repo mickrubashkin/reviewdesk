@@ -23,6 +23,23 @@ const (
 	botPollMaxPause = time.Minute
 )
 
+// RegisterResolveCommand registers the command behind the "Resolve" button,
+// which works only once it is, trying again every few minutes until it is.
+func RegisterResolveCommand(ctx context.Context, bot *b24bot.Bot) {
+	for {
+		err := bot.EnsureCommand(ctx, ResolveCommand, "Resolve a comment thread")
+		if err == nil || ctx.Err() != nil {
+			return
+		}
+		fmt.Fprintf(os.Stderr, "Unable to register the bot's resolve command, trying again in 5 minutes: %v\n", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Minute):
+		}
+	}
+}
+
 // BotInbox is the Bitrix24 bot that sends mentions and reads what people
 // write back.
 type BotInbox interface {
