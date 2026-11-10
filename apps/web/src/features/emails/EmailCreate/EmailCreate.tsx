@@ -7,7 +7,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { fetchBoards, useBoardRegions } from "../../boards/api";
 import { createEmail, fetchEmails, inspectEmailHTML } from "../api";
@@ -37,7 +37,13 @@ export function EmailCreate({ currentUser }: EmailCreateProps) {
   const canCreate = managesAnyBoard(currentUser);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [formState, setFormState] = useState<CreateEmailFormState>(initialFormState);
+  // ?board= and ?stage= come from the + under a stage on the timeline.
+  const [searchParams] = useSearchParams();
+  const [formState, setFormState] = useState<CreateEmailFormState>(() => ({
+    ...initialFormState,
+    sequence: searchParams.get("board") ?? initialFormState.sequence,
+    stage: searchParams.get("stage") ?? initialFormState.stage,
+  }));
   const [createError, setCreateError] = useState<string | null>(null);
   const [debouncedHTML, setDebouncedHTML] = useState("");
   const [sortOrderAuto, setSortOrderAuto] = useState(true);

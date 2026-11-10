@@ -35,7 +35,7 @@ Emails taken off the board: who did it, when, and how often the portal saw them 
 
 ## New slot, new email (region managers, board owners)
 
-**New → New slot (all languages)** adds a place in a stage: build it from blocks, paste the HTML from a robot, or take emails the portal has seen sent. **New → New email** adds one email to an existing slot.
+**New → New slot (all languages)** adds a place in a stage: build it from blocks, paste the HTML from a robot, or take emails the portal has seen sent. **New → New email** adds one email to an existing slot. On the timeline, the **+** under a stage's name opens either of them with that stage already picked.
 
 ## Slot position
 

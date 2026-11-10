@@ -4,6 +4,7 @@ The newest changes first. A dot on your account menu means there is something he
 
 ## 2026-11-10
 
+- On the timeline, the **+** under a stage's name adds a slot or an email to that stage. See [New slot, new email](board-views.md#new-slot-new-email-region-managers-board-owners).
 - An email made from pasted HTML, or from one the portal has seen sent, keeps its bold, italics and links when you save another field or translate it. Its links keep their color.
 - Where mentions come from the ReviewDesk bot in Bitrix24, reply to the bot's message to answer in the comment's thread, and press **Resolve** under it to resolve the thread. See [Answer from the Bitrix24 chat](comments.md#answer-from-the-bitrix24-chat).
 

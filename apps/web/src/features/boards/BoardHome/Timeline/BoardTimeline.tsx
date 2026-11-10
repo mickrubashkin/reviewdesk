@@ -1,6 +1,7 @@
-import { Badge, Button, CopyButton, Group, ScrollArea, SegmentedControl, Select, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Button, CopyButton, Group, Menu, ScrollArea, SegmentedControl, Select, Text, Tooltip } from "@mantine/core";
+import { EnvelopeSimpleIcon, PlusIcon, StackIcon } from "@phosphor-icons/react";
 import { Fragment, useMemo, useState, type CSSProperties } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { HelpLink } from "../../../help/HelpLink";
 import type { BoardRegion, StageColumn } from "../../../emails/types";
@@ -31,6 +32,8 @@ import styles from "./Timeline.module.css";
 type BoardTimelineProps = {
   boardKey: string;
   boardName: string;
+  // Board managers get a + under each stage to add a slot or an email to it.
+  canCreate: boolean;
   columns: StageColumn[];
   // Present mode leaves only the sequence itself: no statuses, comments or
   // review tools, and an email opens as a large preview.
@@ -51,6 +54,7 @@ type BoardTimelineProps = {
 export function BoardTimeline({
   boardKey,
   boardName,
+  canCreate,
   columns,
   present,
   onPresentChange,
@@ -187,6 +191,7 @@ export function BoardTimeline({
             key={stage.stage}
             boardKey={boardKey}
             byRegion={byRegion}
+            canCreate={canCreate}
             language={language}
             last={index === stages.length - 1}
             present={present}
@@ -203,6 +208,31 @@ export function BoardTimeline({
   );
 }
 
+// StageCreateMenu opens New slot or New email with this board and stage
+// already picked.
+function StageCreateMenu({ boardKey, stage }: { boardKey: string; stage: string }) {
+  const params = new URLSearchParams({ board: boardKey, stage }).toString();
+  return (
+    <Menu position="bottom-start" withinPortal>
+      <Menu.Target>
+        <Tooltip label="Add to this stage">
+          <ActionIcon aria-label="Add to this stage" className={styles.stageAdd} color="gray" size="sm" variant="subtle">
+            <PlusIcon aria-hidden="true" size={14} />
+          </ActionIcon>
+        </Tooltip>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item component={Link} leftSection={<StackIcon aria-hidden="true" size={16} />} to={`/slots/new?${params}`}>
+          New slot (all languages)
+        </Menu.Item>
+        <Menu.Item component={Link} leftSection={<EnvelopeSimpleIcon aria-hidden="true" size={16} />} to={`/emails/new?${params}`}>
+          New email
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
 function findEmail(stages: TimelineStage[], emailId: string) {
   for (const stage of stages) {
     for (const branch of stage.branches) {
@@ -216,6 +246,7 @@ function findEmail(stages: TimelineStage[], emailId: string) {
 type StageBranchProps = {
   stage: TimelineStage;
   boardKey: string;
+  canCreate: boolean;
   language: string;
   byRegion: boolean;
   first: boolean;
@@ -232,6 +263,7 @@ type StageBranchProps = {
 function StageBranch({
   stage,
   boardKey,
+  canCreate,
   language,
   byRegion,
   first,
@@ -320,6 +352,7 @@ function StageBranch({
           </CopyButton>
         )}
       </div>
+      {canCreate && !present ? <StageCreateMenu boardKey={boardKey} stage={stage.stage} /> : null}
 
       {hasBranch && !collapsed
         ? stage.branches.map((branch) => (
