@@ -97,7 +97,9 @@ func (b *Bot) SendTo(ctx context.Context, dialogID string, text string, buttons 
 	request.Header.Set("X-Api-Key", b.APIKey)
 	client := b.Client
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		// The platform can take long under load; a request cut short may
+		// still be delivered.
+		client = &http.Client{Timeout: 30 * time.Second}
 	}
 	response, err := client.Do(request)
 	if err != nil {

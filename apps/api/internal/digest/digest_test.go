@@ -3,6 +3,7 @@ package digest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -167,4 +168,21 @@ func TestSendDue(t *testing.T) {
 		t.Fatalf("expected one digest\n%s\ngot %q", want, sender.sent)
 	}
 
+	// A send that timed out may have gone out: the next day is not tried
+	// again.
+	nextMorning := morning.AddDate(0, 0, 1)
+	t.Cleanup(func() {
+		_, _ = db.Exec(context.Background(), `DELETE FROM activity_digests WHERE day = $1;`, day.AddDate(0, 0, 1).Format(time.DateOnly))
+	})
+	sender.err = fmt.Errorf("bitrix24 bot: %w", context.DeadlineExceeded)
+	if err := SendDue(ctx, db, sender, nextMorning, loc, 8); err == nil {
+		t.Fatal("expected the timeout")
+	}
+	sender.err = nil
+	if err := SendDue(ctx, db, sender, nextMorning, loc, 8); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("a timed-out digest was sent again: %q", sender.sent)
+	}
 }
