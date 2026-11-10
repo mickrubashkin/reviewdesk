@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { fetchEmailDetail } from "../../../emails/api";
+import { SplitTextsBadge } from "../../../emails/SplitTextsBadge";
 import { emailStatusParts, lastSendLine, portalSendsText } from "../../../emails/statusSummary";
 import type { BoardRegion, EmailListItem } from "../../../emails/types";
 import { regionName } from "../../regions";
@@ -107,6 +108,7 @@ export function TimelineNode({
               {status.label}
             </Badge>
           ) : null}
+          {!present ? <SplitTextsBadge email={email} onOpenSends={onOpenSends} /> : null}
           {email.open_comment_count > 0 && !present ? (
             <Badge color="orange" size="xs" variant="filled">
               {email.open_comment_count} open

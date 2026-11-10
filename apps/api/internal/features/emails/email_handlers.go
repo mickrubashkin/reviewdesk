@@ -27,6 +27,7 @@ import (
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailreview"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/emailtext"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/features/boards"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/split"
 	xhtml "golang.org/x/net/html"
 )
 
@@ -147,10 +148,12 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				uploads.uploaded_version,
 				uploads.uploaded_at,
 				uploads.robots,
+				recent.texts,
 				archived_at,
 				(SELECT email FROM users WHERE users.id = emails.archived_by) AS archived_by_email
 			FROM emails
 			LEFT JOIN email_upload_summary uploads ON uploads.email_id = emails.id
+			LEFT JOIN LATERAL (`+split.RecentTextsSQL+`) recent ON true
 			LEFT JOIN LATERAL (
 				-- Sent emails the portal sync tied to this one: confirmed by a
 				-- person, or matched automatically with no decision yet.
@@ -212,7 +215,7 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 
 		for rows.Next() {
 			var email EmailListItem
-			var uploadRobots []byte
+			var uploadRobots, recentTexts []byte
 
 			err := rows.Scan(
 				&email.ID,
@@ -247,11 +250,15 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				&email.UploadedVersion,
 				&email.UploadedAt,
 				&uploadRobots,
+				&recentTexts,
 				&email.ArchivedAt,
 				&email.ArchivedByEmail,
 			)
 			if err == nil {
 				err = json.Unmarshal(uploadRobots, &email.UploadRobots)
+			}
+			if err == nil {
+				email.PortalSplitTexts, err = split.FromJSON(recentTexts)
 			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to scan email row: %v\n", err)

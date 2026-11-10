@@ -1,11 +1,13 @@
 // Package digest sends the owner a morning message about the day before:
-// who was in, from when to when, and what they did on which board.
+// who was in, from when to when, and what they did on which board; then the
+// emails whose robots send different texts.
 package digest
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -13,6 +15,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/appurl"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/split"
 )
 
 // Sender posts a message to the owner's chat.
@@ -70,9 +75,13 @@ func SendDue(ctx context.Context, db *pgxpool.Pool, sender Sender, now time.Time
 		if err != nil {
 			return err
 		}
+		splits, err := split.Load(ctx, db)
+		if err != nil {
+			return err
+		}
 		sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 		defer cancel()
-		return sender.Send(sendCtx, Format(start, people, loc))
+		return sender.Send(sendCtx, Message(start, people, splits, appurl.Get(), loc))
 	}()
 	if err != nil {
 		if timedOut(err) {
@@ -208,9 +217,24 @@ var actionLabels = []struct {
 	{"archived", []string{"email_archived"}},
 }
 
+// Message is the whole digest: the day's people (see Format), then the emails
+// that go out in more than one text, linked to their sends from baseURL.
+func Message(day time.Time, people []Person, splits []split.Email, baseURL string, loc *time.Location) string {
+	tail := formatSplits(splits, baseURL)
+	if tail == "" {
+		return Format(day, people, loc)
+	}
+	// Room for the two newlines and the "…and N more." of a cut list.
+	return format(day, people, loc, maxTextLength-len([]rune(tail))-24) + "\n\n" + tail
+}
+
 // Format is the digest of the day that starts at day: one block per person,
 // with times in loc.
 func Format(day time.Time, people []Person, loc *time.Location) string {
+	return format(day, people, loc, maxTextLength)
+}
+
+func format(day time.Time, people []Person, loc *time.Location, budget int) string {
 	title := "ReviewDesk · " + day.In(loc).Format("Mon, Jan 2")
 	if len(people) == 0 {
 		return title + "\nNobody was in."
@@ -229,11 +253,53 @@ func Format(day time.Time, people []Person, loc *time.Location) string {
 		if len(boards) == 0 {
 			block = append(block, "  Looked around, changed nothing.")
 		}
-		if length(lines)+length(block) > maxTextLength {
+		if length(lines)+length(block) > budget {
 			lines = append(lines, "", fmt.Sprintf("…and %d more.", len(people)-i))
 			break
 		}
 		lines = append(lines, block...)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// maxSplitLinks is how many emails of a board the digest links to;
+// maxSplitLength leaves the rest of the message to the day's people.
+const (
+	maxSplitLinks  = 5
+	maxSplitLength = maxTextLength / 2
+)
+
+// formatSplits is a line per board with emails that go out in more than one
+// text, and a link to each one's sends.
+func formatSplits(splits []split.Email, baseURL string) string {
+	if len(splits) == 0 {
+		return ""
+	}
+	lines := []string{fmt.Sprintf("Robots send different texts (last %d days):", split.WindowDays)}
+	for start := 0; start < len(splits); {
+		board := splits[start].BoardName
+		end := start
+		for end < len(splits) && splits[end].BoardName == board {
+			end++
+		}
+		count := end - start
+		if length(lines) > maxSplitLength {
+			lines = append(lines, fmt.Sprintf("  …and %d more %s.", len(splits)-start, plural(len(splits)-start, "email", "emails")))
+			break
+		}
+		lines = append(lines, fmt.Sprintf("  %s: %d %s in more than one text", board, count, plural(count, "email goes out", "emails go out")))
+		for i, email := range splits[start:end] {
+			if i == maxSplitLinks {
+				lines = append(lines, fmt.Sprintf("    …and %d more.", count-maxSplitLinks))
+				break
+			}
+			line := fmt.Sprintf("    %s · %d texts", email.Title, len(email.Texts))
+			if baseURL != "" {
+				line += " · " + baseURL + "/emails/" + url.PathEscape(email.ID) + "/review?tab=sends"
+			}
+			lines = append(lines, line)
+		}
+		start = end
 	}
 	return strings.Join(lines, "\n")
 }

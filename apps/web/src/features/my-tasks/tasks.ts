@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useNotifications } from "../comments/notifications";
 import { fetchEmails } from "../emails/api";
 import { needsBitrixUpload } from "../emails/reviewStatus";
+import { splitTexts, splitWindowDays } from "../emails/splitTexts";
 import type { AuthUser, EmailListItem } from "../emails/types";
 import type { UploadSuggestion } from "../portal/api";
 import { suggestionFor, useUploadSuggestions } from "../portal/uploadSuggestions";
 
-export type TaskSectionKey = "outdated" | "comments" | "drafts" | "seen" | "upload";
+export type TaskSectionKey = "outdated" | "comments" | "drafts" | "seen" | "upload" | "split";
 
 export type TaskSection = {
   key: TaskSectionKey;
@@ -33,7 +34,8 @@ function byClaim(user: AuthUser) {
 
 // buildTaskSections picks the emails that need something from this person:
 // translations in their languages that fell behind EN, comments and drafts
-// on emails they own, and for super admins the Bitrix24 upload queue.
+// on emails they own, and for super admins the Bitrix24 upload queue and the
+// emails whose robots send different texts.
 export function buildTaskSections(
   emails: EmailListItem[],
   user: AuthUser,
@@ -77,6 +79,12 @@ export function buildTaskSections(
         title: "To upload to Bitrix24",
         hint: "Ready emails that the robot does not have yet, or has an older version of.",
         emails: toUpload.filter((email) => !seen.includes(email)),
+      },
+      {
+        key: "split",
+        title: "Robots disagree",
+        hint: `Over the last ${splitWindowDays} days robots sent more than one text of these emails: one of their robots likely still has an older text. See which on the Sends tab, then re-upload it.`,
+        emails: emails.filter((email) => splitTexts(email).length > 0),
       }
     );
   }

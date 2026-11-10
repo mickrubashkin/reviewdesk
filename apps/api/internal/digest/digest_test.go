@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/split"
 )
 
 type fakeSender struct {
@@ -69,6 +71,42 @@ func TestFormat(t *testing.T) {
 	long := Format(day, many, madrid)
 	if len([]rune(long)) > maxTextLength || !strings.Contains(long, " more.") {
 		t.Fatalf("expected a cut digest within %d characters, got %d", maxTextLength, len([]rune(long)))
+	}
+}
+
+func TestMessageListsSplitEmails(t *testing.T) {
+	day := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	two := []split.Text{{GroupID: "1"}, {GroupID: "2"}}
+	splits := []split.Email{
+		{ID: "a", Title: "Welcome", BoardName: "Onboarding", Texts: two},
+		{ID: "b", Title: "Day 3", BoardName: "Onboarding", Texts: append(two, split.Text{GroupID: "3"})},
+		{ID: "c", Title: "Renewal", BoardName: "Regional", Texts: two},
+	}
+	want := strings.Join([]string{
+		"ReviewDesk · Thu, Oct 29",
+		"Nobody was in.",
+		"",
+		"Robots send different texts (last 14 days):",
+		"  Onboarding: 2 emails go out in more than one text",
+		"    Welcome · 2 texts · https://app.example.com/emails/a/review?tab=sends",
+		"    Day 3 · 3 texts · https://app.example.com/emails/b/review?tab=sends",
+		"  Regional: 1 email goes out in more than one text",
+		"    Renewal · 2 texts · https://app.example.com/emails/c/review?tab=sends",
+	}, "\n")
+	if got := Message(day, nil, splits, "https://app.example.com", time.UTC); got != want {
+		t.Fatalf("got\n%s\nwant\n%s", got, want)
+	}
+	if got := Message(day, nil, nil, "https://app.example.com", time.UTC); got != Format(day, nil, time.UTC) {
+		t.Fatalf("expected the plain digest without split emails, got %q", got)
+	}
+
+	many := make([]Person, 300)
+	for i := range many {
+		many[i] = Person{Email: "someone@example.com", FirstAt: day, LastAt: day, Boards: map[string]map[string]int{}}
+	}
+	if long := Message(day, many, splits, "https://app.example.com", time.UTC); len([]rune(long)) > maxTextLength ||
+		!strings.HasSuffix(long, "review?tab=sends") {
+		t.Fatalf("expected a cut digest that keeps the split emails, got %d characters", len([]rune(long)))
 	}
 }
 
