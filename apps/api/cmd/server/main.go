@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/mickrubashkin/reviewdesk/apps/api/internal/backup"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/b24bot"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/core/telegram"
 	"github.com/mickrubashkin/reviewdesk/apps/api/internal/demo"
@@ -122,6 +123,19 @@ func main() {
 			go digest.Run(ctx, dbpool, bot, reportLocation("ACTIVITY_DIGEST_TZ"), digestHour())
 		} else {
 			fmt.Fprintln(os.Stderr, "ACTIVITY_DIGEST_ENABLED needs a Bitrix24 bot (BITRIX_BOT_ID, BITRIX_BOT_DIALOG_ID) or TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID; no digest")
+		}
+	}
+
+	// On VibeCode the database lives on the app's VM; a copy goes to Vibe
+	// Storage once a day.
+	if !demoEnabled && strings.EqualFold(strings.TrimSpace(os.Getenv("DB_BACKUP_ENABLED")), "true") {
+		if job, err := backup.FromEnv(); err != nil {
+			fmt.Fprintf(os.Stderr, "DB_BACKUP_ENABLED: %v; no backups\n", err)
+		} else {
+			if bot, ok := ownerChat(); ok {
+				job.Notify = bot
+			}
+			go backup.Run(ctx, job)
 		}
 	}
 
