@@ -16,8 +16,8 @@ type importDetection struct {
 	Subject          string `json:"detected_subject"`
 	Preheader        string `json:"detected_preheader"`
 	HasPreheaderSlot bool   `json:"has_preheader_slot"`
-	// NestedMarkupFields are text fields that contain links or formatting the
-	// template does not support; that markup is lost when the field renders.
+	// NestedMarkupFields are text fields that contain markup extraction does
+	// not keep; it is lost when the field renders.
 	NestedMarkupFields []nestedMarkupField `json:"nested_markup_fields"`
 	BitrixExpressions  []string            `json:"bitrix_expressions"`
 }
@@ -52,7 +52,7 @@ func detectImportedHTML(originalHTML string) (importDetection, error) {
 				detection.Preheader = strings.Join(strings.Fields(htmlTextContent(node)), " ")
 			}
 			if key := htmlAttrValue(node, "data-edit-text"); key != "" {
-				if tags := nestedElementTags(node); len(tags) > 0 {
+				if tags := lostElementTags(node); len(tags) > 0 {
 					detection.NestedMarkupFields = append(detection.NestedMarkupFields, nestedMarkupField{Key: key, Tags: tags})
 				}
 			}
@@ -91,12 +91,17 @@ func normalizeImportLanguage(lang string) string {
 	return primary
 }
 
-func nestedElementTags(node *xhtml.Node) []string {
+// lostElementTags lists the tags inside a text field that rendering drops:
+// all of them but <br> in a plain field, and those Markdown does not carry in
+// a field on an element that can be Markdown, which keeps bold, italics and
+// links.
+func lostElementTags(node *xhtml.Node) []string {
+	formattable := emailedit.CanFormat(node.Data)
 	tags := map[string]bool{}
 	var walk func(*xhtml.Node)
 	walk = func(n *xhtml.Node) {
 		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			if child.Type == xhtml.ElementNode && child.Data != "br" {
+			if child.Type == xhtml.ElementNode && child.Data != "br" && !(formattable && emailedit.KeptInMarkdown(child)) {
 				tags[child.Data] = true
 			}
 			walk(child)
