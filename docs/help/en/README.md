@@ -57,7 +57,7 @@ Everything a board owner does, plus:
 
 ## Setting up people
 
-How the roles above are set in **Settings → Users**. Board owners add people and set **Manages** and **Translates**; only a CRM operator changes someone's role. The **Role** column shows the role of this help; **Change role** shows the role it comes from.
+How the roles above are set in **Settings → Users**. Board owners add people and set **Manages** and **Translates**; only a CRM operator changes someone's role. The **Role** column shows the role of this help; **Change role** shows the role it comes from. The search above the table finds people by name, address, role, language or board.
 
 | Role | Change role | Also set |
 |---|---|---|
