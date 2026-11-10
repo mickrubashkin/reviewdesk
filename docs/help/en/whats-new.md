@@ -2,6 +2,10 @@
 
 The newest changes first. A dot on your account menu means there is something here you have not read yet.
 
+## 2026-11-10
+
+- Where mentions come from the ReviewDesk bot in Bitrix24, reply to the bot's message to answer in the comment's thread, and press **Resolve** under it to resolve the thread. See [Answer from the Bitrix24 chat](comments.md#answer-from-the-bitrix24-chat).
+
 ## 2026-11-09
 
 - A board can be renamed in **Board settings**; links to it keep working.

@@ -24,9 +24,12 @@ type fakeMessenger struct {
 	err  error
 }
 
-func (m fakeMessenger) SendTo(_ context.Context, dialogID string, text string, buttons ...b24bot.Button) error {
+func (m fakeMessenger) Post(_ context.Context, dialogID string, text string, buttons ...b24bot.Button) (string, error) {
 	m.sent <- sentMessage{dialogID: dialogID, text: text, buttons: buttons}
-	return m.err
+	if m.err != nil {
+		return "", m.err
+	}
+	return "msg-" + dialogID, nil
 }
 
 func TestMentionsGoToBitrix24WhenTheIDIsKnown(t *testing.T) {

@@ -309,85 +309,24 @@ func createCommentMessageHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		tx, err := dbpool.Begin(r.Context())
-		if err != nil {
-			http.Error(w, "failed to create comment message", http.StatusInternalServerError)
-			return
-		}
-		defer tx.Rollback(r.Context())
-
-		var status string
-		var emailID string
-		var emailSlug string
-		var emailTitle string
-		var reviewBlock string
-		var archived bool
-		err = tx.QueryRow(r.Context(), `
-			SELECT comments.status, comments.email_id, emails.slug, emails.title, comments.review_block,
-				emails.archived_at IS NOT NULL
-			FROM comments
-			INNER JOIN emails ON emails.id = comments.email_id
-			WHERE comments.id = $1;
-		`, commentID).Scan(&status, &emailID, &emailSlug, &emailTitle, &reviewBlock, &archived)
-		if errors.Is(err, pgx.ErrNoRows) {
+		message, notificationIDs, err := addCommentReply(r.Context(), dbpool, user, commentID, payload.Body, mentionIDs, "")
+		switch {
+		case errors.Is(err, errCommentNotFound):
 			http.Error(w, "comment not found", http.StatusNotFound)
 			return
-		}
-		if err != nil {
-			http.Error(w, "failed to create comment message", http.StatusInternalServerError)
-			return
-		}
-		if status != "open" {
+		case errors.Is(err, errCommentResolved):
 			http.Error(w, "comment is resolved", http.StatusConflict)
 			return
-		}
-		if archived {
+		case errors.Is(err, errEmailArchived):
 			http.Error(w, errArchivedEmail, http.StatusConflict)
 			return
-		}
-
-		var message EmailCommentMessage
-		err = tx.QueryRow(r.Context(), `
-			INSERT INTO comment_messages (
-				comment_id,
-				user_id,
-				body
-			)
-				VALUES ($1, $2, $3)
-				RETURNING id, comment_id, user_id, body, created_at, updated_at;
-		`, commentID, user.ID, payload.Body).Scan(
-			&message.ID,
-			&message.CommentID,
-			&message.UserID,
-			&message.Body,
-			&message.CreatedAt,
-			&message.UpdatedAt,
-		)
-		if err != nil {
-			http.Error(w, "failed to create comment message", http.StatusInternalServerError)
-			return
-		}
-
-		mentionEmails, notificationIDs, err := saveMentions(r.Context(), tx, user, emailID, commentID, message.ID, message.Body, mentionIDs)
-		if err != nil {
+		case errors.Is(err, errMentionsNotSaved):
 			http.Error(w, "failed to save mentions", http.StatusInternalServerError)
 			return
-		}
-		message.MentionEmails = mentionEmails
-
-		if Logger != nil {
-			if err := Logger.LogEvent(r.Context(), tx, user, "comment_replied", emailID, emailSlug, emailTitle, map[string]any{
-				"comment_id":   commentID,
-				"message_id":   message.ID,
-				"review_block": reviewBlock,
-				"body":         message.Body,
-				"mentions":     mentionEmails,
-			}); err != nil {
-				http.Error(w, "failed to record comment event", http.StatusInternalServerError)
-				return
-			}
-		}
-		if err := tx.Commit(r.Context()); err != nil {
+		case errors.Is(err, errEventNotRecorded):
+			http.Error(w, "failed to record comment event", http.StatusInternalServerError)
+			return
+		case err != nil:
 			http.Error(w, "failed to create comment message", http.StatusInternalServerError)
 			return
 		}
@@ -411,116 +350,18 @@ func resolveCommentHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		tx, err := dbpool.Begin(r.Context())
-		if err != nil {
-			http.Error(w, "failed to resolve comment", http.StatusInternalServerError)
+		comment, err := resolveComment(r.Context(), dbpool, user, commentID)
+		switch {
+		case errors.Is(err, errCommentNotFound):
+			http.Error(w, "comment not found", http.StatusNotFound)
 			return
-		}
-		defer tx.Rollback(r.Context())
-
-		var authorID *string
-		var emailID string
-		err = tx.QueryRow(r.Context(), `
-			SELECT user_id, email_id::text
-			FROM comments
-			WHERE id = $1
-			FOR UPDATE;
-		`, commentID).Scan(&authorID, &emailID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				http.Error(w, "comment not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "failed to resolve comment", http.StatusInternalServerError)
-			return
-		}
-		allowed := canResolveComment(user, authorID)
-		if !allowed {
-			allowed, err = coreauth.CanManageEmail(r.Context(), tx, user, emailID)
-			if err != nil {
-				http.Error(w, "failed to resolve comment", http.StatusInternalServerError)
-				return
-			}
-		}
-		if !allowed {
+		case errors.Is(err, errCannotResolve):
 			http.Error(w, "only the comment author or a board admin can resolve this comment", http.StatusForbidden)
 			return
-		}
-
-		var comment EmailComment
-		var emailSlug string
-		var emailTitle string
-		err = tx.QueryRow(r.Context(), `
-			WITH updated_comment AS (
-				UPDATE comments
-				SET
-					status = 'resolved',
-					resolved_at = now(),
-					resolved_by = $2
-				WHERE id = $1
-				RETURNING *
-			)
-			SELECT
-				updated_comment.id,
-				updated_comment.email_id,
-				updated_comment.user_id,
-				authors.email AS author_email,
-				updated_comment.review_block,
-				updated_comment.selected_text,
-				updated_comment.start_offset,
-				updated_comment.end_offset,
-				updated_comment.body,
-				updated_comment.status,
-				updated_comment.severity,
-				updated_comment.created_at,
-				updated_comment.resolved_at,
-				updated_comment.resolved_by,
-				resolvers.email AS resolved_by_email,
-				emails.slug,
-				emails.title
-			FROM updated_comment
-			INNER JOIN emails ON emails.id = updated_comment.email_id
-			LEFT JOIN users AS authors ON authors.id = updated_comment.user_id
-			LEFT JOIN users AS resolvers ON resolvers.id = updated_comment.resolved_by;
-		`, commentID, user.ID).Scan(
-			&comment.ID,
-			&comment.EmailID,
-			&comment.UserID,
-			&comment.AuthorEmail,
-			&comment.ReviewBlock,
-			&comment.SelectedText,
-			&comment.StartOffset,
-			&comment.EndOffset,
-			&comment.Body,
-			&comment.Status,
-			&comment.Severity,
-			&comment.CreatedAt,
-			&comment.ResolvedAt,
-			&comment.ResolvedBy,
-			&comment.ResolvedByEmail,
-			&emailSlug,
-			&emailTitle,
-		)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				http.Error(w, "comment not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "failed to resolve comment", http.StatusInternalServerError)
+		case errors.Is(err, errEventNotRecorded):
+			http.Error(w, "failed to record comment event", http.StatusInternalServerError)
 			return
-		}
-
-		if Logger != nil {
-			if err := Logger.LogEvent(r.Context(), tx, user, "comment_resolved", comment.EmailID, emailSlug, emailTitle, map[string]any{
-				"comment_id":   comment.ID,
-				"review_block": comment.ReviewBlock,
-				"severity":     comment.Severity,
-			}); err != nil {
-				http.Error(w, "failed to record comment event", http.StatusInternalServerError)
-				return
-			}
-		}
-		if err := tx.Commit(r.Context()); err != nil {
+		case err != nil:
 			http.Error(w, "failed to resolve comment", http.StatusInternalServerError)
 			return
 		}
