@@ -21,6 +21,15 @@ Open comments do not stop anyone from marking the email ready: resolve them firs
 
 Type `@` and a name. The person sees the comment in **My tasks → Mentions** and gets an email about it. Where ReviewDesk opens from the Bitrix24 menu, the message comes to their Bitrix24 chat from the ReviewDesk bot instead, with a button that opens the comment; see [Signing in from Bitrix24](README.md#signing-in-from-bitrix24).
 
+### Answer from the Bitrix24 chat
+
+When the mention came from the ReviewDesk bot, you can answer without opening ReviewDesk:
+
+- **Reply** to the bot's message (quote it) and write your answer: it is added to that comment's thread under your name. A message without a quote goes to the thread of the latest mention the bot sent you.
+- **Resolve** under the message resolves the thread. The button is there only when you may resolve it.
+
+The bot answers with the email the thread is on and a link to it. It does not add a reply to a resolved thread or to an archived email, and only text goes to the thread, not files.
+
 ## Reply and resolve
 
 - Reply in the thread under the comment.

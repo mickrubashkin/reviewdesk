@@ -28,9 +28,10 @@ type NotificationMailer interface {
 // Mailer delivers mention emails; without one they are marked skipped.
 var Mailer NotificationMailer
 
-// NotificationMessenger sends a notification as a private Bitrix24 message.
+// NotificationMessenger sends a notification as a private Bitrix24 message
+// and returns the message's ID, which a reply in that chat quotes.
 type NotificationMessenger interface {
-	SendTo(ctx context.Context, dialogID string, text string, buttons ...b24bot.Button) error
+	Post(ctx context.Context, dialogID string, text string, buttons ...b24bot.Button) (string, error)
 }
 
 // Messenger, on VibeCode, sends a notification to the Bitrix24 chat of a
@@ -147,6 +148,10 @@ type mentionDelivery struct {
 	CommentID      *string
 	Excerpt        string
 	PortalUserID   string
+	// Recipient and CommentAuthorID decide whether the message offers to
+	// resolve the thread.
+	Recipient       AuthUser
+	CommentAuthorID *string
 }
 
 // deliverMentionEmails sends each notification and records the outcome: to
@@ -168,11 +173,15 @@ func deliverMentionEmails(ctx context.Context, dbpool *pgxpool.Pool, notificatio
 			emails.language,
 			notifications.comment_id,
 			notifications.excerpt,
-			COALESCE(recipients.portal_user_id, '')
+			COALESCE(recipients.portal_user_id, ''),
+			recipients.id,
+			recipients.role,
+			comments.user_id
 		FROM notifications
 		INNER JOIN users AS recipients ON recipients.id = notifications.user_id
 		INNER JOIN emails ON emails.id = notifications.email_id
 		LEFT JOIN users AS actors ON actors.id = notifications.actor_user_id
+		LEFT JOIN comments ON comments.id = notifications.comment_id
 		WHERE notifications.id::text = ANY($1)
 			AND notifications.email_status = 'pending';
 	`, notificationIDs)
@@ -183,7 +192,7 @@ func deliverMentionEmails(ctx context.Context, dbpool *pgxpool.Pool, notificatio
 	deliveries := []mentionDelivery{}
 	for rows.Next() {
 		var d mentionDelivery
-		if err := rows.Scan(&d.ID, &d.RecipientEmail, &d.ActorEmail, &d.ActorName, &d.EmailID, &d.EmailTitle, &d.EmailLanguage, &d.CommentID, &d.Excerpt, &d.PortalUserID); err != nil {
+		if err := rows.Scan(&d.ID, &d.RecipientEmail, &d.ActorEmail, &d.ActorName, &d.EmailID, &d.EmailTitle, &d.EmailLanguage, &d.CommentID, &d.Excerpt, &d.PortalUserID, &d.Recipient.ID, &d.Recipient.Role, &d.CommentAuthorID); err != nil {
 			rows.Close()
 			fmt.Fprintf(os.Stderr, "failed to read mention notification: %v\n", err)
 			return
@@ -193,14 +202,22 @@ func deliverMentionEmails(ctx context.Context, dbpool *pgxpool.Pool, notificatio
 	rows.Close()
 
 	for _, delivery := range deliveries {
-		bitrixStatus := "skipped"
+		bitrixStatus, bitrixMessageID := "skipped", ""
 		if Messenger != nil && delivery.PortalUserID != "" {
-			text, buttons := mentionMessageContent(delivery, appURL())
-			if err := Messenger.SendTo(ctx, delivery.PortalUserID, text, buttons...); err != nil {
+			delivery.Recipient.Email = delivery.RecipientEmail
+			canResolve := false
+			if delivery.CommentID != nil {
+				var err error
+				if canResolve, err = mayResolveComment(ctx, dbpool, delivery.Recipient, delivery.CommentAuthorID, delivery.EmailID); err != nil {
+					fmt.Fprintf(os.Stderr, "failed to check who may resolve mention %s: %v\n", delivery.ID, err)
+				}
+			}
+			text, buttons := mentionMessageContent(delivery, appURL(), canResolve)
+			if id, err := Messenger.Post(ctx, delivery.PortalUserID, text, buttons...); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to message mention %s to Bitrix24: %v\n", delivery.ID, err)
 				bitrixStatus = "failed"
 			} else {
-				bitrixStatus = "sent"
+				bitrixStatus, bitrixMessageID = "sent", id
 			}
 		}
 
@@ -219,9 +236,10 @@ func deliverMentionEmails(ctx context.Context, dbpool *pgxpool.Pool, notificatio
 			SET email_status = $2,
 				emailed_at = CASE WHEN $2 = 'sent' THEN now() ELSE emailed_at END,
 				bitrix_status = $3,
-				bitrix_sent_at = CASE WHEN $3 = 'sent' THEN now() ELSE bitrix_sent_at END
+				bitrix_sent_at = CASE WHEN $3 = 'sent' THEN now() ELSE bitrix_sent_at END,
+				bitrix_message_id = NULLIF($4, '')
 			WHERE id = $1;
-		`, delivery.ID, status, bitrixStatus); err != nil {
+		`, delivery.ID, status, bitrixStatus, bitrixMessageID); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to record mention email status %s: %v\n", delivery.ID, err)
 		}
 	}
@@ -255,14 +273,22 @@ func mentionReviewPath(emailID string, commentID *string) string {
 }
 
 // mentionMessageContent is the Bitrix24 message: the same words as the
-// email, with the link as a button.
-func mentionMessageContent(delivery mentionDelivery, baseURL string) (string, []b24bot.Button) {
+// email, with the link as a button, and a button that resolves the thread for
+// someone who may. A reply in the chat goes to the thread.
+func mentionMessageContent(delivery mentionDelivery, baseURL string, canResolve bool) (string, []b24bot.Button) {
 	actor, emailLabel := mentionActor(delivery), mentionEmailLabel(delivery)
 	text := fmt.Sprintf("%s mentioned you in a comment on %s:\n\n%s", actor, emailLabel, delivery.Excerpt)
-	if baseURL == "" {
-		return text, nil
+	buttons := []b24bot.Button{}
+	if baseURL != "" {
+		buttons = append(buttons, b24bot.Button{Text: "Open the comment", Link: baseURL + mentionReviewPath(delivery.EmailID, delivery.CommentID)})
 	}
-	return text, []b24bot.Button{{Text: "Open the comment", Link: baseURL + mentionReviewPath(delivery.EmailID, delivery.CommentID)}}
+	if delivery.CommentID != nil {
+		text += "\n\nReply here to answer in the thread."
+		if canResolve {
+			buttons = append(buttons, b24bot.Button{Text: "Resolve", Command: ResolveCommand, CommandParams: *delivery.CommentID})
+		}
+	}
+	return text, buttons
 }
 
 func mentionActor(delivery mentionDelivery) string {
@@ -276,7 +302,11 @@ func mentionActor(delivery mentionDelivery) string {
 }
 
 func mentionEmailLabel(delivery mentionDelivery) string {
-	return fmt.Sprintf("%s (%s)", delivery.EmailTitle, strings.ToUpper(delivery.EmailLanguage))
+	return emailLabel(delivery.EmailTitle, delivery.EmailLanguage)
+}
+
+func emailLabel(title string, language string) string {
+	return fmt.Sprintf("%s (%s)", title, strings.ToUpper(language))
 }
 
 func mentionEmailContent(delivery mentionDelivery, baseURL string) (subject string, text string, htmlBody string) {
