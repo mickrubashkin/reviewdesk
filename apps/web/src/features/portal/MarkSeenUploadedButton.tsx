@@ -8,10 +8,10 @@ import { markEmailUploaded } from "../emails/api";
 import { robotsBehind } from "../emails/reviewStatus";
 import type { EmailListItem } from "../emails/types";
 import type { UploadSuggestion } from "./api";
-import { suggestionsKey } from "./uploadSuggestions";
+import { seenRobotsBehind, suggestionsKey } from "./uploadSuggestions";
 
-// MarkSeenUploadedButton confirms an upload the portal saw. The portal does
-// not tell robots apart, so when several robots lag behind it asks which
+// MarkSeenUploadedButton confirms an upload the portal saw. Unless the
+// senders are paired with robots, when several robots lag behind it asks which
 // one sends the version.
 export function MarkSeenUploadedButton({ email, suggestion }: { email: EmailListItem; suggestion: UploadSuggestion }) {
   const queryClient = useQueryClient();
@@ -44,6 +44,16 @@ export function MarkSeenUploadedButton({ email, suggestion }: { email: EmailList
     mutation.mutate(robots);
   };
 
+  // Robots paired with their portal user are known: when every send is
+  // theirs, mark just them.
+  const seen = seenRobotsBehind(suggestion, email);
+  if (seen.length > 0 && (suggestion.unknown_sends ?? suggestion.sends) === 0) {
+    return (
+      <Button component="span" loading={mutation.isPending} size="compact-xs" onClick={(event) => mark(event, seen)}>
+        Mark v{suggestion.version} uploaded for {seen.join(", ")}
+      </Button>
+    );
+  }
   if (behind.length <= 1) {
     return (
       <Button component="span" loading={mutation.isPending} size="compact-xs" onClick={(event) => mark(event, behind)}>
