@@ -466,6 +466,8 @@ export type AuthUser = {
   tour_version?: number;
   // The date (YYYY-MM-DD) of the newest "What's new" entry this person opened.
   whats_new_seen?: string;
+  // Set while a CRM operator views ReviewDesk as this person: their address.
+  viewed_by?: string;
 };
 
 export type UserRole = "super_admin" | "admin" | "reviewer";

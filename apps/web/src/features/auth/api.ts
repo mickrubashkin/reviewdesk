@@ -175,6 +175,24 @@ export function markWhatsNewSeen(seen: string): Promise<{ whats_new_seen: string
   });
 }
 
+// startViewAs opens ReviewDesk as another person sees it, read-only; only a
+// super admin can.
+export function startViewAs(userId: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>("/api/auth/view-as", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export function stopViewAs(): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>("/api/auth/view-as", {
+    method: "DELETE",
+  });
+}
+
 export function logout(): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>("/api/auth/logout", {
     method: "POST",

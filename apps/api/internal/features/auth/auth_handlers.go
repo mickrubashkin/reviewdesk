@@ -46,6 +46,8 @@ func RegisterAuthRoutes(r chi.Router, dbpool *pgxpool.Pool, emailSender EmailSen
 	r.Post("/api/auth/demo-login", demoLoginHandler(dbpool, newDemoLoginLimiter()))
 	r.Get("/api/auth/events", listAuthEventsHandler(dbpool))
 	r.Get("/api/auth/me", meHandler(dbpool))
+	r.Post("/api/auth/view-as", startViewAsHandler(dbpool))
+	r.Delete("/api/auth/view-as", stopViewAsHandler())
 	r.Post("/api/auth/logout", logoutHandler(dbpool))
 	r.Get("/api/users/names", listUserNamesHandler(dbpool))
 	r.Post("/api/users/me/tour", updateUserTourHandler(dbpool))
@@ -80,6 +82,13 @@ func Middleware(dbpool *pgxpool.Pool) func(http.Handler) http.Handler {
 				return
 			}
 			touchUserLastSeen(r.Context(), dbpool, user)
+			if viewed, ok := viewedUser(r.Context(), dbpool, r, user); ok {
+				if !allowedWhileViewing(r) {
+					http.Error(w, errViewAsReadOnly.Error(), http.StatusForbidden)
+					return
+				}
+				user = viewed
+			}
 
 			next.ServeHTTP(w, r.WithContext(coreauth.WithUser(r.Context(), user)))
 		})
@@ -426,7 +435,12 @@ func meHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		touchUserLastSeen(r.Context(), dbpool, user)
 
-		response := meResponse{AuthUser: user}
+		viewedBy := ""
+		if viewed, ok := viewedUser(r.Context(), dbpool, r, user); ok {
+			viewedBy = user.Email
+			user = viewed
+		}
+		response := meResponse{AuthUser: user, ViewedBy: viewedBy}
 		if err := dbpool.QueryRow(r.Context(), `
 			SELECT languages, managed_boards, tour_version, whats_new_seen FROM users WHERE id = $1;
 		`, user.ID).Scan(&response.Languages, &response.ManagedBoards, &response.TourVersion, &response.WhatsNewSeen); err != nil {
@@ -457,6 +471,7 @@ func logoutHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		http.SetCookie(w, expiredSessionCookie())
+		http.SetCookie(w, viewAsCookie("", -1))
 		writeAuthOK(w)
 	}
 }

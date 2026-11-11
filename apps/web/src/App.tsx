@@ -12,6 +12,7 @@ import { AuthEvents } from "./features/auth-events/AuthEvents";
 import { BoardHomeRedirect, EmailBoardRoute } from "./features/boards/BoardHome";
 import { GatewayAccess, gatewayAccessState } from "./features/auth/GatewayAccess";
 import { Login } from "./features/auth/Login";
+import { ViewAsBanner } from "./features/auth/ViewAsBanner";
 import { EmailEvents } from "./features/email-events/EmailEvents";
 import { OperationalEvents } from "./features/ops-events/OperationalEvents";
 import { demoMode, fetchCurrentUserOrEnterDemo, gatewayMode, logout } from "./features/auth/api";
@@ -67,6 +68,7 @@ function AuthenticatedApp() {
   return (
     <>
     {demoMode ? <DemoGuide currentUser={currentUserQuery.data} /> : null}
+    {currentUserQuery.data.viewed_by ? <ViewAsBanner currentUser={currentUserQuery.data} /> : null}
     <Routes>
       <Route path="/ai-logs" element={<AIAnalysisLogs />} />
       <Route path="/my-tasks" element={<MyTasks currentUser={currentUserQuery.data} />} />
