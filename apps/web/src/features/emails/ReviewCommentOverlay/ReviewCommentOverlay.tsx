@@ -134,5 +134,7 @@ function changedBlockLabel(reason: ReviewChangedBlockRect["reason"]) {
       return "Edited after comment";
     case "comment_and_approval":
       return "Edited after comment and approval";
+    case "visit":
+      return "Changed since your visit";
   }
 }

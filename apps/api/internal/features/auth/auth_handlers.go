@@ -52,6 +52,7 @@ func RegisterAuthRoutes(r chi.Router, dbpool *pgxpool.Pool, emailSender EmailSen
 	r.Get("/api/users/names", listUserNamesHandler(dbpool))
 	r.Post("/api/users/me/tour", updateUserTourHandler(dbpool))
 	r.Post("/api/users/me/whats-new", updateUserWhatsNewHandler(dbpool))
+	r.Post("/api/users/me/my-tasks-visit", recordMyTasksVisitHandler(dbpool))
 	r.Get("/api/admin/users", listAdminUsersHandler(dbpool))
 	r.Post("/api/admin/users", createAdminUserHandler(dbpool))
 	r.Patch("/api/admin/users/{id}/role", updateAdminUserRoleHandler(dbpool))
@@ -439,11 +440,18 @@ func meHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		if viewed, ok := viewedUser(r.Context(), dbpool, r, user); ok {
 			viewedBy = user.Email
 			user = viewed
+		} else {
+			startTrackingChanges(r.Context(), dbpool, user)
 		}
 		response := meResponse{AuthUser: user, ViewedBy: viewedBy}
 		if err := dbpool.QueryRow(r.Context(), `
-			SELECT languages, managed_boards, tour_version, whats_new_seen FROM users WHERE id = $1;
-		`, user.ID).Scan(&response.Languages, &response.ManagedBoards, &response.TourVersion, &response.WhatsNewSeen); err != nil {
+			SELECT languages, managed_boards, tour_version, whats_new_seen,
+				changes_tracked_since, my_tasks_seen_at, my_tasks_previous_seen_at
+			FROM users WHERE id = $1;
+		`, user.ID).Scan(
+			&response.Languages, &response.ManagedBoards, &response.TourVersion, &response.WhatsNewSeen,
+			&response.ChangesTrackedSince, &response.MyTasksSeenAt, &response.MyTasksPreviousSeenAt,
+		); err != nil {
 			http.Error(w, "failed to load user", http.StatusInternalServerError)
 			return
 		}

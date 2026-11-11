@@ -14,9 +14,10 @@ import {
 import { HouseIcon } from "@phosphor-icons/react";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { recordMyTasksVisit } from "../../auth/api";
 import { fetchBoards } from "../../boards/api";
 import { takeEmail } from "../../emails/api";
 import { BitrixCopyModal } from "../../emails/BitrixCopyModal";
@@ -25,6 +26,7 @@ import { SplitTextsBadge } from "../../emails/SplitTextsBadge";
 import { formatStageName } from "../../emails/stages";
 import type { AuthUser, EmailListItem } from "../../emails/types";
 import { UploadBadge } from "../../emails/UploadBadge";
+import { visitSince } from "../../emails/visit";
 import type { UploadSuggestion } from "../../portal/api";
 import { MarkSeenUploadedButton } from "../../portal/MarkSeenUploadedButton";
 import { describeSuggestion, suggestionFor } from "../../portal/uploadSuggestions";
@@ -33,8 +35,13 @@ import { MentionList } from "./MentionList";
 import styles from "./MyTasks.module.css";
 import { useUserName } from "../../../shared/userNames";
 
+const shortDateTime = (value: string) =>
+  new Date(value).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
 export function MyTasks({ currentUser }: { currentUser: AuthUser }) {
-  const { emailsQuery, mentions, sections, suggestions, count } = useMyTasks(currentUser);
+  const since = visitSince(currentUser.my_tasks_seen_at, currentUser.my_tasks_previous_seen_at);
+  const { emailsQuery, mentions, sections, suggestions, count, freshCount } = useMyTasks(currentUser, since);
+  useRecordMyTasksVisit(currentUser);
   const hasLanguages = (currentUser.languages ?? []).length > 0;
   const boardsQuery = useQuery({ queryKey: ["boards"], queryFn: fetchBoards });
   const boardNames = new Map((boardsQuery.data ?? []).map((board) => [board.key, board.name]));
@@ -51,7 +58,15 @@ export function MyTasks({ currentUser }: { currentUser: AuthUser }) {
                 : count === 0
                   ? "Nothing waiting for you."
                   : `${count} ${count === 1 ? "thing needs" : "things need"} your attention.`}
+              {!emailsQuery.isLoading && since && freshCount > 0
+                ? ` ${freshCount} new since your last visit (${shortDateTime(since)}).`
+                : null}
             </Text>
+            {since ? null : (
+              <Text c="dimmed" size="xs">
+                From your next visit, what others change in your emails in between is marked New here.
+              </Text>
+            )}
           </Stack>
           <Button component={Link} leftSection={<HouseIcon aria-hidden="true" size={16} />} to="/" variant="light">
             Home
@@ -82,6 +97,23 @@ export function MyTasks({ currentUser }: { currentUser: AuthUser }) {
       </Stack>
     </div>
   );
+}
+
+// useRecordMyTasksVisit notes this visit once per page, except while a CRM
+// operator views as someone (read-only), then reloads the marks it moved.
+function useRecordMyTasksVisit(currentUser: AuthUser) {
+  const queryClient = useQueryClient();
+  const viewing = Boolean(currentUser.viewed_by);
+  useEffect(() => {
+    if (viewing) {
+      return;
+    }
+    recordMyTasksVisit()
+      .then(() => queryClient.invalidateQueries({ queryKey: ["auth", "me"] }))
+      .catch(() => {
+        // Not recorded: the next visit compares with an older one, which is harmless.
+      });
+  }, [queryClient, viewing]);
 }
 
 function TaskSectionList({
@@ -184,6 +216,13 @@ function TaskRow({
           </Stack>
         </Group>
         <Group gap={4} style={{ flexShrink: 0 }} wrap="nowrap">
+          {section.fresh?.has(email.id) ? (
+            <Tooltip label="Someone else changed it, or made you its owner, since your last visit.">
+              <Badge color="blue" size="sm" variant="filled">
+                New
+              </Badge>
+            </Tooltip>
+          ) : null}
           {section.key === "comments" ? (
             <Badge color="orange" size="sm" variant="light">
               {email.open_comment_count} open

@@ -23,6 +23,14 @@ export function formatEmailUpdateChangedReviewBlocks(
   return `Blocks: ${blocks.map(humanizeKey).join(", ")}`;
 }
 
+// changedFieldNames names the fields an edit changed, plainly: "Subject",
+// "Step 2".
+export function changedFieldNames(changes: Record<string, unknown>) {
+  return emailUpdateChangeParts(changes, { includeEditableFieldNames: true }).map((part) =>
+    part.replace(/^Editable field: /, "")
+  );
+}
+
 function emailUpdateChangeParts(
   changes: Record<string, unknown>,
   options: { includeEditableFieldNames?: boolean } = {}

@@ -47,7 +47,7 @@ About 200 commits. Grouped:
 **Features**
 - **Board model**: slot matrix and side panel, timeline view (now the default) with per-region branches and present mode, archive view, bulk actions, slot drag, rename a board, view and stage in the URL.
 - **Regions and blocks**: regions with a reference and adaptations; a block library, block-based emails and conversion of existing boards to blocks; Markdown in texts; shared texts with board overrides.
-- **Review workflow**: statuses simplified to Draft / Ready with checks of form; area approvals and the comment gate removed (2026-11-01); My tasks; translators take outdated translations; AI updates of outdated translations; translation glossary; apply reviewers' suggested wording from comments in bulk (with dry run).
+- **Review workflow**: statuses simplified to Draft / Ready with checks of form; area approvals and the comment gate removed (2026-11-01); My tasks; translators take outdated translations; AI updates of outdated translations; translation glossary; apply reviewers' suggested wording from comments in bulk (with dry run); translations wait while their EN master is in review; "changed since your visit" marks on the board, the review page and My tasks.
 - **CRM integration**: read-only portal sync (2026-10-09), nightly autosync, automatic Live, import of missing emails, uploads tracked per robot, first-send estimate, a Sends tab with charts and live counts on the board.
 - **People**: display names, user merge and aliases, user deletion, shared mailboxes refused, board owners get admin rights on their boards, hint for likely duplicate users, read-only "view as" a user for CRM operators.
 - **Help and onboarding**: in-app help by role, search, inline links, What's new, first-login tour.

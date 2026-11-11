@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNotifications } from "../comments/notifications";
 import { fetchEmails } from "../emails/api";
 import { masterInReview } from "../emails/masterInReview";
+import { isAfter } from "../emails/visit";
 import { needsBitrixUpload } from "../emails/reviewStatus";
 import { splitTexts, splitWindowDays } from "../emails/splitTexts";
 import type { AuthUser, EmailListItem } from "../emails/types";
@@ -19,6 +20,8 @@ export type TaskSection = {
   // Translations whose EN master is still being reviewed, by id, with that
   // master: shown dimmed and not counted until EN settles.
   waiting?: Map<string, EmailListItem>;
+  // Items that came up since the visit before, by id: marked New, listed first.
+  fresh?: Set<string>;
 };
 
 export function isMine(email: EmailListItem, user: AuthUser) {
@@ -44,14 +47,55 @@ export function isSetAside(section: TaskSection, email: EmailListItem, user: Aut
   return section.key === "outdated" && (isTakenByOther(email, user) || Boolean(section.waiting?.has(email.id)));
 }
 
+// cameUpAfter tells whether an item became something for me to do after
+// since: someone else edited it or made me its owner, or, for an outdated
+// translation, edited its EN. Comments, status and owner changes of others
+// are left out: too noisy.
+function cameUpAfter(
+  section: TaskSection,
+  email: EmailListItem,
+  byId: Map<string, EmailListItem>,
+  since: string
+) {
+  const edited =
+    section.key === "outdated"
+      ? byId.get(email.translation_of ?? "")?.changed_by_others_at
+      : email.changed_by_others_at;
+  return isAfter(edited, since) || isAfter(email.assigned_to_me_at, since);
+}
+
+const markedSections = new Set<TaskSectionKey>(["outdated", "comments", "drafts"]);
+
+// markFresh marks the items that came up since the visit before and lists
+// them first; items set aside stay last.
+function markFresh(sections: TaskSection[], emails: EmailListItem[], user: AuthUser, since: string | null) {
+  if (!since) {
+    return;
+  }
+  const byId = new Map(emails.map((email) => [email.id, email]));
+  for (const section of sections) {
+    if (!markedSections.has(section.key)) {
+      continue;
+    }
+    const fresh = new Set(
+      section.emails.filter((email) => cameUpAfter(section, email, byId, since)).map((email) => email.id)
+    );
+    const order = (email: EmailListItem) => (isSetAside(section, email, user) ? 2 : fresh.has(email.id) ? 0 : 1);
+    section.fresh = fresh;
+    section.emails = [...section.emails].sort((a, b) => order(a) - order(b));
+  }
+}
+
 // buildTaskSections picks the emails that need something from this person:
 // translations in their languages that fell behind EN, comments and drafts
 // on emails they own, and for super admins the Bitrix24 upload queue and the
-// emails whose robots send different texts.
+// emails whose robots send different texts. Items that came up after since
+// are marked fresh.
 export function buildTaskSections(
   emails: EmailListItem[],
   user: AuthUser,
-  suggestions: Map<string, UploadSuggestion> = new Map()
+  suggestions: Map<string, UploadSuggestion> = new Map(),
+  since: string | null = null
 ): TaskSection[] {
   const languages = new Set((user.languages ?? []).map((language) => language.toLowerCase()));
   const outdated = emails.filter(
@@ -108,6 +152,7 @@ export function buildTaskSections(
       }
     );
   }
+  markFresh(sections, emails, user, since);
   return sections;
 }
 
@@ -122,7 +167,19 @@ export function countTasks(sections: TaskSection[], user: AuthUser) {
   ).size;
 }
 
-export function useMyTasks(user: AuthUser) {
+// countFresh counts distinct items marked New, leaving out those set aside.
+export function countFresh(sections: TaskSection[], user: AuthUser) {
+  return new Set(
+    sections.flatMap((section) =>
+      section.emails
+        .filter((email) => section.fresh?.has(email.id) && !isSetAside(section, email, user))
+        .map((email) => email.id)
+    )
+  ).size;
+}
+
+// useMyTasks builds My tasks; items that came up after since are New.
+export function useMyTasks(user: AuthUser, since: string | null = null) {
   const emailsQuery = useQuery({
     queryKey: ["emails", "all-boards"],
     queryFn: () => fetchEmails(),
@@ -130,7 +187,7 @@ export function useMyTasks(user: AuthUser) {
   });
   const suggestions = useUploadSuggestions(user.role === "super_admin");
   const notificationsQuery = useNotifications();
-  const sections = emailsQuery.data ? buildTaskSections(emailsQuery.data, user, suggestions) : [];
+  const sections = emailsQuery.data ? buildTaskSections(emailsQuery.data, user, suggestions, since) : [];
   const mentions = notificationsQuery.data ?? [];
   return {
     emailsQuery,
@@ -139,5 +196,6 @@ export function useMyTasks(user: AuthUser) {
     suggestions,
     // Each unread mention counts on its own: it is a message to read, not an email.
     count: countTasks(sections, user) + mentions.length,
+    freshCount: countFresh(sections, user),
   };
 }

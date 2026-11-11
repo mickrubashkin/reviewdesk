@@ -13,7 +13,8 @@ export type ReviewChangedBlockReason =
   | "ai"
   | "approval"
   | "comment"
-  | "comment_and_approval";
+  | "comment_and_approval"
+  | "visit";
 
 // A block outlined in the preview: edited since a comment or approval, or
 // the subject of AI recommendations ("ai", labelled with their numbers).

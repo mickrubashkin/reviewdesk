@@ -28,5 +28,16 @@ Every email has one status line, read left to right: what goes out now, what is 
 | **Not sent** | The portal sync has not seen the robots send it. |
 | **EN changed** | The English email changed after this translation. See [Translations](translations.md). |
 | **reference changed** | The reference region's email changed after this one matched it. See [Regions](regions.md). |
+| **changed** (blue) | Someone else edited its text since you last opened it. See [What changed since your last visit](#what-changed-since-your-last-visit). |
 
 The review status itself (**Draft** / **Ready**) is the badge in the header of the review page.
+
+## What changed since your last visit
+
+ReviewDesk remembers when you open an email and when you open **My tasks**. Coming back within 30 minutes is the same visit.
+
+- On the board, an email someone else edited since you last opened it shows **changed** in its status line.
+- On the review page, a note above the email lists the fields others changed since your last visit, and who; the changed blocks are outlined in blue. **See in History** opens the edits.
+- In **My tasks**, items that came up since your last visit there are marked **New** and listed first in their section: someone else edited the email, made you its owner, or, for a translation, edited its EN. The **My tasks** button shows how many are new.
+
+Only edits of the text and fields count; comments, status and owner changes by others do not. Your own edits never do. Marks start the first time you open ReviewDesk with this feature, so on that visit there are none.
