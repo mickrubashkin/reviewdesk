@@ -7,6 +7,7 @@ import {
   EnvelopeSimpleIcon,
   ListChecksIcon,
   SparkleIcon,
+  TranslateIcon,
 } from "@phosphor-icons/react";
 
 import type { CSSProperties, PointerEvent, ReactNode, RefObject } from "react";
@@ -30,6 +31,10 @@ type ReviewLayoutProps = {
   previewToolbar: ReactNode;
   rightPanelPercent: number;
   sendsContent: ReactNode;
+  // A translation's own tab: what changed in EN since it was translated.
+  // Null for an email that is not a translation.
+  translationContent: ReactNode | null;
+  translationStale: boolean;
   onActiveContentTabChange: (tab: ReviewContentTab) => void;
   onActivePanelTabChange: (tab: ReviewPanelTab) => void;
   onResizeEnd: (event: PointerEvent<HTMLDivElement>) => void;
@@ -52,6 +57,8 @@ export function ReviewLayout({
   previewToolbar,
   rightPanelPercent,
   sendsContent,
+  translationContent,
+  translationStale,
   onActiveContentTabChange,
   onActivePanelTabChange,
   onResizeEnd,
@@ -71,6 +78,21 @@ export function ReviewLayout({
     >
       {commentsLabel}
     </Tabs.Tab>,
+    ...(translationContent
+      ? [
+          <Tabs.Tab
+            className={tabClassName}
+            key="translation"
+            leftSection={<TranslateIcon aria-hidden="true" size={15} />}
+            rightSection={
+              translationStale ? <span aria-label="EN changed" className={styles.tabDot} role="img" /> : undefined
+            }
+            value="translation"
+          >
+            Translation
+          </Tabs.Tab>,
+        ]
+      : []),
     <Tabs.Tab
       className={tabClassName}
       key="ai"
@@ -109,6 +131,11 @@ export function ReviewLayout({
       <Tabs.Panel value="comments" className={panelClassName}>
         {commentsContent}
       </Tabs.Panel>
+      {translationContent ? (
+        <Tabs.Panel value="translation" className={panelClassName}>
+          {translationContent}
+        </Tabs.Panel>
+      ) : null}
       <Tabs.Panel value="ai" className={panelClassName}>
         {analysisContent}
       </Tabs.Panel>

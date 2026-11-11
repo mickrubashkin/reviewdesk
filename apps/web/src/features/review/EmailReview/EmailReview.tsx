@@ -2,7 +2,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useNavigate } from "react-router-dom";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Alert, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { ArrowsClockwiseIcon, SparkleIcon } from "@phosphor-icons/react";
@@ -17,6 +17,7 @@ import { AnalysisPanel } from "../../emails/AnalysisPanel";
 import {
   fetchEmailComments,
   fetchEmailDetail,
+  fetchTranslationStatus,
 } from "../../emails/api";
 
 import { MailPreview } from "../../emails/MailPreview";
@@ -75,6 +76,7 @@ import { ArchivedEmailNotice } from "./header/ArchivedEmailNotice";
 import { ViewportSwitch } from "./header/ViewportSwitch";
 import { ReviewLayout } from "./ReviewLayout";
 import { ReferenceSection } from "../../boards/BoardHome/ReferenceSection";
+import { TranslationSection } from "../../boards/BoardHome/TranslationSection";
 import { SendsSection } from "../../portal/SendsSection";
 import {
   ArchiveEmailModal,
@@ -177,6 +179,33 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
     sharedAnalysisQuery,
     versionsQuery,
   } = data;
+
+  // A translation whose EN changed opens on its Translation tab, once per
+  // email, unless a link asked for another tab. The query is the one
+  // TranslationSection reads.
+  const translationStatusQuery = useQuery({
+    queryKey: ["emails", email?.id, "translation"],
+    queryFn: () => fetchTranslationStatus(email?.id ?? ""),
+    enabled: Boolean(email?.translation_of),
+  });
+  const translationStale = Boolean(email?.translation_of && translationStatusQuery.data?.stale);
+  const translationTabOpenedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!email) {
+      return;
+    }
+    if (!email.translation_of) {
+      translationTabOpenedFor.current = null;
+      if (activePanelTab === "translation") {
+        setActivePanelTab("comments");
+      }
+      return;
+    }
+    if (translationStale && !layout.linkedTab && translationTabOpenedFor.current !== email.id) {
+      translationTabOpenedFor.current = email.id;
+      setActivePanelTab("translation");
+    }
+  }, [activePanelTab, email, layout.linkedTab, setActivePanelTab, translationStale]);
   // Mirrors the API rule: the author or a manager of the board can resolve a comment.
   const canResolveComment = (comment: EmailComment) =>
     canManageEmail ||
@@ -659,6 +688,10 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
     />
   ) : null;
 
+  const translationContent = email?.translation_of ? (
+    <TranslationSection canEdit={canEditContent} email={email} key={`translation:${email.id}`} />
+  ) : null;
+
   const detailsContent = (
     <Stack gap="lg">
       <ChecksPanel checks={email?.checks ?? []} />
@@ -798,6 +831,8 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
         commentsContent={commentsContent}
         contentRef={contentRef}
         detailsContent={detailsContent}
+        translationContent={translationContent}
+        translationStale={translationStale}
         sendsContent={
           email ? <SendsSection canOpenPortalSync={currentUserRole === "super_admin"} emailId={email.id} /> : null
         }

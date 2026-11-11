@@ -77,6 +77,7 @@ export function useEmailReviewLayout() {
   }
 
   return {
+    linkedTab,
     viewport,
     setViewport,
     actionMenuOpened,

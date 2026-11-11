@@ -22,7 +22,7 @@ A translation whose EN email changed shows **EN changed**. Your list is in **My 
 While EN is still being reviewed — a draft with open comments — its text may change again. Such a translation shows **EN is still a draft** above its preview, and in **My tasks** it is greyed, marked **Waiting for EN**, listed last and not counted. Update it once EN is settled, so you translate the changes once.
 
 1. Take the email in **My tasks**, so others who translate the same language know you are on it.
-2. Open it. **Details** lists the fields that changed in EN, with the added and removed words marked.
+2. Open it. It opens on its **Translation** tab (an orange dot marks it while EN has changes), which lists the fields that changed in EN, with the added and removed words marked. The board's preview panel shows the same above the email.
 3. Update only those fields:
    - by hand, then **Mark up to date**, or
    - **Suggest translation**: AI drafts the changed fields next to the current text; edit them and click **Apply and mark up to date**.
