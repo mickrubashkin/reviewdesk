@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 import { fetchEmailDetail } from "../../emails/api";
 import { MailPreview } from "../../emails/MailPreview";
 import { EmailStatusLine } from "../../emails/EmailStatusLine";
+import { MasterInReviewNote } from "../../emails/MasterInReviewNote";
 import { formatStageName } from "../../emails/stages";
 import type { EmailListItem } from "../../emails/types";
 import { SendsSection } from "../../portal/SendsSection";
@@ -155,6 +156,7 @@ export function EmailSidePanel({
         <ScrollArea className={styles.body} type="auto">
           <Tabs.Panel value="preview">
             <div className={styles.translation}>
+              <MasterInReviewNote email={email} emails={siblings} />
               <TranslationSection canEdit={canTranslate} email={email} />
               <ReferenceSection candidates={siblings} canEdit={canTranslate} canManage={canManage} email={email} />
             </div>
