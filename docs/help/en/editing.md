@@ -17,7 +17,7 @@ An email **built from blocks** shows its blocks in **Details → Blocks**. A cha
 
 ## Undo a change
 
-**History** lists every version with what changed. **Restore version** brings an older one back as a new version.
+**History** lists every version with what changed. **Restore version** brings an older one back as a new version. Versions are listed to the board's managers; others see who changed what.
 
 ## Mark the email ready
 

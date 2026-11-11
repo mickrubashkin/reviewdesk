@@ -612,6 +612,7 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
   const historyContent = (
     <VersionHistoryPanel
       canManage={canManageCurrent}
+      canSeeVersions={canManageEmail}
       currentUserRole={currentUserRole}
       isLoading={versionsQuery.isLoading}
       isRestoring={restoreVersionMutation.isPending}

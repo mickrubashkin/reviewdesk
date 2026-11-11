@@ -13,6 +13,7 @@ import { useUserName } from "../../../../shared/userNames";
 
 export function VersionHistoryPanel({
   canManage,
+  canSeeVersions,
   currentUserRole,
   isLoading,
   isRestoring,
@@ -21,6 +22,8 @@ export function VersionHistoryPanel({
   versions,
 }: {
   canManage: boolean;
+  // Versions are listed to the board's managers only; others get the edits below.
+  canSeeVersions: boolean;
   currentUserRole: UserRole;
   isLoading: boolean;
   isRestoring: boolean;
@@ -70,6 +73,14 @@ export function VersionHistoryPanel({
           Loading versions
         </Text>
       </Stack>
+    );
+  }
+
+  if (!canSeeVersions) {
+    return (
+      <Alert color="gray" title="Versions" variant="light">
+        The board&apos;s managers see and restore versions. Below is who changed what.
+      </Alert>
     );
   }
 
