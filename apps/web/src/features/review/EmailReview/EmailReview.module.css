@@ -384,6 +384,13 @@ button.languagePill:hover {
   white-space: nowrap;
 }
 
+.tabDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mantine-color-orange-6);
+}
+
 .panelTab[data-active] {
   color: var(--mantine-color-blue-7);
 }
