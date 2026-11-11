@@ -21,6 +21,15 @@ type UploadSuggestion struct {
 	Version    int       `json:"version"`
 	Sends      int       `json:"sends"`
 	LastSentAt time.Time `json:"last_sent_at"`
+	// Robots are the email's robots whose paired portal user sent the
+	// version; UnknownSends the sends no robot of the email is paired with.
+	Robots       []RobotSends `json:"robots"`
+	UnknownSends int          `json:"unknown_sends"`
+}
+
+type RobotSends struct {
+	Robot string `json:"robot"`
+	Sends int    `json:"sends"`
 }
 
 // sentCopyIsCurrent decides from text alone whether a sent copy is the
@@ -66,7 +75,7 @@ type suggestionCandidate struct {
 func LoadUploadSuggestions(ctx context.Context, db *pgxpool.Pool) ([]UploadSuggestion, error) {
 	// Ready emails with a robot that does not have the latest version, with
 	// the version to compare against: the oldest uploaded one, else the one
-	// before. The portal does not tell robots apart.
+	// before.
 	rows, err := db.Query(ctx, `
 		SELECT e.id, v.version_number, v.created_at, v.template_html, v.editable_fields, COALESCE(v.preheader, ''),
 			p.template_html, p.editable_fields, COALESCE(p.preheader, '')
@@ -117,10 +126,11 @@ func LoadUploadSuggestions(ctx context.Context, db *pgxpool.Pool) ([]UploadSugge
 	}
 
 	// Sent texts tied to those emails, by a person's decision or an
-	// undisputed match, with the sends made after the version was saved.
+	// undisputed match, with the sends made after the version was saved, by
+	// the email's robot their sender is paired with ('' when none is).
 	rows, err = db.Query(ctx, `
 		SELECT COALESCE(g.decision_email_id, g.match_email_id)::text, g.normalized_text,
-			count(s.activity_id), max(s.sent_at)
+			COALESCE(er.robot, ''), count(s.activity_id), max(s.sent_at)
 		FROM portal_email_groups g
 		JOIN emails e ON e.id = COALESCE(g.decision_email_id, g.match_email_id)
 		JOIN LATERAL (
@@ -129,12 +139,15 @@ func LoadUploadSuggestions(ctx context.Context, db *pgxpool.Pool) ([]UploadSugge
 		JOIN email_versions v ON v.email_id = e.id AND v.version_number = latest.version
 		JOIN portal_sent_emails s
 			ON s.board_key = g.board_key AND s.fingerprint = g.fingerprint AND s.sent_at > v.created_at
+		LEFT JOIN portal_robot_users ru ON ru.board_key = s.board_key AND ru.portal_user_id = s.responsible_id
+		LEFT JOIN email_robots er ON er.email_id = e.id AND er.robot = ru.robot
 		WHERE COALESCE(g.decision_email_id, g.match_email_id)::text = ANY($1)
 			AND (
 				(g.decision IN ('confirmed', 'created') AND g.decision_email_id IS NOT NULL)
 				OR (g.decision IS NULL AND g.match_status = 'matched')
 			)
-		GROUP BY 1, 2;
+		GROUP BY 1, 2, 3
+		ORDER BY 1, 3;
 	`, ids)
 	if err != nil {
 		return nil, err
@@ -142,10 +155,10 @@ func LoadUploadSuggestions(ctx context.Context, db *pgxpool.Pool) ([]UploadSugge
 	defer rows.Close()
 	byEmail := map[string]*UploadSuggestion{}
 	for rows.Next() {
-		var emailID, text string
+		var emailID, text, robot string
 		var sends int
 		var lastSentAt time.Time
-		if err := rows.Scan(&emailID, &text, &sends, &lastSentAt); err != nil {
+		if err := rows.Scan(&emailID, &text, &robot, &sends, &lastSentAt); err != nil {
 			return nil, err
 		}
 		c := candidates[emailID]
@@ -154,10 +167,17 @@ func LoadUploadSuggestions(ctx context.Context, db *pgxpool.Pool) ([]UploadSugge
 		}
 		s := byEmail[emailID]
 		if s == nil {
-			s = &UploadSuggestion{EmailID: emailID, Version: c.version}
+			s = &UploadSuggestion{EmailID: emailID, Version: c.version, Robots: []RobotSends{}}
 			byEmail[emailID] = s
 		}
 		s.Sends += sends
+		if robot == "" {
+			s.UnknownSends += sends
+		} else if n := len(s.Robots); n > 0 && s.Robots[n-1].Robot == robot {
+			s.Robots[n-1].Sends += sends
+		} else {
+			s.Robots = append(s.Robots, RobotSends{Robot: robot, Sends: sends})
+		}
 		if lastSentAt.After(s.LastSentAt) {
 			s.LastSentAt = lastSentAt
 		}

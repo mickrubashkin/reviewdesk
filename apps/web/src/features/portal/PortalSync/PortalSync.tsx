@@ -38,6 +38,7 @@ import {
 import { MarkLiveButton, UnmarkLiveButton } from "../MarkLive";
 import { AutoSyncSettings } from "./AutoSyncSettings";
 import { GroupDrawer } from "./GroupDrawer";
+import { RobotSenders } from "./RobotSenders";
 import { topStages } from "./portalHelpers";
 import styles from "../../auth-events/AuthEvents/AuthEvents.module.css";
 
@@ -235,6 +236,8 @@ export function PortalSync({ currentUserRole }: { currentUserRole: UserRole }) {
         </Paper>
 
         {overviewQuery.isError ? <Alert color="red">Failed to load portal data.</Alert> : null}
+
+        <RobotSenders key={boardKey} boardKey={boardKey} run={run ? `${run.id}:${run.status}` : ""} />
 
         <Group justify="space-between">
           <Title order={4}>Sent emails ({groups.length} distinct)</Title>

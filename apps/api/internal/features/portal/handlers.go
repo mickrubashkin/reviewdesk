@@ -26,6 +26,8 @@ func RegisterRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Post("/api/boards/{boardKey}/portal/sync", startSyncHandler(dbpool))
 	r.Put("/api/boards/{boardKey}/portal/settings", putSyncSettingsHandler(dbpool))
 	r.Get("/api/boards/{boardKey}/portal", boardOverviewHandler(dbpool))
+	r.Get("/api/boards/{boardKey}/portal/robots", robotSendersHandler(dbpool))
+	r.Put("/api/boards/{boardKey}/portal/robots", putRobotSenderHandler(dbpool))
 	r.Get("/api/portal/upload-suggestions", uploadSuggestionsHandler(dbpool))
 	r.Get("/api/portal/groups/{id}", groupDetailHandler(dbpool))
 	r.Patch("/api/portal/groups/{id}", decideGroupHandler(dbpool))

@@ -18,6 +18,8 @@ After the upload the status line shows **Expected from …**: the robot sends on
 
 **My tasks → Already sent by the portal** lists emails the portal sends in the current version that are not marked uploaded. Check and mark them.
 
+When the robots are paired with their senders (see [Robots and senders](#robots-and-senders)), the note names the robots seen sending the version, and **Mark uploaded for (name)** marks just them. Sends from unpaired senders still ask whose robot it was.
+
 ## Mark live by hand
 
 For an email the portal sync cannot see (sent some other way, e.g. from the admin panel), a CRM operator can mark it live by hand in **Details**. It shows as **Live (manual)** and no longer asks for an upload: no **to upload** or **re-upload**, and it leaves **My tasks → To upload to Bitrix24**. When you change such an email, paste the new version wherever it is sent from yourself.
@@ -27,6 +29,15 @@ For an email the portal sync cannot see (sent some other way, e.g. from the admi
 **Settings → Portal sync** imports what the robots actually sent. It runs every night when it is turned on for the board, or by hand. One sync per board runs at a time. Each send (its date, deal and stage, not the text) is kept for 180 days, for the send counts on the emails.
 
 A sync by hand loads the last **Days back** days. To load a long period, such as the first 180 days of history, run it in chunks with **Until days ago**: 180 to 120, then 120 to 60, then 60 to 0. Each chunk is shorter, and a chunk that fails can be run again alone. A chunk only adds sends; the counts on the emails always cover everything kept.
+
+
+### Robots and senders
+
+The portal tells who sent each email: the manager responsible for the deal. Each robot sends for one manager's deals, so once a robot is paired with that manager's portal user, the sends show which robot has which version.
+
+**Settings → Portal sync → Robots and senders** lists the board's robots (the managers of its regions). Pick each robot's portal user, or press **Pair** to take the suggested one, found by name. Only pairs a CRM operator sets count. **Marks seen sent** shows how many of the robot's upload marks have a send of the email from its deals. A mark without sends is not proof the robot lacks the email: the stage may have had no deals of that manager.
+
+Senders appear for the sends loaded after this was added. To see older ones, load the period again.
 
 ## Sends of an email
 

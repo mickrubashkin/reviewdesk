@@ -98,6 +98,7 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 	dealsWithEmails := map[int64]bool{}
 	seen := 0
 	var funnelActivityIDs []int64
+	senders := map[int64]bool{}
 
 	// Pass 1: a light list (no bodies) to find which emails belong to the
 	// funnel. Most outgoing deal emails are from other funnels.
@@ -144,7 +145,7 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 		end := min(start+50, len(funnelActivityIDs))
 		response, err := client.Call(ctx, "crm.activity.list", map[string]any{
 			"filter": map[string]any{"ID": funnelActivityIDs[start:end]},
-			"select": []string{"ID", "OWNER_ID", "SUBJECT", "DESCRIPTION", "CREATED"},
+			"select": []string{"ID", "OWNER_ID", "SUBJECT", "DESCRIPTION", "CREATED", "RESPONSIBLE_ID"},
 		})
 		if err != nil {
 			return err
@@ -155,6 +156,9 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 			Subject     string `json:"SUBJECT"`
 			Description string `json:"DESCRIPTION"`
 			Created     string `json:"CREATED"`
+			// The robot email's responsible user is its sender, fixed when
+			// it goes out (the deal's can change later).
+			Responsible string `json:"RESPONSIBLE_ID"`
 		}
 		if err := json.Unmarshal(response.Result, &activities); err != nil {
 			return err
@@ -171,15 +175,19 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 				continue
 			}
 			batch.Queue(`
-				INSERT INTO portal_sent_emails (activity_id, board_key, deal_id, sent_at, subject, body_html, fingerprint)
-				VALUES ($1, $2, $3, $4, $5, $6, $7)
+				INSERT INTO portal_sent_emails (activity_id, board_key, deal_id, sent_at, subject, body_html, fingerprint, responsible_id)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 				ON CONFLICT (activity_id) DO UPDATE SET
+					responsible_id = EXCLUDED.responsible_id,
 					subject = EXCLUDED.subject,
 					body_html = EXCLUDED.body_html,
 					fingerprint = EXCLUDED.fingerprint,
 					synced_at = now();
-			`, activityID, options.BoardKey, dealID, sentAt, RedactPartnerData(a.Subject), a.Description, Fingerprint(NormalizedText(a.Description)))
+			`, activityID, options.BoardKey, dealID, sentAt, RedactPartnerData(a.Subject), a.Description, Fingerprint(NormalizedText(a.Description)), responsibleID(a.Responsible))
 			dealsWithEmails[dealID] = true
+			if id := responsibleID(a.Responsible); id != nil {
+				senders[*id] = true
+			}
 			stored++
 		}
 		if err := sendBatch(ctx, db, batch); err != nil {
@@ -188,6 +196,11 @@ func runSync(ctx context.Context, db *pgxpool.Pool, client *Client, runID string
 		progress("Step 2 of 3 · Loading subjects and texts of this funnel's emails only: %d of %d", end, len(funnelActivityIDs))
 	}
 	_, _ = db.Exec(ctx, `UPDATE portal_sync_runs SET activities_seen = $2, emails_stored = $3 WHERE id = $1;`, runID, seen, stored)
+
+	progress("Loading the names of %d senders", len(senders))
+	if err := storeSenders(ctx, db, client, senders); err != nil {
+		return err
+	}
 
 	progress("Loading stage history for %d deals", len(dealsWithEmails))
 	if err := assignStagesAtSend(ctx, db, client, options.BoardKey, dealsWithEmails, progress); err != nil {

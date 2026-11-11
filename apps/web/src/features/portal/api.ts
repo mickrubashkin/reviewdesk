@@ -178,12 +178,54 @@ export function isImportCandidate(group: PortalGroup) {
 
 // The portal already sends the current version of a ready email that has no
 // upload mark for it. Only a suggestion: a super admin confirms the mark.
+// robots are the email's robots whose paired portal user sent it;
+// unknown_sends the sends no robot of the email is paired with.
 export type UploadSuggestion = {
   email_id: string;
   version: number;
   sends: number;
   last_sent_at: string;
+  robots?: Array<{ robot: string; sends: number }>;
+  unknown_sends?: number;
 };
+
+// A CRM portal user who sent the board's emails.
+export type PortalSender = {
+  user_id: number;
+  name: string;
+  email: string;
+  sends: number;
+  last_sent_at: string;
+};
+
+// A robot of the board paired with the portal user it sends for.
+// marks_seen_sent counts its marks with a send of the email by that user.
+export type RobotSender = {
+  robot: string;
+  portal_user_id: number | null;
+  suggested_user_id: number | null;
+  sends: number;
+  marks: number;
+  marks_seen_sent: number;
+};
+
+export type RobotSenders = {
+  robots: RobotSender[];
+  senders: PortalSender[];
+  unpaired_sends: number;
+};
+
+export function fetchRobotSenders(boardKey: string): Promise<RobotSenders> {
+  return fetchJson<RobotSenders>(`/api/boards/${encodeURIComponent(boardKey)}/portal/robots`);
+}
+
+export function saveRobotSender(boardKey: string, robot: string, portalUserID: number | null) {
+  return fetchJson<void>(`/api/boards/${encodeURIComponent(boardKey)}/portal/robots`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ robot, portal_user_id: portalUserID }),
+  });
+}
 
 export function fetchUploadSuggestions(): Promise<UploadSuggestion[]> {
   return fetchJson<UploadSuggestion[]>("/api/portal/upload-suggestions");
