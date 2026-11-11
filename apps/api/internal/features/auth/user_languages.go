@@ -23,6 +23,8 @@ type meResponse struct {
 	TourVersion int `json:"tour_version"`
 	// The date of the newest "What's new" entry this person has opened.
 	WhatsNewSeen string `json:"whats_new_seen"`
+	// ViewedBy is the super admin viewing ReviewDesk as this person; see view_as.go.
+	ViewedBy string `json:"viewed_by,omitempty"`
 }
 
 type updateUserLanguagesRequest struct {

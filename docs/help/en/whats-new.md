@@ -2,6 +2,10 @@
 
 The newest changes first. A dot on your account menu means there is something here you have not read yet.
 
+## 2026-11-11
+
+- CRM operators can see ReviewDesk as a colleague sees it, read-only: **View as this user** in the user's **⋯** menu in **Settings → Users**. See [See ReviewDesk as someone else](README.md#see-reviewdesk-as-someone-else).
+
 ## 2026-11-10
 
 - **Settings → Users** has a search: type a name, an address, a role (**Translator**, **Region manager**…), a language or a board. See [Setting up people](README.md#setting-up-people).

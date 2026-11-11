@@ -28,6 +28,7 @@ const eventTypeOptions = [
   { value: "logout", label: "Logout" },
   { value: "gateway_link", label: "Bitrix24 account linked" },
   { value: "gateway_denied", label: "Bitrix24 account refused" },
+  { value: "view_as", label: "Viewed as by a CRM operator" },
 ];
 type SortDirection = "asc" | "desc";
 type AuthEventSortKey = keyof Pick<

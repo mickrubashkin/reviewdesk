@@ -75,6 +75,10 @@ Someone may sign in with a second work address, for example on another regional 
 
 To expect a second address before it signs in, open the user's **⋯** menu and choose **Add another address…**.
 
+### See ReviewDesk as someone else
+
+A CRM operator can check what a colleague gets: open their **⋯** menu in **Settings → Users** and choose **View as this user**. ReviewDesk then shows their boards, their **My tasks**, their mentions and the buttons their role has. Nothing can be changed while viewing: saving, commenting and marking are refused, and the colleague does not show as having been in. A bar at the bottom says whom you are viewing as; **Exit** brings you back to **Settings → Users**. Viewing as another CRM operator is not offered, and each start is kept in the **Auth events** log.
+
 ### Signing in from Bitrix24
 
 Where ReviewDesk opens from the Bitrix24 menu, your Bitrix24 account signs you in: there is no code by email and no **Log out**. On your first visit ReviewDesk finds the email of your Bitrix24 account, which takes a few seconds, and opens the user with that address or one of its other addresses. Someone new from a work domain becomes a Viewer, as with a code. Anyone else sees **No access yet** until a CRM operator adds them in **Settings → Users** with the address of their Bitrix24 account, and the owner's chat gets a message about them.

@@ -16,7 +16,7 @@ import { notifications } from "@mantine/notifications";
 import { DotsThreeIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { gatewayMode } from "../../auth/api";
+import { gatewayMode, startViewAs } from "../../auth/api";
 import type { UserAdminItem } from "../../emails/types";
 import { userNamesQueryKey } from "../../../shared/userNames";
 import { userLabel } from "../userLabel";
@@ -133,6 +133,7 @@ export function UserAccountActions({ user, users }: { user: UserAdminItem; users
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
+          {user.role !== "super_admin" ? <ViewAsItem user={user} /> : null}
           <Menu.Item onClick={() => setMode("name")}>{user.name ? "Rename…" : "Add name…"}</Menu.Item>
           <Menu.Item onClick={() => setMode("alias")}>Add another address…</Menu.Item>
           {gatewayMode ? <Menu.Item onClick={() => setMode("portal")}>Set Bitrix24 ID…</Menu.Item> : null}
@@ -150,6 +151,21 @@ export function UserAccountActions({ user, users }: { user: UserAdminItem; users
       {mode === "delete" ? <DeleteUserModal user={user} onClose={() => setMode(null)} /> : null}
       {mode === "merge" ? <MergeUserModal user={user} users={users} onClose={() => setMode(null)} /> : null}
     </>
+  );
+}
+
+// ViewAsItem opens ReviewDesk as this person sees it: their boards, My tasks
+// and buttons, read-only. A full page load drops what the cache holds as you.
+function ViewAsItem({ user }: { user: UserAdminItem }) {
+  const mutation = useMutation({
+    mutationFn: () => startViewAs(user.id),
+    onSuccess: () => window.location.assign("/"),
+    onError: (error) => notifications.show({ color: "red", message: error.message, title: "Not opened" }),
+  });
+  return (
+    <Menu.Item closeMenuOnClick={false} disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+      View as this user
+    </Menu.Item>
   );
 }
 
