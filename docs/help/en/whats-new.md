@@ -4,6 +4,7 @@ The newest changes first. A dot on your account menu means there is something he
 
 ## 2026-11-11
 
+- A translation whose EN email is still a draft with open comments says **EN is still a draft** above its preview, and waits greyed at the end of **My tasks → Translations to update** without being counted: EN may change again, so translate it once EN is settled. See [Update a translation after EN changed](translations.md#update-a-translation-after-en-changed).
 - CRM operators can see ReviewDesk as a colleague sees it, read-only: **View as this user** in the user's **⋯** menu in **Settings → Users**. See [See ReviewDesk as someone else](README.md#see-reviewdesk-as-someone-else).
 
 ## 2026-11-10

@@ -19,6 +19,8 @@ Whoever manages the board can make a translator the owner of an email in their l
 
 A translation whose EN email changed shows **EN changed**. Your list is in **My tasks → Translations to update**.
 
+While EN is still being reviewed — a draft with open comments — its text may change again. Such a translation shows **EN is still a draft** above its preview, and in **My tasks** it is greyed, marked **Waiting for EN**, listed last and not counted. Update it once EN is settled, so you translate the changes once.
+
 1. Take the email in **My tasks**, so others who translate the same language know you are on it.
 2. Open it. **Details** lists the fields that changed in EN, with the added and removed words marked.
 3. Update only those fields:

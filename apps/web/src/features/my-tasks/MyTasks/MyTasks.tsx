@@ -28,7 +28,7 @@ import { UploadBadge } from "../../emails/UploadBadge";
 import type { UploadSuggestion } from "../../portal/api";
 import { MarkSeenUploadedButton } from "../../portal/MarkSeenUploadedButton";
 import { describeSuggestion, suggestionFor } from "../../portal/uploadSuggestions";
-import { isMine, isTakenByOther, useMyTasks, type TaskSection } from "../tasks";
+import { isMine, isSetAside, isTakenByOther, useMyTasks, type TaskSection } from "../tasks";
 import { MentionList } from "./MentionList";
 import styles from "./MyTasks.module.css";
 import { useUserName } from "../../../shared/userNames";
@@ -160,15 +160,16 @@ function TaskRow({
   const userName = useUserName();
   const navigate = useNavigate();
   const takenByOther = isTakenByOther(email, currentUser);
+  const waitingFor = section.waiting?.get(email.id);
   return (
     <UnstyledButton
       className={styles.row}
-      data-dimmed={(section.key === "outdated" && takenByOther) || undefined}
+      data-dimmed={isSetAside(section, email, currentUser) || undefined}
       onClick={() => navigate(reviewPath(email.id, section.key === "split" ? "sends" : undefined))}
     >
       <Group gap="sm" justify="space-between" wrap="nowrap">
         <Group gap="sm" wrap="nowrap" miw={0}>
-          <Badge color="gray" size="sm" variant="outline">
+          <Badge color="gray" size="sm" style={{ flexShrink: 0 }} variant="outline">
             {email.language.toUpperCase()}
           </Badge>
           <Stack gap={0} miw={0}>
@@ -182,7 +183,7 @@ function TaskRow({
             </Text>
           </Stack>
         </Group>
-        <Group gap={4} wrap="nowrap">
+        <Group gap={4} style={{ flexShrink: 0 }} wrap="nowrap">
           {section.key === "comments" ? (
             <Badge color="orange" size="sm" variant="light">
               {email.open_comment_count} open
@@ -222,6 +223,13 @@ function TaskRow({
               <Badge color="red" size="sm" variant="light">
                 EN changed
               </Badge>
+              {waitingFor ? (
+                <Tooltip label={`EN is still a draft with ${waitingFor.open_comment_count} open comments: its text may change again. Update once EN is settled.`} multiline w={260}>
+                  <Badge color="gray" size="sm" variant="light">
+                    Waiting for EN
+                  </Badge>
+                </Tooltip>
+              ) : null}
               {takenByOther ? (
                 <Badge color="gray" size="sm" variant="light">
                   Taken by {userName(email.owner_email)}

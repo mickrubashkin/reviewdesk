@@ -20,6 +20,7 @@ import {
 } from "../../emails/api";
 
 import { MailPreview } from "../../emails/MailPreview";
+import { MasterInReviewNote } from "../../emails/MasterInReviewNote";
 import type {
   InlineEditUpdate,
   ReviewTextSelection,
@@ -446,6 +447,8 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
 
   const previewContent = (
     email ? (
+      <>
+      <MasterInReviewNote email={email} emails={boardEmails} mb="xs" />
       <MailPreview
         activeCommentId={activeCommentId}
         canEditContent={canEditContent}
@@ -477,6 +480,7 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
         }}
         viewport={isCompactReview ? "mobile" : viewport}
       />
+      </>
     ) : (
       <ReviewPreviewSkeleton />
     )
