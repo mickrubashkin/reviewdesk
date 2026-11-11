@@ -31,6 +31,14 @@ export type EmailListItem = {
   // The EN master this email translates, and whether its text changed since.
   translation_of: string | null;
   translation_stale: boolean;
+  // For the person asking (see visit.ts): when they opened it, this visit and
+  // the one before; when someone else last edited its text or fields, or
+  // made them its owner; and whether that edit came after their last visit.
+  my_viewed_at?: string | null;
+  my_previous_viewed_at?: string | null;
+  changed_by_others_at?: string | null;
+  assigned_to_me_at?: string | null;
+  changed_since_my_visit?: boolean;
   // The reference email a region's email adapts, and whether its text
   // changed since the email last matched it.
   based_on?: string | null;
@@ -468,6 +476,11 @@ export type AuthUser = {
   whats_new_seen?: string;
   // Set while a CRM operator views ReviewDesk as this person: their address.
   viewed_by?: string;
+  // For "changed since your visit": when marks started for this person, and
+  // when they opened My tasks (this visit and the one before); see visit.ts.
+  changes_tracked_since?: string | null;
+  my_tasks_seen_at?: string | null;
+  my_tasks_previous_seen_at?: string | null;
 };
 
 export type UserRole = "super_admin" | "admin" | "reviewer";

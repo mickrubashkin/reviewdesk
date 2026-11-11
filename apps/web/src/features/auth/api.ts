@@ -175,6 +175,11 @@ export function markWhatsNewSeen(seen: string): Promise<{ whats_new_seen: string
   });
 }
 
+// recordMyTasksVisit notes that My tasks was opened, for its New marks.
+export function recordMyTasksVisit(): Promise<void> {
+  return fetchJson<void>("/api/users/me/my-tasks-visit", { method: "POST" });
+}
+
 // startViewAs opens ReviewDesk as another person sees it, read-only; only a
 // super admin can.
 export function startViewAs(userId: string): Promise<{ ok: boolean }> {

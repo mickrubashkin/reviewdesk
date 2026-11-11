@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,6 +26,10 @@ type meResponse struct {
 	WhatsNewSeen string `json:"whats_new_seen"`
 	// ViewedBy is the super admin viewing ReviewDesk as this person; see view_as.go.
 	ViewedBy string `json:"viewed_by,omitempty"`
+	// For "changed since your visit" (#205); see user_visits.go.
+	ChangesTrackedSince   *time.Time `json:"changes_tracked_since"`
+	MyTasksSeenAt         *time.Time `json:"my_tasks_seen_at"`
+	MyTasksPreviousSeenAt *time.Time `json:"my_tasks_previous_seen_at"`
 }
 
 type updateUserLanguagesRequest struct {

@@ -36,6 +36,12 @@ export function fetchEmailActivity(emailId: string): Promise<EmailActivityItem[]
   );
 }
 
+// recordEmailVisit notes that the signed-in person opened the email, for
+// "changed since your visit" (visit.ts).
+export function recordEmailVisit(emailId: string): Promise<void> {
+  return fetchJson<void>(`/api/emails/${encodeURIComponent(emailId)}/visit`, { method: "POST" });
+}
+
 export function fetchEmails(boardKey?: string): Promise<EmailListItem[]> {
   const query = boardKey ? `?board=${encodeURIComponent(boardKey)}` : "";
   return fetchJson<EmailListItem[]>(`/api/emails${query}`);

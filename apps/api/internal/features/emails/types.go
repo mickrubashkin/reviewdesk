@@ -65,6 +65,16 @@ type EmailListItem struct {
 	// Set only for archived emails (the board's history).
 	ArchivedAt      *time.Time `json:"archived_at"`
 	ArchivedByEmail *string    `json:"archived_by_email"`
+	// For the person asking, "changed since your visit" (#205): when they
+	// opened the email (the current visit and the one before), when someone
+	// else last edited its text or fields, and when someone else made them
+	// its owner. ChangedSinceMyVisit compares the edit with their last visit,
+	// or with when marks started for them if they never opened it.
+	MyViewedAt          *time.Time `json:"my_viewed_at"`
+	MyPreviousViewedAt  *time.Time `json:"my_previous_viewed_at"`
+	ChangedByOthersAt   *time.Time `json:"changed_by_others_at"`
+	AssignedToMeAt      *time.Time `json:"assigned_to_me_at"`
+	ChangedSinceMyVisit bool       `json:"changed_since_my_visit"`
 }
 
 type EmailDetail struct {

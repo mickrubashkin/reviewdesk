@@ -16,6 +16,7 @@ import {
   isApprovedEmailReviewStatus,
 } from "../../emails/reviewStatus";
 import { getVersionForVariant } from "../../emails/stages";
+import type { ChangesSinceVisit } from "../../emails/visit";
 import type {
   EmailActivityItem,
   EmailAnalysis,
@@ -206,6 +207,18 @@ export function buildReviewBlockFreshness(
     changedAfterCommentBlocks,
     changedAfterCommentCommentIds,
   };
+}
+
+// visitBlockTargets outlines the blocks others changed since the last visit,
+// except those already outlined as changed after a comment or approval.
+export function visitBlockTargets(
+  changes: ChangesSinceVisit | null,
+  outlined: ReviewChangedBlockTarget[]
+): ReviewChangedBlockTarget[] {
+  const taken = new Set(outlined.map((target) => target.reviewBlock));
+  return (changes?.blocks ?? [])
+    .filter((reviewBlock) => !taken.has(reviewBlock))
+    .map((reviewBlock) => ({ reason: "visit" as const, reviewBlock }));
 }
 
 export function buildChangedBlockTargets({

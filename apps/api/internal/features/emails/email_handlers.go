@@ -42,6 +42,7 @@ func RegisterEmailRoutes(r chi.Router, dbpool *pgxpool.Pool) {
 	r.Post("/api/slots/move", moveSlotHandler(dbpool))
 	r.Get("/api/emails/{id}", getEmailHandler(dbpool))
 	r.Get("/api/emails/{id}/activity", listEmailActivityHandler(dbpool))
+	r.Post("/api/emails/{id}/visit", recordEmailVisitHandler(dbpool))
 	r.Get("/api/emails/{id}/rendered", getRenderedEmailHandler(dbpool))
 	r.Put("/api/emails/{id}/layout", updateEmailLayoutHandler(dbpool))
 	r.Get("/api/emails/{id}/versions", listEmailVersionsHandler(dbpool))
@@ -89,7 +90,9 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			args = append(args, boardKey)
 			boardFilter = "AND sequence = $1"
 		}
+		var viewerID *string
 		if user, ok := auth.FromRequest(r); ok {
+			viewerID = &user.ID
 			visible, scoped, err := auth.ScopedBoards(r.Context(), dbpool, user)
 			if err != nil {
 				http.Error(w, "failed to load emails", http.StatusInternalServerError)
@@ -102,6 +105,8 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 		}
 		// ?archived=only lists the board's history instead of its active
 		// emails, newest archive first.
+		args = append(args, viewerID)
+		viewer := fmt.Sprintf("$%d::text", len(args))
 		archivedFilter := "archived_at IS NULL"
 		order := "sort_order, created_at"
 		if r.URL.Query().Get("archived") == "only" {
@@ -150,8 +155,32 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				uploads.robots,
 				recent.texts,
 				archived_at,
-				(SELECT email FROM users WHERE users.id = emails.archived_by) AS archived_by_email
+				(SELECT email FROM users WHERE users.id = emails.archived_by) AS archived_by_email,
+				my_view.viewed_at,
+				my_view.previous_viewed_at,
+				changed.at,
+				assigned.at,
+				COALESCE(changed.at > COALESCE(my_view.viewed_at, viewer.tracked_since), false)
 			FROM emails
+			LEFT JOIN LATERAL (
+				-- The person asking; named apart from the emails' columns.
+				SELECT u.id AS viewer_id, u.email AS viewer_email, u.changes_tracked_since AS tracked_since
+				FROM users u WHERE u.id::text = `+viewer+`
+			) viewer ON true
+			LEFT JOIN email_views my_view ON my_view.email_id = emails.id AND my_view.user_id = viewer.viewer_id
+			LEFT JOIN LATERAL (
+				-- The latest edit of the text or fields by someone else.
+				SELECT max(created_at) AS at FROM email_events e
+				WHERE e.email_id = emails.id AND e.action = 'email_updated'
+					AND e.actor_user_id IS DISTINCT FROM viewer.viewer_id
+			) changed ON true
+			LEFT JOIN LATERAL (
+				-- When someone else last made the viewer its owner.
+				SELECT max(created_at) AS at FROM email_events e
+				WHERE e.email_id = emails.id AND e.action = 'email_planning_updated'
+					AND e.actor_user_id IS DISTINCT FROM viewer.viewer_id
+					AND lower(e.changes->'owner_email'->>'after') = lower(viewer.viewer_email)
+			) assigned ON true
 			LEFT JOIN email_upload_summary uploads ON uploads.email_id = emails.id
 			LEFT JOIN LATERAL (`+split.RecentTextsSQL+`) recent ON true
 			LEFT JOIN LATERAL (
@@ -206,6 +235,7 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			ORDER BY `+order+`;
 		`, args...)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to load emails: %v\n", err)
 			http.Error(w, "failed to load emails", http.StatusInternalServerError)
 			return
 		}
@@ -253,6 +283,11 @@ func listEmailsHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 				&recentTexts,
 				&email.ArchivedAt,
 				&email.ArchivedByEmail,
+				&email.MyViewedAt,
+				&email.MyPreviousViewedAt,
+				&email.ChangedByOthersAt,
+				&email.AssignedToMeAt,
+				&email.ChangedSinceMyVisit,
 			)
 			if err == nil {
 				err = json.Unmarshal(uploadRobots, &email.UploadRobots)

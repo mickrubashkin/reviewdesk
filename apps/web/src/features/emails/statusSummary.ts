@@ -116,6 +116,13 @@ export function emailStatusParts(
   if (email.translation_stale) {
     parts.push({ label: "EN changed", color: "red", detail: "The EN text changed after this translation; open it to see what changed." });
   }
+  if (email.changed_since_my_visit) {
+    parts.push({
+      label: "changed",
+      color: "blue",
+      detail: "Someone else edited its text since you last opened it; open it to see what changed.",
+    });
+  }
   if (email.based_on_stale) {
     parts.push({
       label: "reference changed",

@@ -20,6 +20,7 @@ import {
 } from "../../emails/api";
 
 import { MailPreview } from "../../emails/MailPreview";
+import { ChangedSinceVisitNote } from "../../emails/ChangedSinceVisitNote";
 import { MasterInReviewNote } from "../../emails/MasterInReviewNote";
 import type {
   InlineEditUpdate,
@@ -86,7 +87,9 @@ import {
   buildCommentBlockOptions,
   buildEditableFieldsPayload,
   formatReviewBlockLabel,
+  visitBlockTargets,
 } from "./EmailReview.helpers";
+import { useVisitChanges } from "./hooks/useVisitChanges";
 
 export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
   const currentUserEmail = currentUser.email;
@@ -229,12 +232,19 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
   // recommendations are about are outlined with their numbers (the preview
   // draws outlines only next to the side panel, not in the compact layout).
   const isAITabOpen = activePanelTab === "ai";
+  const visitChanges = useVisitChanges({
+    activities: activityQuery.data ?? [],
+    currentUser,
+    emailId,
+    listEmail: boardEmails.find((listEmail) => listEmail.id === emailId),
+  });
   const previewBlockTargets = useMemo(
     () => [
       ...changedBlockTargets,
+      ...visitBlockTargets(visitChanges, changedBlockTargets),
       ...(isAITabOpen && displayedAnalysis ? aiBlockTargets(displayedAnalysis) : []),
     ],
-    [changedBlockTargets, displayedAnalysis, isAITabOpen]
+    [changedBlockTargets, displayedAnalysis, isAITabOpen, visitChanges]
   );
   const shouldShowAnalysisPanel =
     (isCurrentStream && streamStatus !== "idle") || Boolean(displayedAnalysis);
@@ -449,6 +459,7 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
     email ? (
       <>
       <MasterInReviewNote email={email} emails={boardEmails} mb="xs" />
+      <ChangedSinceVisitNote changes={visitChanges} mb="xs" onOpenHistory={() => setActivePanelTab("history")} />
       <MailPreview
         activeCommentId={activeCommentId}
         canEditContent={canEditContent}
