@@ -74,20 +74,26 @@ type suggestionCandidate struct {
 
 func LoadUploadSuggestions(ctx context.Context, db *pgxpool.Pool) ([]UploadSuggestion, error) {
 	// Ready emails with a robot that does not have the latest version, with
-	// the version to compare against: the oldest uploaded one, else the one
-	// before.
+	// the version to compare against: the oldest one those robots have, else
+	// the one before. Robots are looked at one by one: a robot with no mark
+	// lags behind even when the others have the latest version (the
+	// summary's min skips it).
 	rows, err := db.Query(ctx, `
 		SELECT e.id, v.version_number, v.created_at, v.template_html, v.editable_fields, COALESCE(v.preheader, ''),
 			p.template_html, p.editable_fields, COALESCE(p.preheader, '')
 		FROM emails e
-		JOIN email_upload_summary u ON u.email_id = e.id
 		JOIN LATERAL (
 			SELECT * FROM email_versions WHERE email_id = e.id ORDER BY version_number DESC LIMIT 1
 		) v ON true
+		JOIN LATERAL (
+			SELECT count(*) AS robots, min(ru.version) AS oldest
+			FROM email_robots r
+			LEFT JOIN email_robot_uploads ru ON ru.email_id = r.email_id AND ru.robot = r.robot
+			WHERE r.email_id = e.id AND (ru.version IS NULL OR ru.version < v.version_number)
+		) behind ON behind.robots > 0
 		LEFT JOIN email_versions p
-			ON p.email_id = e.id AND p.version_number = COALESCE(u.uploaded_version, v.version_number - 1)
-		WHERE e.archived_at IS NULL AND e.review_status = 'ready'
-			AND (u.uploaded_version IS NULL OR u.uploaded_version < v.version_number);
+			ON p.email_id = e.id AND p.version_number = COALESCE(behind.oldest, v.version_number - 1)
+		WHERE e.archived_at IS NULL AND e.review_status = 'ready';
 	`)
 	if err != nil {
 		return nil, err

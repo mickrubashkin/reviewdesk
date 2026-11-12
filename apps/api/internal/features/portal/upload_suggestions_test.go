@@ -134,3 +134,93 @@ func TestLoadUploadSuggestions(t *testing.T) {
 		}
 	}
 }
+
+// A robot with no mark lags behind even when the email's other robots have
+// the latest version: the summary's oldest mark skips it. Robots added to a
+// reference email by #216 start like that.
+func TestLoadUploadSuggestionsRobotWithoutMark(t *testing.T) {
+	dbpool := testPool(t)
+	ctx := context.Background()
+	const board = "suggest-unmarked-test"
+
+	if _, err := dbpool.Exec(ctx, `INSERT INTO boards (key, name) VALUES ($1, 'Suggest unmarked');`, board); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx := context.Background()
+		_, _ = dbpool.Exec(ctx, `DELETE FROM portal_email_groups WHERE board_key = $1;`, board)
+		_, _ = dbpool.Exec(ctx, `DELETE FROM portal_sent_emails WHERE board_key = $1;`, board)
+		_, _ = dbpool.Exec(ctx, `DELETE FROM portal_robot_users WHERE board_key = $1;`, board)
+		_, _ = dbpool.Exec(ctx, `DELETE FROM emails WHERE sequence = $1;`, board)
+		_, _ = dbpool.Exec(ctx, `DELETE FROM boards WHERE key = $1;`, board)
+	})
+	if _, err := dbpool.Exec(ctx, `
+		INSERT INTO board_regions (board_key, key, name, language, managers, reference, sort_order) VALUES
+			($1, 'ref', 'Reference', 'en', '{Ann}', true, 0),
+			($1, 'mena', 'MENA', 'en', '{Omar}', false, 1);
+	`, board); err != nil {
+		t.Fatal(err)
+	}
+
+	template := `<html><body><p data-edit-text="intro">x</p></body></html>`
+	v1 := `{"intro":{"type":"text","value":"Welcome to the partner program. Book your onboarding call with your manager today and start selling."}}`
+	v2 := `{"intro":{"type":"text","value":"Welcome to the partner program. Complete the training first, then book your onboarding call with your manager."}}`
+	textV2, _ := renderVersionText(template, []byte(v2), "")
+
+	var emailID string
+	if err := dbpool.QueryRow(ctx, `
+		INSERT INTO emails (slug, title, sequence, stage, sort_order, language, variant, original_html, template_html, editable_fields, subject, review_status, region_key)
+		VALUES ('suggest-unmarked-email', 'Suggest unmarked', $1, 'test', 9991, 'en', 'new', $2, $2, $3::jsonb, 'Subject', 'ready', 'ref')
+		RETURNING id;
+	`, board, template, v2).Scan(&emailID); err != nil {
+		t.Fatal(err)
+	}
+	v2Saved := time.Now().Add(-48 * time.Hour)
+	for number, fields := range map[int]string{1: v1, 2: v2} {
+		created := v2Saved
+		if number == 1 {
+			created = v2Saved.Add(-30 * 24 * time.Hour)
+		}
+		if _, err := dbpool.Exec(ctx, `
+			INSERT INTO email_versions (email_id, version_number, created_at, created_by_email, source, title, subject, original_html, template_html, editable_fields)
+			VALUES ($1, $2, $3, 'test', 'manual', 'Suggest unmarked', 'Subject', $4, $4, $5::jsonb);
+		`, emailID, number, created, template, fields); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Ann's robot has version 2; Omar's (MENA, no email of its own in the
+	// slot) has no mark.
+	if _, err := dbpool.Exec(ctx, `INSERT INTO email_robot_uploads (email_id, robot, version, uploaded_by_email) VALUES ($1, 'Ann', 2, 'test');`, emailID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbpool.Exec(ctx, `INSERT INTO portal_robot_users (board_key, robot, portal_user_id) VALUES ($1, 'Omar', 4242);`, board); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbpool.Exec(ctx, `
+		INSERT INTO portal_sent_emails (activity_id, board_key, deal_id, sent_at, subject, body_html, fingerprint, responsible_id)
+		VALUES (990100001, $1, 1, $2, 'Subject', '', 'mena', 4242);
+	`, board, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbpool.Exec(ctx, `
+		INSERT INTO portal_email_groups (board_key, fingerprint, language, subject, normalized_text, sample_activity_id,
+			send_count, first_sent_at, last_sent_at, match_email_id, match_score, match_status)
+		VALUES ($1, 'mena', 'en', 'Subject', $2, 990100001, 1, now(), now(), $3, 1, 'matched');
+	`, board, textV2, emailID); err != nil {
+		t.Fatal(err)
+	}
+
+	suggestions, err := LoadUploadSuggestions(ctx, dbpool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found *UploadSuggestion
+	for i := range suggestions {
+		if suggestions[i].EmailID == emailID {
+			found = &suggestions[i]
+		}
+	}
+	if found == nil || found.Version != 2 || len(found.Robots) != 1 || found.Robots[0].Robot != "Omar" {
+		t.Fatalf("want version 2 sent by Omar's robot, got %+v", found)
+	}
+}

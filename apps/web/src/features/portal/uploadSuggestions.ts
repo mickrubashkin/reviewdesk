@@ -29,7 +29,9 @@ export function seenRobotsBehind(suggestion: UploadSuggestion, email: SuggestedE
 // already have the version.
 export function suggestionFor(suggestions: Map<string, UploadSuggestion>, email: SuggestedEmail) {
   const suggestion = suggestions.get(email.id);
-  if (!suggestion || suggestion.version !== email.latest_version || email.uploaded_version === suggestion.version) {
+  // Every robot must have the version: uploaded_version is the oldest mark
+  // and skips robots with none.
+  if (!suggestion || suggestion.version !== email.latest_version || robotsBehind(email).length === 0) {
     return null;
   }
   if ((suggestion.unknown_sends ?? suggestion.sends) === 0 && seenRobotsBehind(suggestion, email).length === 0) {
