@@ -32,6 +32,12 @@ export function RegionField({ canEdit, email }: { canEdit: boolean; email: Email
     return null;
   }
   const current = regions.find((region) => region.key === email.region_key);
+  // The email's robots: its region's managers, and on a reference email
+  // also those of the regions in its language without an email of their own
+  // in the slot.
+  const robots = email.upload_robots
+    ? email.upload_robots.map((robot) => robot.robot).filter(Boolean)
+    : (current?.managers ?? []);
   return (
     <Stack gap={4}>
       <Select
@@ -55,9 +61,9 @@ export function RegionField({ canEdit, email }: { canEdit: boolean; email: Email
         value={mutation.isPending ? mutation.variables : (email.region_key ?? "")}
         onChange={(value) => mutation.mutate(value ?? "")}
       />
-      {current && current.managers.length > 0 ? (
+      {robots.length > 0 ? (
         <Text c="dimmed" size="xs">
-          Robots of {current.managers.join(", ")}
+          Robots of {robots.join(", ")}
         </Text>
       ) : null}
     </Stack>

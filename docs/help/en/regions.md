@@ -19,3 +19,9 @@ An email based on the reference shows **reference changed** when the reference e
 ## Set the region
 
 A region manager sets the email's region in **Details → Region**. Emails without a region show up as **No region**. The regions of a board are set in **Board settings**.
+
+## Robots of a region
+
+Each manager listed for a region in **Board settings** has a robot in Bitrix24: the robot sends to the deals that manager is responsible for. List the people whose deals get the emails, including a former manager while deals assigned to them still come through, and not people who only review the texts.
+
+A region in the reference's language that has no email of its own in a slot sends the reference email there. Its managers' robots then count as robots of the reference email: when the reference email changes, **re-upload (name)** asks for their robots too. A region in another language without the slot sends nothing there. **Details → Region** lists the robots of the email.

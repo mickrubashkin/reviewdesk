@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -141,5 +142,69 @@ func TestMarkEmailUploadedPerRobot(t *testing.T) {
 		SELECT metadata->>'robots' FROM email_events WHERE email_id = $1 ORDER BY created_at DESC LIMIT 1;
 	`, emailID).Scan(&robots); err != nil || robots != "Pedro" {
 		t.Fatalf("expected the event to name Pedro, got %q (%v)", robots, err)
+	}
+}
+
+// A region in the reference's language with no email of its own in a slot
+// sends the reference email from its managers' robots; a region in another
+// language without the slot sends nothing there (#216).
+func TestReferenceEmailRobotsIncludeRegionsWithoutTheSlot(t *testing.T) {
+	dbpool := testDBPool(t)
+	ctx := context.Background()
+	board := createTestBoard(t, dbpool, "email-reference-robots-test", []string{"registered"})
+	if _, err := dbpool.Exec(ctx, `
+		INSERT INTO board_regions (board_key, key, name, language, managers, reference, sort_order) VALUES
+			($1, 'ref', 'Reference', 'en', '{Ann,Ben}', true, 0),
+			($1, 'mena', 'MENA', 'en', '{Omar}', false, 1),
+			($1, 'eu', 'EU', 'en', '{Eva,Pia}', false, 2),
+			($1, 'pl', 'PL', 'pl', '{Pia}', false, 3);
+	`, board); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM emails WHERE sequence = $1;`, board)
+		_, _ = dbpool.Exec(context.Background(), `DELETE FROM board_regions WHERE board_key = $1;`, board)
+	})
+	email := func(slug, region, language string, sortOrder int, archived bool) string {
+		var id string
+		if err := dbpool.QueryRow(ctx, `
+			INSERT INTO emails (slug, title, sequence, stage, sort_order, language, variant, adaptation_key, original_html, template_html, region_key, archived_at)
+			VALUES ($1, $1, $2, 'registered', $3, $4, 'new', $5, '<p>x</p>', '<p>x</p>', $5, CASE WHEN $6 THEN now() END)
+			RETURNING id;
+		`, slug, board, sortOrder, language, region, archived).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	robots := func(emailID string) []string {
+		tx, err := dbpool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		got, err := emailRobots(ctx, tx, emailID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	// Slot 101: MENA and EU have their own emails, PL has none.
+	ref101 := email("ref-robots-101", "ref", "en", 101, false)
+	mena101 := email("mena-robots-101", "mena", "en", 101, false)
+	email("eu-robots-101", "eu", "en", 101, false)
+	// Slot 102: only the reference, and an archived EU email.
+	ref102 := email("ref-robots-102", "ref", "en", 102, false)
+	email("eu-robots-102-gone", "eu", "en", 102, true)
+
+	if got := strings.Join(robots(ref101), ","); got != "Ann,Ben" {
+		t.Errorf("reference email of a slot every English region has: %s", got)
+	}
+	if got := strings.Join(robots(mena101), ","); got != "Omar" {
+		t.Errorf("MENA's own email: %s", got)
+	}
+	// Pia manages EU and PL: the EU robot counts once, PL's language differs.
+	if got := strings.Join(robots(ref102), ","); got != "Ann,Ben,Omar,Eva,Pia" {
+		t.Errorf("reference email of a slot only the reference has: %s", got)
 	}
 }
