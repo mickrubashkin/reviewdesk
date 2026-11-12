@@ -55,7 +55,7 @@ A person who pastes emails into robots and keeps ReviewDesk in step with what th
 _Avoid_: Super admin, uploader
 
 **Robot**:
-A CRM automation rule that sends one email when a deal reaches a stage; a stage has many robots. On a board with regions each email has its own robot for each manager of its region, picked by the deal's responsible person.
+A CRM automation rule that sends one email when a deal reaches a stage; a stage has many robots. On a board with regions each email has its own robot for each manager of its region, picked by the deal's responsible person. A region in the reference's language with no email of its own in a slot sends the reference email there, so its managers' robots are robots of the reference email too; a region in another language without the slot sends nothing there.
 _Avoid_: Trigger, automation
 
 **Uploaded version**:

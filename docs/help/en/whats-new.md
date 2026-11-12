@@ -2,6 +2,10 @@
 
 The newest changes first. A dot on your account menu means there is something here you have not read yet.
 
+## 2026-11-12
+
+- A reference email now counts the robots of the regions in its language that have no email of their own in that slot: they send the reference email there. **re-upload (name)** asks for their robots too, and **Details → Region** lists them. See [Robots of a region](regions.md#robots-of-a-region).
+
 ## 2026-11-11
 
 - In **Settings → Portal sync**, CRM operators can pair each robot with the manager it sends for. The portal's sends then show which robot has which version: **Already sent by the portal** names the robot and marks just it. See [Robots and senders](bitrix24-upload.md#robots-and-senders).
