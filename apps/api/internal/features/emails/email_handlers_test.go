@@ -696,6 +696,46 @@ func TestUpdateEmailReviewStatusRejectsReviewer(t *testing.T) {
 	}
 }
 
+func TestUpdateEmailReviewStatusAllowsTranslatorOfLanguage(t *testing.T) {
+	dbpool := testDBPool(t)
+	ctx := context.Background()
+	emailID := createTestEmail(t, dbpool)
+	if _, err := dbpool.Exec(ctx, `UPDATE emails SET language = 'pt' WHERE id = $1;`, emailID); err != nil {
+		t.Fatal(err)
+	}
+	translator := func(address string, languages []string) AuthUser {
+		t.Helper()
+		var user AuthUser
+		if err := dbpool.QueryRow(ctx, `
+			INSERT INTO users (email, role, languages) VALUES ($1, 'reviewer', $2)
+			ON CONFLICT (email) DO UPDATE SET languages = EXCLUDED.languages
+			RETURNING id, email, role;
+		`, address, languages).Scan(&user.ID, &user.Email, &user.Role); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _, _ = dbpool.Exec(ctx, `DELETE FROM users WHERE id = $1;`, user.ID) })
+		return user
+	}
+
+	router := chi.NewRouter()
+	RegisterEmailRoutes(router, dbpool)
+	setReady := func(user AuthUser) *httptest.ResponseRecorder {
+		t.Helper()
+		request := withAuthUser(httptest.NewRequest(http.MethodPatch, "/api/emails/"+emailID+"/review-status",
+			bytes.NewReader([]byte(`{"review_status":"ready"}`))), user)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
+
+	if response := setReady(translator("status-test-de@example.com", []string{"de"})); response.Code != http.StatusForbidden {
+		t.Fatalf("translator of another language: expected 403, got %d: %s", response.Code, response.Body.String())
+	}
+	if response := setReady(translator("status-test-pt@example.com", []string{"pt"})); response.Code != http.StatusOK {
+		t.Fatalf("translator of the language: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestUpdateEmailReviewStatusRejectsInvalidStatus(t *testing.T) {
 	dbpool := testDBPool(t)
 	emailID := createTestEmail(t, dbpool)

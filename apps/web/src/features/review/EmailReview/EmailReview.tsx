@@ -729,6 +729,7 @@ export function EmailReview({ currentUser, emailId }: EmailReviewProps) {
         hasRegions={hasRegions}
         availableVariants={availableVariants}
         canManageEmail={canManageCurrent}
+        canSetStatus={canEditContent}
         boardGroupCount={boardGroupCount}
         boardGroupPosition={boardGroupPosition}
         boardName={

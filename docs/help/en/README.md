@@ -9,7 +9,7 @@ Find your role below, then use the task pages when you need them. Words you do n
 | You are… | You… |
 |---|---|
 | **[Viewer](#viewer)** | look at the boards and their status, and comment now and then |
-| **[Translator](translations.md)** | keep the translations in your languages in step with the EN email |
+| **[Translator](translations.md)** | keep the translations in your languages in step with the EN email and mark them ready |
 | **[Region manager](#region-manager)** | keep your region's emails and translations up to date and mark them ready |
 | **[Board owner](#board-owner)** | set up boards: stages, slots, regions, who works on what |
 | **[CRM operator](#crm-operator)** | paste ready emails into the Bitrix24 robots and keep ReviewDesk in step with what is sent |
@@ -67,7 +67,7 @@ How the roles above are set in **Settings → Users**. Board owners add people a
 | Board owner | `admin` | — |
 | CRM operator | `super_admin` | — |
 
-A translator has no region of their own: they edit emails in their languages on every board but do not mark them ready. Board owners and CRM operators manage every board; **Translates** only fills their **My tasks**.
+A translator has no region of their own: they edit emails in their languages on every board and mark them ready once the text is checked. Board owners and CRM operators manage every board; **Translates** only fills their **My tasks**.
 
 ### One person, two addresses
 

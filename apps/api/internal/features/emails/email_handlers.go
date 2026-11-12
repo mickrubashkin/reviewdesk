@@ -1416,7 +1416,14 @@ func updateEmailReviewStatusHandler(dbpool *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if !requireManageEmail(w, r, dbpool, user, id) {
+		// Whoever may edit the email may mark it ready: board managers, and
+		// translators for emails in a language they translate.
+		if canEdit, err := CanEditEmail(r.Context(), dbpool, user, id); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to check edit access for email %s: %v\n", id, err)
+			http.Error(w, "failed to check access", http.StatusInternalServerError)
+			return
+		} else if !canEdit {
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 

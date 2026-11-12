@@ -21,7 +21,7 @@ An email **built from blocks** shows its blocks in **Details → Blocks**. A cha
 
 ## Mark the email ready
 
-The **Draft** / **Ready** badge in the header is a menu for region managers and board owners.
+The **Draft** / **Ready** badge in the header is a menu for region managers, board owners and translators of the email's language.
 
 You cannot mark an email ready while it fails a check of form, such as a missing button or an empty required field. The menu says what to fix.
 
