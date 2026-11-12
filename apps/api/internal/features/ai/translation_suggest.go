@@ -240,6 +240,8 @@ func checkSuggestion(field TranslationField) string {
 	return ""
 }
 
+// suggestTranslationHandler starts a background job (202) that asks the
+// model to update the fields EN changed; the client polls the job.
 func suggestTranslationHandler(dbpool *pgxpool.Pool, suggester translationSuggester, enabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := coreauth.FromRequest(r)
@@ -281,44 +283,59 @@ func suggestTranslationHandler(dbpool *pgxpool.Pool, suggester translationSugges
 		}
 
 		fields, skipped := buildTranslationFields(status.Changes, current)
-		result := translationSuggestionsResponse{Fields: fields, Skipped: skipped, Glossary: []string{}}
+		var glossary []GlossaryTerm
 		if len(fields) > 0 {
 			terms, err := loadGlossary(r.Context(), dbpool)
 			if err != nil {
 				http.Error(w, "failed to load the glossary", http.StatusInternalServerError)
 				return
 			}
-			glossary := glossaryForFields(terms, fields)
-			for _, term := range glossary {
-				result.Glossary = append(result.Glossary, term.Term)
-			}
+			glossary = glossaryForFields(terms, fields)
 			if refusal, status := demoAIQuotaRefusal(r, dbpool); refusal != "" {
 				http.Error(w, refusal, status)
 				return
 			}
-			startedAt := time.Now()
-			suggestions, metrics, err := suggester.suggest(r.Context(), language, fields, glossary)
-			metrics = finishAIAnalysisMetrics(metrics, startedAt, err)
-			metrics.Status = "success"
-			if err != nil {
-				metrics.Status = "error"
-			}
-			if logErr := insertAIAnalysisLog(r.Context(), dbpool, id, &user, metrics, false); logErr != nil {
-				fmt.Fprintf(os.Stderr, "failed to log translation suggestion for %s: %v\n", id, logErr)
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "translation suggestion for %s failed: %v\n", id, err)
-				http.Error(w, "the AI translation failed, try again", http.StatusBadGateway)
-				return
-			}
-			result.Model = metrics.Model
-			for i := range result.Fields {
-				result.Fields[i].Suggestion = suggestions[result.Fields[i].Key]
-				result.Fields[i].Problem = checkSuggestion(result.Fields[i])
-			}
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(result)
+		masterVersion := status.MasterLatestVersion
+		job, err := startTranslationJob(r.Context(), dbpool, translationJobSuggest, id, language, &masterVersion, user,
+			func(ctx context.Context) (any, *string, error) {
+				result, err := suggestTranslationUpdate(ctx, dbpool, suggester, user, id, language, fields, skipped, glossary)
+				return result, nil, err
+			})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "start translation suggestion for %s: %v\n", id, err)
+			http.Error(w, "failed to start the suggestion", http.StatusInternalServerError)
+			return
+		}
+		writeTranslationJob(w, http.StatusAccepted, job)
 	}
+}
+
+// suggestTranslationUpdate is the job behind "Suggest translation": the
+// model updates the changed fields; nothing is saved to the email.
+func suggestTranslationUpdate(ctx context.Context, dbpool *pgxpool.Pool, suggester translationSuggester, user coreauth.AuthUser, id, language string, fields []TranslationField, skipped []string, glossary []GlossaryTerm) (translationSuggestionsResponse, error) {
+	result := translationSuggestionsResponse{Fields: fields, Skipped: skipped, Glossary: []string{}}
+	if len(fields) == 0 {
+		return result, nil
+	}
+	for _, term := range glossary {
+		result.Glossary = append(result.Glossary, term.Term)
+	}
+	startedAt := time.Now()
+	suggestions, metrics, err := suggester.suggest(ctx, language, fields, glossary)
+	metrics = finishAIAnalysisMetrics(metrics, startedAt, err)
+	metrics.Status = "success"
+	if err != nil {
+		metrics.Status = "error"
+	}
+	logTranslationCall(dbpool, id, user, metrics)
+	if err != nil {
+		return result, fmt.Errorf("suggest a translation for %s: %w", id, err)
+	}
+	result.Model = metrics.Model
+	for i := range result.Fields {
+		result.Fields[i].Suggestion = suggestions[result.Fields[i].Key]
+		result.Fields[i].Problem = checkSuggestion(result.Fields[i])
+	}
+	return result, nil
 }

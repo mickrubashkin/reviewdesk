@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -104,11 +105,20 @@ func TestSuggestTranslationForTranslator(t *testing.T) {
 		t.Fatalf("expected 403 for someone who does not translate DE, got %d", response.Code)
 	}
 	response := call(translator)
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", response.Code, response.Body.String())
+	}
+	var started translationJob
+	if err := json.NewDecoder(response.Body).Decode(&started); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = dbpool.Exec(ctx, `DELETE FROM translation_jobs WHERE email_id = $1;`, translationID) })
+	job := waitForTranslationJob(t, dbpool, started.ID)
+	if job.Status != "done" || job.MasterVersion == nil || *job.MasterVersion != 2 {
+		t.Fatalf("expected a finished job on EN v2, got %+v", job)
 	}
 	var result translationSuggestionsResponse
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(job.Result, &result); err != nil {
 		t.Fatal(err)
 	}
 	if fake.gotLanguage != "de" || len(fake.gotFields) != 2 {
@@ -136,5 +146,25 @@ func TestSuggestTranslationForTranslator(t *testing.T) {
 	}
 	if kind != "translation" || status != "success" {
 		t.Fatalf("expected a successful translation log, got %s %s", kind, status)
+	}
+}
+
+// waitForTranslationJob waits for a background translation job to finish.
+func waitForTranslationJob(t *testing.T, dbpool *pgxpool.Pool, jobID string) translationJob {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		job, err := scanTranslationJob(dbpool.QueryRow(context.Background(),
+			`SELECT `+translationJobColumns+` FROM translation_jobs WHERE id = $1;`, jobID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Status != "running" {
+			return job
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job %s still running", jobID)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

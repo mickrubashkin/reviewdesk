@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,16 +26,23 @@ type createTranslationRequest struct {
 }
 
 type createTranslationResponse struct {
-	Email    emails.EmailDetail `json:"email"`
-	Model    string             `json:"model"`
-	Glossary []string           `json:"glossary"`
+	Email emails.EmailDetail `json:"email"`
+	translatedSummary
+}
+
+// translatedSummary is how the AI translation of a new draft went; a job
+// keeps it as its result.
+type translatedSummary struct {
+	Model    string   `json:"model"`
+	Glossary []string `json:"glossary"`
 	// KeptEnglish are fields left in English because the model's text was
 	// unusable (e.g. a Bitrix24 expression got lost); fix them by hand.
 	KeptEnglish []TranslationField `json:"kept_english"`
 }
 
 // createTranslationHandler creates the missing translation of an EN email in
-// its slot: a draft whose text the model translated, glossary applied.
+// its slot. With the English text it answers with the new draft; with AI it
+// starts a background job (202) whose draft appears when the model is done.
 func createTranslationHandler(dbpool *pgxpool.Pool, suggester translationSuggester, enabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := coreauth.FromRequest(r)
@@ -75,81 +83,107 @@ func createTranslationHandler(dbpool *pgxpool.Pool, suggester translationSuggest
 			return
 		}
 
-		result := createTranslationResponse{Glossary: []string{}, KeptEnglish: []TranslationField{}}
-		text := map[string]string{}
-		var metrics *AIAnalysisMetrics
-		if request.Translate {
-			fields := masterFieldsToTranslate(master)
-			terms, err := loadGlossary(r.Context(), dbpool)
+		if !request.Translate {
+			created, err := createTranslation(r.Context(), dbpool, user, masterID, language, map[string]string{}, map[string]any{})
 			if err != nil {
-				http.Error(w, "failed to load the glossary", http.StatusInternalServerError)
+				writeCreateError(w, masterID, language, err)
 				return
 			}
-			glossary := glossaryForFields(terms, fields)
-			for _, term := range glossary {
-				result.Glossary = append(result.Glossary, term.Term)
-			}
-			if refusal, status := demoAIQuotaRefusal(r, dbpool); refusal != "" {
-				http.Error(w, refusal, status)
-				return
-			}
-			startedAt := time.Now()
-			translations, usage, err := suggester.suggest(r.Context(), language, fields, glossary)
-			usage = finishAIAnalysisMetrics(usage, startedAt, err)
-			usage.Status = "success"
-			if err != nil {
-				usage.Status = "error"
-				logTranslationCall(r, dbpool, masterID, user, usage)
-				fmt.Fprintf(os.Stderr, "translation of %s into %s failed: %v\n", masterID, language, err)
-				http.Error(w, "the AI translation failed, try again", http.StatusBadGateway)
-				return
-			}
-			metrics = &usage
-			result.Model = usage.Model
-			for _, field := range fields {
-				field.Suggestion = translations[field.Key]
-				if field.Problem = checkSuggestion(field); field.Problem != "" {
-					result.KeptEnglish = append(result.KeptEnglish, field)
-					continue
-				}
-				text[field.Key] = field.Suggestion
-			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(createTranslationResponse{created, translatedSummary{Glossary: []string{}, KeptEnglish: []TranslationField{}}})
+			return
 		}
 
-		tx, err := dbpool.Begin(r.Context())
+		fields := masterFieldsToTranslate(master)
+		terms, err := loadGlossary(r.Context(), dbpool)
 		if err != nil {
-			http.Error(w, "failed to create the translation", http.StatusInternalServerError)
+			http.Error(w, "failed to load the glossary", http.StatusInternalServerError)
 			return
 		}
-		defer tx.Rollback(r.Context())
-		created, err := emails.CreateTranslationTx(r, tx, user, masterID, language, text, map[string]any{
-			"ai_model":     result.Model,
-			"kept_english": len(result.KeptEnglish),
-		})
-		switch {
-		case errors.Is(err, emails.ErrTranslationExists):
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		case errors.Is(err, pgx.ErrNoRows):
-			http.Error(w, "email not found", http.StatusNotFound)
-			return
-		case err != nil:
-			fmt.Fprintf(os.Stderr, "create translation of %s into %s: %v\n", masterID, language, err)
-			http.Error(w, "failed to create the translation", http.StatusInternalServerError)
+		glossary := glossaryForFields(terms, fields)
+		if refusal, status := demoAIQuotaRefusal(r, dbpool); refusal != "" {
+			http.Error(w, refusal, status)
 			return
 		}
-		if err := tx.Commit(r.Context()); err != nil {
-			http.Error(w, "failed to create the translation", http.StatusInternalServerError)
+		job, err := startTranslationJob(r.Context(), dbpool, translationJobCreate, masterID, language, nil, user,
+			func(ctx context.Context) (any, *string, error) {
+				return translateAndCreate(ctx, dbpool, suggester, user, masterID, language, fields, glossary)
+			})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "start translation of %s into %s: %v\n", masterID, language, err)
+			http.Error(w, "failed to start the translation", http.StatusInternalServerError)
 			return
 		}
-		if metrics != nil {
-			logTranslationCall(r, dbpool, created.ID, user, *metrics)
-		}
+		writeTranslationJob(w, http.StatusAccepted, job)
+	}
+}
 
-		result.Email = created
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(result)
+// translateAndCreate is the job behind "Translate and create": the model
+// translates the master's text, then the draft is created with it.
+func translateAndCreate(ctx context.Context, dbpool *pgxpool.Pool, suggester translationSuggester, user coreauth.AuthUser, masterID, language string, fields []TranslationField, glossary []GlossaryTerm) (any, *string, error) {
+	result := translatedSummary{Glossary: []string{}, KeptEnglish: []TranslationField{}}
+	for _, term := range glossary {
+		result.Glossary = append(result.Glossary, term.Term)
+	}
+	startedAt := time.Now()
+	translations, metrics, err := suggester.suggest(ctx, language, fields, glossary)
+	metrics = finishAIAnalysisMetrics(metrics, startedAt, err)
+	metrics.Status = "success"
+	if err != nil {
+		metrics.Status = "error"
+		logTranslationCall(dbpool, masterID, user, metrics)
+		return nil, nil, fmt.Errorf("translate %s into %s: %w", masterID, language, err)
+	}
+	result.Model = metrics.Model
+	text := map[string]string{}
+	for _, field := range fields {
+		field.Suggestion = translations[field.Key]
+		if field.Problem = checkSuggestion(field); field.Problem != "" {
+			result.KeptEnglish = append(result.KeptEnglish, field)
+			continue
+		}
+		text[field.Key] = field.Suggestion
+	}
+
+	created, err := createTranslation(ctx, dbpool, user, masterID, language, text, map[string]any{
+		"ai_model":     result.Model,
+		"kept_english": len(result.KeptEnglish),
+	})
+	if err != nil {
+		logTranslationCall(dbpool, masterID, user, metrics)
+		if errors.Is(err, emails.ErrTranslationExists) {
+			return nil, nil, jobError{"This language was created meanwhile."}
+		}
+		return nil, nil, err
+	}
+	logTranslationCall(dbpool, created.ID, user, metrics)
+	return result, &created.ID, nil
+}
+
+// createTranslation creates the draft in one transaction.
+func createTranslation(ctx context.Context, dbpool *pgxpool.Pool, user coreauth.AuthUser, masterID, language string, text map[string]string, metadata map[string]any) (emails.EmailDetail, error) {
+	tx, err := dbpool.Begin(ctx)
+	if err != nil {
+		return emails.EmailDetail{}, err
+	}
+	defer tx.Rollback(ctx)
+	created, err := emails.CreateTranslationTx(ctx, tx, user, masterID, language, text, metadata)
+	if err != nil {
+		return emails.EmailDetail{}, err
+	}
+	return created, tx.Commit(ctx)
+}
+
+func writeCreateError(w http.ResponseWriter, masterID, language string, err error) {
+	switch {
+	case errors.Is(err, emails.ErrTranslationExists):
+		http.Error(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, pgx.ErrNoRows):
+		http.Error(w, "email not found", http.StatusNotFound)
+	default:
+		fmt.Fprintf(os.Stderr, "create translation of %s into %s: %v\n", masterID, language, err)
+		http.Error(w, "failed to create the translation", http.StatusInternalServerError)
 	}
 }
 
@@ -168,12 +202,4 @@ func masterFieldsToTranslate(master map[string]string) []TranslationField {
 		fields = append(fields, TranslationField{Key: key, EnAfter: master[key]})
 	}
 	return fields
-}
-
-// logTranslationCall records the model call on the new email, or on the
-// master when the call failed and nothing was created.
-func logTranslationCall(r *http.Request, dbpool *pgxpool.Pool, emailID string, user coreauth.AuthUser, metrics AIAnalysisMetrics) {
-	if err := insertAIAnalysisLog(r.Context(), dbpool, emailID, &user, metrics, false); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to log translation call: %v\n", err)
-	}
 }

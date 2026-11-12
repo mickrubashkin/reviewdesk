@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
@@ -70,8 +69,7 @@ func CanTranslateInto(ctx context.Context, db rowQuerier, user auth.AuthUser, ma
 // in the master's slot, with the given text (subject, preheader and text
 // fields by key; missing keys keep the English). It starts as a draft linked
 // to the master's current version. The caller owns the transaction.
-func CreateTranslationTx(r *http.Request, tx pgx.Tx, user AuthUser, masterID, language string, text map[string]string, metadata map[string]any) (EmailDetail, error) {
-	ctx := r.Context()
+func CreateTranslationTx(ctx context.Context, tx pgx.Tx, user AuthUser, masterID, language string, text map[string]string, metadata map[string]any) (EmailDetail, error) {
 	language = strings.ToLower(strings.TrimSpace(language))
 	if language == "" || language == "en" {
 		return EmailDetail{}, ErrTranslationLanguage
@@ -142,7 +140,7 @@ func CreateTranslationTx(r *http.Request, tx pgx.Tx, user AuthUser, masterID, la
 		return EmailDetail{}, err
 	}
 
-	created, err := insertDuplicatedEmail(r.Context(), tx, duplicateEmailInsert{
+	created, err := insertDuplicatedEmail(ctx, tx, duplicateEmailInsert{
 		Slug:            emailSlugWithAdaptation(duplicateEmailSlug(source.Slug, source.Language, source.Variant, language, source.Variant), source.AdaptationKey),
 		Sequence:        source.Sequence,
 		Title:           source.Title,

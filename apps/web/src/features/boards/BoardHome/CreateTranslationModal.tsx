@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { Button, Checkbox, Group, List, Modal, Stack, Text } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "../../../shared/api";
-import { createTranslationFromEN } from "../../emails/api";
+import { createTranslationWithEnglish, startTranslationFromEN } from "../../emails/api";
 import type { EmailListItem } from "../../emails/types";
 
 // CreateTranslationModal fills an empty language of a slot from its EN email:
-// the AI translates every text field (glossary applied) into a new draft.
+// the AI translates every text field (glossary applied) into a new draft. The
+// translation runs in the background and the cell shows it until the draft
+// appears; with the English text the draft is created at once.
 export function CreateTranslationModal({
   language,
   master,
@@ -26,33 +28,26 @@ export function CreateTranslationModal({
   const version = master.latest_version ? ` v${master.latest_version}` : "";
 
   const mutation = useMutation({
-    mutationFn: () => createTranslationFromEN(master.id, { language, translate }),
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey: ["emails"] });
-      notifications.show({
-        color: "green",
-        title: `${label} created`,
-        message: translate
-          ? `Draft translated by ${result.model}${result.glossary.length > 0 ? `, ${result.glossary.length} glossary terms` : ""}. Read it before marking it ready.`
-          : "Draft with the English text, ready to translate.",
-      });
-      if (result.kept_english.length > 0) {
+    mutationFn: async () => {
+      if (translate) {
+        await startTranslationFromEN(master.id, language);
+        return null;
+      }
+      return (await createTranslationWithEnglish(master.id, language)).email.id;
+    },
+    onSuccess: (createdId) => {
+      if (createdId) {
+        void queryClient.invalidateQueries({ queryKey: ["emails"] });
+        notifications.show({ color: "green", title: `${label} created`, message: "Draft with the English text, ready to translate." });
+        onCreated(createdId);
+      } else {
+        void queryClient.invalidateQueries({ queryKey: ["translation-jobs"] });
         notifications.show({
-          autoClose: false,
-          color: "yellow",
-          title: `${result.kept_english.length} fields left in English`,
-          message: (
-            <List size="xs">
-              {result.kept_english.map((field) => (
-                <List.Item key={field.key}>
-                  {field.key}: {field.problem}
-                </List.Item>
-              ))}
-            </List>
-          ),
+          color: "blue",
+          title: `Translating into ${label}`,
+          message: "The draft appears in its cell in a minute or two. You can keep working meanwhile.",
         });
       }
-      onCreated(result.email.id);
       onClose();
     },
     onError: (error) =>

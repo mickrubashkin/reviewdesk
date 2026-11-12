@@ -26,7 +26,10 @@ func RegisterAIRoutes(r chi.Router, dbpool *pgxpool.Pool, aiService AIAnalysisSe
 	registerGlossarySuggestionRoutes(r, dbpool)
 	translator := newOpenAITranslationSuggester(aiService.Provider)
 	r.Post("/api/emails/{id}/translation/suggestions", suggestTranslationHandler(dbpool, translator, aiService.APIKey != ""))
+	r.Get("/api/emails/{id}/translation/suggestions", latestSuggestionHandler(dbpool))
 	r.Post("/api/emails/{id}/translations", createTranslationHandler(dbpool, translator, aiService.APIKey != ""))
+	r.Get("/api/translation-jobs", listBoardTranslationJobsHandler(dbpool))
+	r.Delete("/api/translation-jobs/{jobID}", dismissTranslationJobHandler(dbpool))
 }
 
 func getCachedEmailAnalysisHandler(dbpool *pgxpool.Pool, aiService AIAnalysisService) http.HandlerFunc {

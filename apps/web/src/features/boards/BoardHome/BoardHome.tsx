@@ -423,6 +423,7 @@ function EmailBoardApp({
                       columns={visibleColumns}
                       selectedEmailId={panelEmailId}
                       canTranslate={(language) => canEditEmailContent(currentUser, { language, sequence: boardKey })}
+                      currentUserEmail={currentUser.email}
                       onEmailCreated={setPanelEmailId}
                       onExportSelected={(selected) => setExportRequest({ scope: "selected", selected })}
                       onOpenEmail={(email, _slotEmails, tab) => openPanel(email.id, tab)}

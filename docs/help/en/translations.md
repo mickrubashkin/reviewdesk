@@ -9,6 +9,7 @@ EN is the source of every email. A translation is linked to the EN email it came
 3. Choose:
    - **Translate and create** — AI translates the subject, the preheader and every text field into a new draft. Terms from the translation glossary are kept; fields where Bitrix24 expressions would break stay in English.
    - **Create with EN text** — a draft with the English text, to translate by hand.
+   With **Translate and create** the cell shows **translating…** and the draft appears in it after a minute or two; you can keep working meanwhile. If the translation fails, the cell says **translation failed** (point at it for the reason): try again, choose **Create with EN text** instead, or close it.
 4. Check the draft, [edit](editing.md) what needs it, and leave a comment if something is unclear.
 
 ## Hand a translation to a translator
@@ -25,7 +26,7 @@ While EN is still being reviewed — a draft with open comments — its text may
 2. Open it. It opens on its **Translation** tab (an orange dot marks it while EN has changes), which lists the fields that changed in EN, with the added and removed words marked. The board's preview panel shows the same above the email.
 3. Update only those fields:
    - by hand, then **Mark up to date**, or
-   - **Suggest translation**: AI drafts the changed fields next to the current text; edit them and click **Apply and mark up to date**.
+   - **Suggest translation**: AI drafts the changed fields next to the current text; edit them and click **Apply and mark up to date**, or **Discard**. Drafting takes up to a couple of minutes; you can leave the page and come back to the suggestion.
 
 ## Link a translation by hand
 

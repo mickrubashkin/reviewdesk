@@ -151,6 +151,26 @@ export type TranslationSuggestions = {
   glossary: string[];
 };
 
+// TranslationJob is an AI translation running in the background (the
+// gateway would drop a request waiting for a slow model). email_id is the EN
+// master for "create" and the translation for "suggest".
+export type TranslationJob<Result> = {
+  id: string;
+  kind: "create" | "suggest";
+  email_id: string;
+  language: string;
+  // For "suggest": the EN version the suggestion follows.
+  master_version: number | null;
+  status: "running" | "done" | "failed";
+  result: Result | null;
+  error: string;
+  created_email_id: string | null;
+  started_by: string | null;
+  started_by_email: string;
+  started_at: string;
+  finished_at: string | null;
+};
+
 // RobotUpload is one Bitrix24 robot of an email and the version pasted into
 // it. robot is a manager of the email's region, or "" for the one robot of
 // an email whose region lists no managers.

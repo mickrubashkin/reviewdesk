@@ -92,6 +92,13 @@ func main() {
 	}
 	comments.RegisterCommentRoutes(r, dbpool)
 	ai.RegisterAIRoutes(r, dbpool, aiService)
+	// AI translations run inside the server; close the ones a restart cut
+	// off, so no cell stays "translating".
+	if n, err := ai.FailInterruptedTranslationJobs(ctx, dbpool); err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to close interrupted translations: %v\n", err)
+	} else if n > 0 {
+		fmt.Printf("Closed %d translations interrupted by the restart\n", n)
+	}
 	// A sync runs inside the server; one a restart cut off would block its
 	// board for half an hour.
 	if n, err := portal.FailInterruptedRuns(ctx, dbpool); err != nil {
