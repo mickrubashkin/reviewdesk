@@ -28,6 +28,10 @@ While EN is still being reviewed — a draft with open comments — its text may
    - by hand, then **Mark up to date**, or
    - **Suggest translation**: AI drafts the changed fields next to the current text; edit them and click **Apply and mark up to date**, or **Discard**. Drafting takes up to a couple of minutes; you can leave the page and come back to the suggestion.
 
+## Mark a translation ready
+
+Once you have checked the text, mark the email ready with the **Draft** / **Ready** badge in its header, as a region manager would: see [Mark the email ready](editing.md#mark-the-email-ready). You can do this for emails in the languages you translate (**Translates** in Settings → Users). A CRM operator then pastes it into Bitrix24.
+
 ## Link a translation by hand
 
 If a translation is not linked to its EN email (ReviewDesk could not pair them), pick the EN email in **Details → Translation of**.

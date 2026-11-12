@@ -9,8 +9,9 @@ import {
   isApprovedEmailReviewStatus,
 } from "../../../emails/reviewStatus";
 
-// ReviewStatusControl is the status badge of the header; for admins it opens
-// a menu to switch between Draft and Ready.
+// ReviewStatusControl is the status badge of the header; for whoever may edit
+// the email (board managers, translators of its language) it opens a menu to
+// switch between Draft and Ready.
 export function ReviewStatusControl({
   approvalBlockedCount,
   approvalBlockedMessage,

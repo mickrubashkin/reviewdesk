@@ -4,6 +4,7 @@ The newest changes first. A dot on your account menu means there is something he
 
 ## 2026-11-12
 
+- Translators can mark emails in their languages ready themselves, with the **Draft** / **Ready** badge in the email's header. See [Mark a translation ready](translations.md#mark-a-translation-ready).
 - **Translate and create** and **Suggest translation** no longer fail on long emails: AI now translates in the background. The matrix cell shows **translating…** until the draft appears, and a suggestion waits for you even if you leave the page. See [Translations](translations.md).
 - A reference email now counts the robots of the regions in its language that have no email of their own in that slot: they send the reference email there. **re-upload (name)** asks for their robots too, and **Details → Region** lists them. See [Robots of a region](regions.md#robots-of-a-region).
 

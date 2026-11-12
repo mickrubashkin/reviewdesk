@@ -42,6 +42,7 @@ type ReviewHeaderProps = {
   boardGroupPosition: number | null;
   boardName: string | undefined;
   canManageEmail: boolean;
+  canSetStatus: boolean;
   currentListEmail: EmailListItem | undefined;
   currentStageKey: string | undefined;
   currentStageTitle: string | undefined;
@@ -81,6 +82,7 @@ export function ReviewHeader({
   boardGroupPosition,
   boardName,
   canManageEmail,
+  canSetStatus,
   currentListEmail,
   currentStageKey,
   currentStageTitle,
@@ -310,7 +312,7 @@ export function ReviewHeader({
               <ReviewStatusControl
                 approvalBlockedCount={approvalBlockedCount}
                 approvalBlockedMessage={approvalBlockedMessage}
-                canManage={canManageEmail}
+                canManage={canSetStatus}
                 isUpdating={reviewStatusIsPending}
                 status={email.review_status}
                 onChange={onReviewStatusChange}
