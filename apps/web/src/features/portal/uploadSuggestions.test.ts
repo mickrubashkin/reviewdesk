@@ -37,6 +37,20 @@ describe("suggestionFor", () => {
     expect(seenRobotsBehind(s, email)).toEqual([]);
   });
 
+  it("keeps a suggestion for a robot with no mark while the others have the version", () => {
+    const withNewRobot = {
+      ...email,
+      uploaded_version: 2,
+      upload_robots: [
+        { robot: "Ben", version: 2, uploaded_at: null, uploaded_by_email: null },
+        { robot: "Omar", version: null, uploaded_at: null, uploaded_by_email: null },
+      ],
+    };
+    const s = suggestion([{ robot: "Omar", sends: 4 }], 0);
+    expect(suggestionFor(new Map([["e1", s]]), withNewRobot)).toBe(s);
+    expect(seenRobotsBehind(s, withNewRobot)).toEqual(["Omar"]);
+  });
+
   it("keeps an older response without robots", () => {
     const s: UploadSuggestion = { email_id: "e1", version: 2, sends: 2, last_sent_at: "2026-11-10T10:00:00Z" };
     expect(suggestionFor(new Map([["e1", s]]), email)).toBe(s);
