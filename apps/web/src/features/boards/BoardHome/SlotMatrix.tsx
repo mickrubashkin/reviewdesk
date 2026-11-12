@@ -4,6 +4,7 @@ import {
   Badge,
   Checkbox,
   Group,
+  Loader,
   Paper,
   ScrollArea,
   SegmentedControl,
@@ -26,10 +27,10 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { ChartBarIcon, DotsSixVerticalIcon, PencilSimpleIcon, TranslateIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ChartBarIcon, DotsSixVerticalIcon, PencilSimpleIcon, TranslateIcon, XIcon } from "@phosphor-icons/react";
 
 import { ApiError } from "../../../shared/api";
-import { fetchReferenceDifferences, moveSlot } from "../../emails/api";
+import { dismissTranslationJob, fetchReferenceDifferences, moveSlot, type CreatedTranslationSummary } from "../../emails/api";
 import { EmailStatusLine } from "../../emails/EmailStatusLine";
 import { SplitTextsBadge } from "../../emails/SplitTextsBadge";
 import { formatStageName } from "../../emails/stages";
@@ -40,6 +41,7 @@ import type {
   EmailVersionGroup,
   ReferenceDifference,
   StageColumn,
+  TranslationJob,
 } from "../../emails/types";
 import { BulkActionBar } from "./BulkActionBar";
 import type { SidePanelTab } from "./EmailSidePanel";
@@ -47,6 +49,9 @@ import { CreateTranslationModal } from "./CreateTranslationModal";
 import { SlotEditModal } from "./SlotEditModal";
 import { aiTranslationLanguages, cellVersions, matrixLanguages, pickPrimary } from "./slotHelpers";
 import styles from "./SlotMatrix.module.css";
+import { useBoardTranslationJobs } from "./useBoardTranslationJobs";
+
+type CreateJob = TranslationJob<CreatedTranslationSummary>;
 
 const stageDropPrefix = "stage:";
 
@@ -63,6 +68,7 @@ export function SlotMatrix({
   columns,
   selectedEmailId,
   canTranslate,
+  currentUserEmail,
   onEmailCreated,
   onExportSelected,
   onOpenEmail,
@@ -78,6 +84,7 @@ export function SlotMatrix({
   selectedEmailId: string | null;
   // canTranslate tells whether the user may create emails in a language.
   canTranslate: (language: string) => boolean;
+  currentUserEmail: string;
   onEmailCreated: (emailId: string) => void;
   onExportSelected: (emails: EmailListItem[]) => void;
   onOpenEmail: (email: EmailListItem, slotEmails: EmailListItem[], tab?: SidePanelTab) => void;
@@ -98,6 +105,11 @@ export function SlotMatrix({
   const [editing, setEditing] = useState<EmailVersionGroup | null>(null);
   const [translating, setTranslating] = useState<{ master: EmailListItem; language: string } | null>(null);
   const [dragging, setDragging] = useState<EmailVersionGroup | null>(null);
+  const translationJobs = useBoardTranslationJobs(board?.key, currentUserEmail);
+  const dismissJob = useMutation({
+    mutationFn: dismissTranslationJob,
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["translation-jobs"] }),
+  });
   const [overId, setOverId] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -267,6 +279,8 @@ export function SlotMatrix({
                     onCheck={canDrag ? (email, checked) => setChecked([email], checked) : undefined}
                     canTranslate={canTranslate}
                     onEdit={() => setEditing(group)}
+                    translationJobs={translationJobs}
+                    onDismissJob={(job) => dismissJob.mutate(job.id)}
                     onTranslate={(master, language) => setTranslating({ master, language })}
                     onOpenEmail={onOpenEmail}
                   />
@@ -462,6 +476,8 @@ function SlotRow({
   isChecked,
   onCheck,
   canTranslate,
+  translationJobs,
+  onDismissJob,
   onEdit,
   onTranslate,
   onOpenEmail,
@@ -478,6 +494,8 @@ function SlotRow({
   isChecked: (emailId: string) => boolean;
   onCheck?: (email: EmailListItem, checked: boolean) => void;
   canTranslate: (language: string) => boolean;
+  translationJobs: CreateJob[];
+  onDismissJob: (job: CreateJob) => void;
   onEdit: () => void;
   onTranslate: (master: EmailListItem, language: string) => void;
   onOpenEmail: (email: EmailListItem, slotEmails: EmailListItem[], tab?: SidePanelTab) => void;
@@ -543,6 +561,12 @@ function SlotRow({
             cellEmails={emails}
             emptyLabel={language && hasEnglish ? "no translation" : undefined}
             note={adapting && primary ? regionNote(primary, differences[primary.id]) : undefined}
+            translationJob={
+              language && englishMaster
+                ? translationJobs.find((job) => job.email_id === englishMaster.id && job.language === language)
+                : undefined
+            }
+            onDismissJob={onDismissJob}
             onTranslate={
               language && englishMaster && aiTranslationLanguages.includes(language) && canTranslate(language)
                 ? () => onTranslate(englishMaster, language)
@@ -568,6 +592,8 @@ function MatrixCell({
   onCheck,
   onOpen,
   onTranslate,
+  translationJob,
+  onDismissJob,
 }: {
   cellEmails: EmailListItem[];
   // emptyLabel marks a gap worth seeing; without it an empty cell is a dash.
@@ -580,8 +606,52 @@ function MatrixCell({
   onOpen: (email: EmailListItem, tab?: SidePanelTab) => void;
   // onTranslate is set when the user can fill this empty cell from EN.
   onTranslate?: () => void;
+  // translationJob is the AI translation into this cell, if one runs or
+  // just ended.
+  translationJob?: CreateJob;
+  onDismissJob: (job: CreateJob) => void;
 }) {
   const primary = pickPrimary(cellEmails);
+  if (!primary && translationJob && translationJob.status !== "failed") {
+    // A finished job shows until the board's emails reload with the draft.
+    return (
+      <Table.Td className={styles.missing}>
+        <Group gap={6} wrap="nowrap">
+          <Loader size={12} />
+          <Text c="dimmed" size="xs">
+            translating…
+          </Text>
+        </Group>
+      </Table.Td>
+    );
+  }
+  if (!primary && translationJob) {
+    return (
+      <Table.Td className={styles.missing}>
+        <Group gap={4} justify="space-between" wrap="nowrap">
+          <Tooltip label={translationJob.error} multiline w={240}>
+            <Text c="red" size="xs">
+              translation failed
+            </Text>
+          </Tooltip>
+          <Group gap={2} wrap="nowrap">
+            {onTranslate ? (
+              <Tooltip label="Try again, or create with the EN text">
+                <ActionIcon aria-label="Try again" size="sm" variant="light" onClick={onTranslate}>
+                  <ArrowClockwiseIcon aria-hidden="true" size={14} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+            <Tooltip label="Close">
+              <ActionIcon aria-label="Close the failed translation" color="gray" size="sm" variant="subtle" onClick={() => onDismissJob(translationJob)}>
+                <XIcon aria-hidden="true" size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        </Group>
+      </Table.Td>
+    );
+  }
   if (!primary) {
     return (
       <Table.Td className={emptyLabel ? styles.missing : styles.empty}>

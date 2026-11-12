@@ -98,11 +98,20 @@ func TestCreateTranslationFromEN(t *testing.T) {
 	}
 
 	response := call("de")
-	if response.Code != http.StatusCreated {
+	if response.Code != http.StatusAccepted {
 		t.Fatalf("create returned %d: %s", response.Code, response.Body.String())
 	}
-	var result createTranslationResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+	var started translationJob
+	if err := json.Unmarshal(response.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = dbpool.Exec(ctx, `DELETE FROM translation_jobs WHERE email_id = $1;`, masterID) })
+	job := waitForTranslationJob(t, dbpool, started.ID)
+	if job.Status != "done" || job.CreatedEmailID == nil {
+		t.Fatalf("expected a created translation, got %+v", job)
+	}
+	var result translatedSummary
+	if err := json.Unmarshal(job.Result, &result); err != nil {
 		t.Fatal(err)
 	}
 	if fake.gotLanguage != "de" || len(fake.gotFields) != 3 {
@@ -118,7 +127,7 @@ func TestCreateTranslationFromEN(t *testing.T) {
 	if err := dbpool.QueryRow(ctx, `
 		SELECT language, stage, sort_order, review_status, subject, review_html, editable_fields::text, send_timing, translation_of, translated_from_version
 		FROM emails WHERE id = $1;
-	`, result.Email.ID).Scan(&language, &stage, &sortOrder, &status, &subject, &reviewHTML, &fieldsJSON, &timing, &translationOf, &fromVersion); err != nil {
+	`, *job.CreatedEmailID).Scan(&language, &stage, &sortOrder, &status, &subject, &reviewHTML, &fieldsJSON, &timing, &translationOf, &fromVersion); err != nil {
 		t.Fatal(err)
 	}
 	if language != "de" || stage != "test" || sortOrder != 9980 || status != "draft" || timing != "1 day" {
@@ -134,7 +143,15 @@ func TestCreateTranslationFromEN(t *testing.T) {
 		t.Fatalf("the HTML must be rendered from the translated fields: %s", reviewHTML)
 	}
 
-	if response := call("de"); response.Code != http.StatusConflict {
-		t.Fatalf("expected 409 when the slot has DE already, got %d", response.Code)
+	// A second run finds the slot has DE already and fails, saying so.
+	response = call("de")
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("second create returned %d: %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	if again := waitForTranslationJob(t, dbpool, started.ID); again.Status != "failed" || again.Error != "This language was created meanwhile." {
+		t.Fatalf("expected the second translation to fail as a duplicate, got %+v", again)
 	}
 }

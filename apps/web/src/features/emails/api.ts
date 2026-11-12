@@ -22,6 +22,7 @@ import type {
   ReferenceDifference,
   RenderedEmail,
   TranslationStatus,
+  TranslationJob,
   TranslationSuggestions,
   UpdateEditableFieldsPayload,
   UpdateEmailPlanningFieldsPayload,
@@ -129,11 +130,40 @@ export function confirmTranslation(emailId: string): Promise<TranslationStatus |
   );
 }
 
-export function suggestTranslation(emailId: string): Promise<TranslationSuggestions> {
-  return fetchJson<TranslationSuggestions>(
+// suggestTranslation starts the AI update of a translation's changed fields
+// in the background; the job's result holds the suggestions.
+export function suggestTranslation(emailId: string): Promise<TranslationJob<TranslationSuggestions>> {
+  return fetchJson<TranslationJob<TranslationSuggestions>>(
     `/api/emails/${encodeURIComponent(emailId)}/translation/suggestions`,
     { method: "POST" }
   );
+}
+
+// fetchLatestSuggestion returns the translation's latest suggestion job that
+// was not closed, running or finished; null when there is none (a query
+// cannot hold undefined).
+export async function fetchLatestSuggestion(emailId: string): Promise<TranslationJob<TranslationSuggestions> | null> {
+  return (
+    (await fetchJson<TranslationJob<TranslationSuggestions> | undefined>(
+      `/api/emails/${encodeURIComponent(emailId)}/translation/suggestions`
+    )) ?? null
+  );
+}
+
+// fetchBoardTranslationJobs lists the board's AI translations into empty
+// cells: running, failed, or finished a moment ago.
+export async function fetchBoardTranslationJobs(boardKey: string): Promise<TranslationJob<CreatedTranslationSummary>[]> {
+  return (
+    await fetchJson<{ jobs: TranslationJob<CreatedTranslationSummary>[] }>(
+      `/api/translation-jobs?board=${encodeURIComponent(boardKey)}`
+    )
+  ).jobs;
+}
+
+// dismissTranslationJob closes a finished job: a failure that was read, or a
+// suggestion applied or discarded.
+export function dismissTranslationJob(jobId: string): Promise<void> {
+  return fetchJson<void>(`/api/translation-jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" });
 }
 
 export function fetchBasedOnStatus(emailId: string): Promise<BasedOnStatus | undefined> {
@@ -177,25 +207,38 @@ export function placeEmail(
   });
 }
 
-export type CreatedTranslation = {
-  email: EmailDetail;
+// CreatedTranslationSummary is how the AI translation of a new draft went.
+export type CreatedTranslationSummary = {
   model: string;
   glossary: string[];
   // Fields left in English because the model's text was unusable.
   kept_english: { key: string; problem: string }[];
 };
 
-// createTranslationFromEN creates the missing translation of an EN email in
-// its slot, as a draft; translate asks the AI for the text first.
-export function createTranslationFromEN(
-  masterId: string,
-  payload: { language: string; translate: boolean }
-): Promise<CreatedTranslation> {
-  return fetchJson<CreatedTranslation>(`/api/emails/${encodeURIComponent(masterId)}/translations`, {
+// createTranslationWithEnglish creates the missing translation of an EN
+// email in its slot at once, as a draft with the English text.
+export function createTranslationWithEnglish(masterId: string, language: string): Promise<{ email: EmailDetail }> {
+  return fetchJson<{ email: EmailDetail }>(`/api/emails/${encodeURIComponent(masterId)}/translations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ language, translate: false }),
   });
+}
+
+// startTranslationFromEN starts the AI translation of an EN email into a
+// missing language; the draft appears in its slot when the job is done.
+export function startTranslationFromEN(
+  masterId: string,
+  language: string
+): Promise<TranslationJob<CreatedTranslationSummary>> {
+  return fetchJson<TranslationJob<CreatedTranslationSummary>>(
+    `/api/emails/${encodeURIComponent(masterId)}/translations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language, translate: true }),
+    }
+  );
 }
 
 export function setTranslationLink(emailId: string, masterId: string | null): Promise<void> {

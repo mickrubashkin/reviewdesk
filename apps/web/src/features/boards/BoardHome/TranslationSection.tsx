@@ -7,7 +7,9 @@ import { useState } from "react";
 
 import {
   confirmTranslation,
+  dismissTranslationJob,
   fetchEmailDetail,
+  fetchLatestSuggestion,
   fetchTranslationStatus,
   setTranslationLink,
   suggestTranslation,
@@ -18,6 +20,8 @@ import type { EmailListItem, TranslationSuggestions } from "../../emails/types";
 // TranslationSection tells whether a translation is behind its EN master and
 // lists what changed in EN since, so the translator updates just that. They
 // can ask AI for updated text of the changed fields, edit it and apply it.
+// The AI call runs in the background on the server; the section polls it, so
+// the person can leave and come back to the suggestion.
 export function TranslationSection({ email, canEdit }: { email: EmailListItem; canEdit: boolean }) {
   const queryClient = useQueryClient();
   const statusQuery = useQuery({
@@ -35,16 +39,41 @@ export function TranslationSection({ email, canEdit }: { email: EmailListItem; c
     onError: (error) => notifications.show({ color: "red", message: error.message, title: "Not saved" }),
   });
 
-  const [suggestions, setSuggestions] = useState<TranslationSuggestions | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const canSuggest = canEdit && Boolean(statusQuery.data?.stale);
+  const suggestionKey = ["emails", email.id, "translation", "suggestion"];
+  const suggestionQuery = useQuery({
+    queryKey: suggestionKey,
+    queryFn: () => fetchLatestSuggestion(email.id),
+    enabled: canSuggest,
+    refetchInterval: (query) => (query.state.data?.status === "running" ? 3000 : false),
+  });
+  // A suggestion made before EN changed again is out of date.
+  const job =
+    suggestionQuery.data && suggestionQuery.data.master_version === statusQuery.data?.master_latest_version
+      ? suggestionQuery.data
+      : undefined;
+  const suggestions = job?.status === "done" ? job.result : null;
+  // Edits of the suggestion, kept for the job they belong to.
+  const [edited, setEdited] = useState<{ jobId: string; values: Record<string, string> } | null>(null);
+  const drafts: Record<string, string> =
+    job && edited?.jobId === job.id
+      ? edited.values
+      : Object.fromEntries((suggestions?.fields ?? []).map((field) => [field.key, field.suggestion]));
+  const closeSuggestion = async () => {
+    if (job) await dismissTranslationJob(job.id);
+    setEdited(null);
+    await queryClient.invalidateQueries({ queryKey: suggestionKey });
+  };
+
   const suggestMutation = useMutation({
     mutationFn: () => suggestTranslation(email.id),
-    onSuccess: (result) => {
-      setSuggestions(result);
-      setDrafts(Object.fromEntries(result.fields.map((field) => [field.key, field.suggestion])));
+    onSuccess: (started) => {
+      setEdited(null);
+      queryClient.setQueryData(suggestionKey, started);
     },
     onError: (error) => notifications.show({ color: "red", message: error.message, title: "No suggestion" }),
   });
+  const discardMutation = useMutation({ mutationFn: closeSuggestion });
   const applyMutation = useMutation({
     mutationFn: async () => {
       const detail = await fetchEmailDetail(email.id);
@@ -60,11 +89,10 @@ export function TranslationSection({ email, canEdit }: { email: EmailListItem; c
         preheader: drafts.preheader ?? detail.preheader ?? "",
         editable_fields: fields,
       });
-      return confirmTranslation(email.id);
+      await confirmTranslation(email.id);
+      await closeSuggestion();
     },
     onSuccess: () => {
-      setSuggestions(null);
-      setDrafts({});
       void queryClient.invalidateQueries({ queryKey: ["emails"] });
       notifications.show({ color: "green", message: "Saved and marked up to date with EN.", title: "Translation" });
     },
@@ -109,34 +137,41 @@ export function TranslationSection({ email, canEdit }: { email: EmailListItem; c
             <WordDiff after={change.after} before={change.before} />
           </Stack>
         ))}
+        {canEdit && job?.status === "failed" ? (
+          <Text c="red" size="xs">
+            {job.error}
+          </Text>
+        ) : null}
         {canEdit && !suggestions ? (
           <Group>
             <Button
               leftSection={<SparkleIcon aria-hidden="true" size={14} />}
-              loading={suggestMutation.isPending}
+              loading={suggestMutation.isPending || job?.status === "running"}
               size="compact-xs"
               variant="light"
               onClick={() => suggestMutation.mutate()}
             >
-              Suggest translation
+              {job?.status === "failed" ? "Try again" : "Suggest translation"}
             </Button>
             <Button loading={confirmMutation.isPending} size="compact-xs" variant="default" onClick={() => confirmMutation.mutate()}>
               Mark up to date
             </Button>
+            {job?.status === "running" ? (
+              <Text c="dimmed" size="xs">
+                Translating… this takes up to a couple of minutes; you can leave the page meanwhile.
+              </Text>
+            ) : null}
           </Group>
         ) : null}
         {canEdit && suggestions ? (
           <SuggestionEditor
             drafts={drafts}
-            isApplying={applyMutation.isPending}
+            isApplying={applyMutation.isPending || discardMutation.isPending}
             language={email.language}
             suggestions={suggestions}
             onApply={() => applyMutation.mutate()}
-            onChange={(key, value) => setDrafts((current) => ({ ...current, [key]: value }))}
-            onDiscard={() => {
-              setSuggestions(null);
-              setDrafts({});
-            }}
+            onChange={(key, value) => job && setEdited({ jobId: job.id, values: { ...drafts, [key]: value } })}
+            onDiscard={() => discardMutation.mutate()}
           />
         ) : null}
       </Stack>
