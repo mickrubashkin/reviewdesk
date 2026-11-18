@@ -1,6 +1,6 @@
 # Board views
 
-Switch views with **View** in the board header. The view is part of the link, so a link you send opens the same view.
+Switch views with **View** in the board header. The view is part of the link, so a link you send opens the same view. When you open ReviewDesk again, it comes back to the page you were last on, in the same view.
 
 ## Timeline (default)
 

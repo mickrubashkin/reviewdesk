@@ -61,12 +61,20 @@ import { ManageStagesModal } from "./ManageStagesModal";
 import { canEditEmailContent, canManageBoard } from "../../emails/permissions";
 import { useBoardHomeData } from "./useBoardHomeData";
 import styles from "../../../App.module.css";
+import { markRootVisited, readPlaceToRestore } from "../../../shared/lastPlace";
 
 export function BoardHomeRedirect() {
+  const [lastPlace] = useState(readPlaceToRestore);
+  useEffect(markRootVisited, []);
   const boardsQuery = useQuery({
     queryKey: ["boards"],
     queryFn: fetchBoards,
+    enabled: !lastPlace,
   });
+
+  if (lastPlace) {
+    return <Navigate replace to={lastPlace} />;
+  }
 
   if (boardsQuery.isLoading) {
     return (
