@@ -27,10 +27,11 @@ import styles from "../EmailReview.module.css";
 import { useUserName } from "../../../../shared/userNames";
 import { useBoardRegions } from "../../../boards/api";
 import { regionName } from "../../../boards/regions";
+import { copyText } from "../../../../shared/clipboard";
 
 async function copyPlainText(value: string, label: string) {
   try {
-    await navigator.clipboard.writeText(value);
+    await copyText(value);
     notifications.show({
       color: "green",
       message: label + " copied to clipboard.",

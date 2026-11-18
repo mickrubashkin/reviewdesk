@@ -17,6 +17,7 @@ import {
   type BoardFilterOptions,
   type BoardFilters,
 } from "./BoardHome.types";
+import { copyText } from "../../../shared/clipboard";
 
 export function filterColumnsBySearch(columns: StageColumn[], query: string) {
   const terms = normalizeSearchText(query).split(" ").filter(Boolean);
@@ -316,7 +317,7 @@ export function buildSequenceHandoffManifest(
 
 export async function copyPlainText(value: string, label: string) {
   try {
-    await navigator.clipboard.writeText(value);
+    await copyText(value);
     notifications.show({
       color: "green",
       message: `${label} copied to clipboard.`,

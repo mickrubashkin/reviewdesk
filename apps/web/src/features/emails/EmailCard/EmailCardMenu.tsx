@@ -48,6 +48,7 @@ import {
 import { CardArchiveModal, CardDuplicateModal } from "./CardActionModals";
 import styles from "./EmailCard.module.css";
 import { useUserName } from "../../../shared/userNames";
+import { copyText } from "../../../shared/clipboard";
 
 type EmailCardMenuProps = {
   availableAdaptations: Array<Pick<EmailListItem, "adaptation_key" | "adaptation_label">>;
@@ -159,7 +160,7 @@ export function EmailCardMenu({
   });
   const copyLink = () => {
     const url = `${window.location.origin}/emails/${encodeURIComponent(selectedEmail.id)}/review`;
-    void navigator.clipboard.writeText(url).then(
+    void copyText(url).then(
       () => notifications.show({ color: "green", message: "Link copied.", title: "Copied" }),
       () => notifications.show({ color: "red", message: url, title: "Could not copy" })
     );
