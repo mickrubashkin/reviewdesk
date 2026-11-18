@@ -10,6 +10,7 @@ import { fetchRenderedEmail, markEmailUploaded } from "./api";
 import { robotsBehind, uploadRobots } from "./reviewStatus";
 import { formatStageName } from "./stages";
 import type { EmailListItem } from "./types";
+import { copyText } from "../../shared/clipboard";
 
 type BitrixCopyModalProps = {
   email: EmailListItem | null;
@@ -103,7 +104,7 @@ function BitrixCopyContent({
       return;
     }
     try {
-      await navigator.clipboard.writeText(rendered.html);
+      await copyText(rendered.html);
       setCopiedVersion(rendered.version);
     } catch {
       notifications.show({ color: "red", message: "Browser blocked clipboard access.", title: "Copy failed" });

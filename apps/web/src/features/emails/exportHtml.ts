@@ -1,6 +1,7 @@
 import { notifications } from "@mantine/notifications";
 
 import type { EmailDetail } from "./types";
+import { copyText } from "../../shared/clipboard";
 
 export async function copyRenderedHTML(html: string) {
   return copyHTML(html, {
@@ -21,7 +22,7 @@ async function copyHTML(
   }
 ) {
   try {
-    await navigator.clipboard.writeText(html);
+    await copyText(html);
     notifications.show({
       color: "green",
       message: messages.successMessage,

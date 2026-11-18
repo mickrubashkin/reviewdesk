@@ -27,6 +27,7 @@ import type { Board, EmailListItem } from "../../emails/types";
 
 import { downloadTextFile } from "../../ai-config/AIConfig/exportConfig";
 import { formatEmailReviewStatus } from "../../emails/reviewStatus";
+import { copyText } from "../../../shared/clipboard";
 
 const tokenWarningThreshold = 100_000;
 const noRegion = "__none__";
@@ -310,8 +311,7 @@ export function BoardAIExportModal({
               <Button
                 variant="default"
                 onClick={() =>
-                  void navigator.clipboard
-                    .writeText(currentResult.markdown)
+                  void copyText(currentResult.markdown)
                     .then(() =>
                       notifications.show({ color: "green", message: "Document copied.", title: "Copied" })
                     )

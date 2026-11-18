@@ -17,6 +17,7 @@ import { downloadRenderedHTML } from "../../../emails/exportHtml";
 import type { EmailDetail, EmailListItem } from "../../../emails/types";
 
 import styles from "../EmailReview.module.css";
+import { copyText } from "../../../../shared/clipboard";
 
 type ReviewMoreMenuProps = {
   archiveIsPending: boolean;
@@ -59,7 +60,7 @@ export function ReviewMoreMenu({
       return;
     }
     const url = `${window.location.origin}/emails/${encodeURIComponent(email.id)}/review`;
-    void navigator.clipboard.writeText(url).then(
+    void copyText(url).then(
       () => notifications.show({ color: "green", message: "Link copied.", title: "Copied" }),
       () => notifications.show({ color: "red", message: url, title: "Could not copy" })
     );
