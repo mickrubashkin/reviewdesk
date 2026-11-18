@@ -2,6 +2,10 @@
 
 The newest changes first. A dot on your account menu means there is something here you have not read yet.
 
+## 2026-11-18
+
+- ReviewDesk opens where you left off: the board and view, or the email, you were last on, instead of the Onboarding timeline. See [Board views](board-views.md).
+
 ## 2026-11-12
 
 - Translators can mark emails in their languages ready themselves, with the **Draft** / **Ready** badge in the email's header. See [Mark a translation ready](translations.md#mark-a-translation-ready).

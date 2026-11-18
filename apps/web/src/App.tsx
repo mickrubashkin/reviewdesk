@@ -10,6 +10,7 @@ import { AIAnalysisLogs } from "./features/ai-logs/AIAnalysisLogs";
 import { AdminUsers } from "./features/admin-users/AdminUsers";
 import { AuthEvents } from "./features/auth-events/AuthEvents";
 import { BoardHomeRedirect, EmailBoardRoute } from "./features/boards/BoardHome";
+import { useRememberPlace } from "./shared/lastPlace";
 import { GatewayAccess, gatewayAccessState } from "./features/auth/GatewayAccess";
 import { Login } from "./features/auth/Login";
 import { ViewAsBanner } from "./features/auth/ViewAsBanner";
@@ -35,6 +36,7 @@ export default function App() {
 
 function AuthenticatedApp() {
   const navigate = useNavigate();
+  useRememberPlace();
   const queryClient = useQueryClient();
   const currentUserQuery = useQuery({
     queryKey: ["auth", "me"],
